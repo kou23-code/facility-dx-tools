@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>あおぞらセミナーハウス 業務DXツール集</title>
+    <style>
+        :root {
+            --bg: #f5f7fa;
+            --card: #ffffff;
+            --text: #1f2937;
+            --muted: #6b7280;
+            --line: #e5e7eb;
+            --accent: #1d4ed8;
+            --accent-soft: #eff6ff;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", sans-serif;
+            line-height: 1.7;
+        }
+        .wrap { max-width: 1040px; margin: 0 auto; padding: 56px 24px 40px; }
+        header { margin-bottom: 40px; }
+        .eyebrow { margin: 0 0 4px; color: var(--accent); font-size: .85rem; font-weight: 700; letter-spacing: .12em; }
+        h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2rem); letter-spacing: .02em; }
+        .lead { margin: 12px 0 0; color: var(--muted); }
+
+        .tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; padding: 0; margin: 0; list-style: none; }
+        .card {
+            display: flex; flex-direction: column; height: 100%;
+            padding: 24px; border: 1px solid var(--line); border-radius: 14px;
+            background: var(--card); color: inherit; text-decoration: none;
+            transition: border-color .15s, box-shadow .15s, transform .15s;
+        }
+        a.card:hover, a.card:focus-visible { border-color: var(--accent); box-shadow: 0 8px 24px rgba(29, 78, 216, .12); transform: translateY(-2px); outline: none; }
+        .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+        .icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
+        .icon svg { width: 24px; height: 24px; }
+        .badge { padding: 2px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+        .badge-open { background: #dcfce7; color: #166534; }
+        .badge-soon { background: #f3f4f6; color: var(--muted); }
+        .card h2 { margin: 0 0 6px; font-size: 1.15rem; }
+        .card p { margin: 0; color: var(--muted); font-size: .9rem; }
+        .card-foot { margin-top: auto; padding-top: 20px; font-size: .9rem; font-weight: 700; color: var(--accent); }
+
+        .card.is-soon { background: #fafafa; border-style: dashed; }
+        .card.is-soon .icon { background: #f3f4f6; color: #9ca3af; }
+        .card.is-soon h2 { color: #4b5563; }
+        .card.is-soon .card-foot { color: #9ca3af; font-weight: 400; }
+
+        footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: .8rem; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <header>
+            <p class="eyebrow">社内ポータル</p>
+            <h1>あおぞらセミナーハウス 業務DXツール集</h1>
+            <p class="lead">日々の業務で使うツールをまとめています。使いたいツールを選んでください。</p>
+        </header>
+
+        <main>
+            <!-- ツールを追加するときは、下の li 要素を1つコピーして増やします。
+                 公開中のツールは a 要素（class="card"、リンク先は英数字のフォルダ名）、
+                 準備中のツールは div 要素（class="card is-soon"）にします。 -->
+            <ul class="tools">
+                <li>
+                    <a class="card" href="estimate/">
+                        <div class="card-head">
+                            <span class="icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="14" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="16" y2="18"/></svg>
+                            </span>
+                            <span class="badge badge-open">公開中</span>
+                        </div>
+                        <h2>概算見積もりシステム</h2>
+                        <p>宿泊・食事・施設利用の人数や時間を入力すると、概算の見積書を作成して印刷・PDF保存できます。</p>
+                        <span class="card-foot">開く →</span>
+                    </a>
+                </li>
+                <li>
+                    <div class="card is-soon" aria-disabled="true">
+                        <div class="card-head">
+                            <span class="icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>
+                            </span>
+                            <span class="badge badge-soon">準備中</span>
+                        </div>
+                        <h2>Web予約システム</h2>
+                        <p>施設や宿泊の予約をWeb上で受け付け、空き状況を確認できるようにする予定です。</p>
+                        <span class="card-foot">準備中です</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="card is-soon" aria-disabled="true">
+                        <div class="card-head">
+                            <span class="icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="20"/><line x1="15" y1="9" x2="15" y2="20"/></svg>
+                            </span>
+                            <span class="badge badge-soon">準備中</span>
+                        </div>
+                        <h2>スケジュール管理表</h2>
+                        <p>施設の利用予定やスタッフの作業予定を一覧で管理できるようにする予定です。</p>
+                        <span class="card-foot">準備中です</span>
+                    </div>
+                </li>
+            </ul>
+        </main>
+
+        <footer>あおぞらセミナーハウス 業務DXツール集</footer>
+    </div>
+</body>
+</html>
