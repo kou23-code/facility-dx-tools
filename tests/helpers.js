@@ -5,7 +5,9 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 
-const HTML_PATH = path.join(__dirname, '..', '見積もりツール.html');
+const ROOT_DIR = path.join(__dirname, '..');
+const HTML_PATH = path.join(ROOT_DIR, 'estimate', 'index.html');
+const PORTAL_PATH = path.join(ROOT_DIR, 'index.html');
 const BROWSER_CANDIDATES = [
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
@@ -33,4 +35,4 @@ const findById = (dom, id) => {
     return match ? match[1] : null;
 };
 
-module.exports = { HTML_PATH, BROWSER_CANDIDATES, readHtml, findBrowser, renderDom, findById };
+module.exports = { ROOT_DIR, HTML_PATH, PORTAL_PATH, BROWSER_CANDIDATES, readHtml, findBrowser, renderDom, findById };

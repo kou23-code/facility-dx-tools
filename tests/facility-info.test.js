@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
-const { HTML_PATH, BROWSER_CANDIDATES, readHtml, findBrowser, renderDom, findById } = require('./helpers');
+const { ROOT_DIR, HTML_PATH, BROWSER_CANDIDATES, readHtml, findBrowser, renderDom, findById } = require('./helpers');
 
 const BLOCK_PATTERN = /\/\/ FACILITY_INFO:start([\s\S]*?)\/\/ FACILITY_INFO:end/;
 const BROWSER = findBrowser(BROWSER_CANDIDATES);
@@ -104,7 +104,7 @@ test('自動保存のキーは一般的な名称 reservation_estimate_v1 にな�
 });
 
 test('facility-config.js は .gitignore で除外されている', () => {
-    const lines = fs.readFileSync(path.join(__dirname, '..', '.gitignore'), 'utf8').split(/\r?\n/);
+    const lines = fs.readFileSync(path.join(ROOT_DIR, '.gitignore'), 'utf8').split(/\r?\n/);
     assert.ok(lines.includes('facility-config.js'));
 });
 
