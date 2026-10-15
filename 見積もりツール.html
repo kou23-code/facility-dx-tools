@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>見積書作成ツール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* ★印刷時の余白と文字サイズを詰めてA4・1枚に収める設定 */
+        @media print {
+            @page { size: A4; margin: 10mm; }
+            body { background-color: white; padding: 0 !important; font-size: 12px !important; }
+            .no-print { display: none !important; }
+            .print-area { width: 100%; max-width: none !important; min-height: 0 !important; box-shadow: none !important; border: none !important; padding: 0 !important; margin: 0 !important; }
+            .mb-8 { margin-bottom: 12px !important; }
+            .mb-6 { margin-bottom: 8px !important; }
+            .mb-4 { margin-bottom: 6px !important; }
+            .mt-6 { margin-top: 12px !important; }
+            table td, table th { border: 1px solid black !important; }
+            .out-table td { padding: 3px 4px !important; font-size: 11.5px !important; line-height: 1.2 !important; }
+            .out-table .py-4 { padding-top: 6px !important; padding-bottom: 6px !important; }
+            tr { page-break-inside: avoid; }
+        }
+        /* 画面表示用 */
+        .out-table td { border: 1px solid #000; padding: 6px 8px; vertical-align: middle; }
+        .input-cell:focus { background-color: #e0f2fe; outline: 2px solid #3b82f6; outline-offset: -2px; }
+        .input-cell.has-value { background-color: #fef9c3; font-weight: 700; }
+        .input-cell.has-value:focus { background-color: #e0f2fe; }
+        /* 入力ミスのあったマス */
+        @keyframes cellErrorBlink { 0%, 50% { background-color: #fca5a5; } 25%, 75% { background-color: #fee2e2; } 100% { background-color: #fecaca; } }
+        .input-cell.cell-error { outline: 3px solid #dc2626; outline-offset: -3px; animation: cellErrorBlink 1s ease-in-out; background-color: #fecaca; }
+        /* 数字入力の上下ボタンを隠す（誤操作防止） */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+        /* 入力表：スクロールしても見出し・項目列が崩れないように
+           （border-collapse だと固定セルの罫線がずれるため separate で線を引く） */
+        #inputTable { border-collapse: separate; border-spacing: 0; }
+        #inputTable th, #inputTable td { border-right: 1px solid #d1d5db; border-bottom: 1px solid #d1d5db; }
+        #inputTable thead th { position: sticky; top: 0; z-index: 20; background: #1f2937; color: #fff; }
+        #inputTable thead th.corner { left: 0; z-index: 30; }
+        #inputTable td.sticky-col { position: sticky; left: 0; z-index: 10; background: #fff; }
+        #inputTable .cat-label { position: sticky; left: .5rem; display: inline-block; max-width: 640px; }
+        /* カテゴリの開閉 */
+        .cat-collapsed .item-row { display: none; }
+        .cat-arrow { transition: transform .15s; }
+        .cat-collapsed .cat-arrow { transform: rotate(-90deg); }
+        .step-badge { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 9999px; background: #1d4ed8; color: #fff; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 md:p-6 font-sans" onload="initApp()">
+    <div class="max-w-[1500px] mx-auto flex flex-col xl:flex-row gap-6">
+
+        <!-- ===================== 左側：入力パネル ===================== -->
+        <div class="no-print w-full xl:w-[48%] bg-white rounded-lg shadow-md h-fit border-t-4 border-blue-600">
+            <div class="p-5 pb-3">
+                <div class="flex justify-between items-center border-b pb-3 mb-4 gap-2 flex-wrap">
+                    <h1 class="text-xl font-bold">見積書作成ツール</h1>
+                    <div class="flex gap-2 text-sm">
+                        <button type="button" onclick="toggleHelp()" class="px-3 py-1.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">？ 使い方</button>
+                        <button type="button" onclick="resetAll()" class="px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50">新しく作る（全消去）</button>
+                    </div>
+                </div>
+
+                <!-- 使い方 -->
+                <div id="helpBox" class="hidden mb-4 bg-blue-50 border border-blue-200 rounded p-4 text-sm leading-relaxed">
+                    <div class="font-bold text-blue-900 mb-2">かんたん3ステップ</div>
+                    <ol class="list-decimal pl-5 space-y-1 text-gray-800">
+                        <li><b>基本情報</b>：宛名・予約開始日・利用日数を入力します。</li>
+                        <li><b>数量入力</b>：表の白いマスに、その日の<b>人数・食数・区分数・時間</b>を数字で入れます。<br>
+                            <span class="text-xs text-gray-600">・宿泊は「泊まる夜の日付」に人数を入れます（2泊3日なら1日目と2日目）。<br>
+                            ・体育館・競技場は「区分」の数（AM・PM・夜で1日最大3）を入れます。<br>
+                            ・Enterキーで下のマスへ移動。「全日」ボタンで1日目の数を他の日にもコピーできます。</span></li>
+                        <li><b>確認・印刷</b>：右側のプレビューを確認し、「見積書を印刷・PDF保存」を押します。<br>
+                            <span class="text-xs text-gray-600">PDFにしたい場合は、印刷画面の送信先で「PDFに保存」を選んでください。</span></li>
+                    </ol>
+                    <div class="mt-2 text-xs text-gray-600">※入力内容はこのパソコンのブラウザに自動保存されます。閉じても次回開いたときに続きから作業できます。</div>
+                    <div class="mt-1 text-xs text-gray-600">※施設の料金は「宿泊者がいるか」と「一番人数が多い宿泊区分」から自動で決まります。</div>
+                </div>
+
+                <div class="space-y-4 text-sm">
+                    <!-- STEP1 基本情報 -->
+                    <div class="bg-gray-50 p-3 rounded border">
+                        <div class="flex items-center gap-2 mb-3"><span class="step-badge">1</span><span class="font-bold text-base">基本情報を入力</span></div>
+
+                        <label class="block font-bold mb-1" for="in_customer">宛名（団体名など）</label>
+                        <div class="flex items-center gap-2">
+                            <input type="text" id="in_customer" class="flex-1 p-2 border rounded text-lg font-bold" placeholder="例：○○中学校 バレーボール部" oninput="onBasicChange()">
+                            <span class="font-bold">御中</span>
+                        </div>
+
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+                            <div>
+                                <label class="block font-bold mb-1" for="in_start">予約開始日</label>
+                                <input type="date" id="in_start" class="w-full p-2 border rounded font-bold text-blue-700" onchange="onGridChange()">
+                            </div>
+                            <div>
+                                <label class="block font-bold mb-1" for="in_days">利用日数</label>
+                                <select id="in_days" class="w-full p-2 border rounded font-bold text-blue-700" onchange="onGridChange()">
+                                    <option value="1">1日（日帰り）</option>
+                                    <option value="2">2日（1泊2日）</option>
+                                    <option value="3" selected>3日（2泊3日）</option>
+                                    <option value="4">4日（3泊4日）</option>
+                                    <option value="5">5日（4泊5日）</option>
+                                    <option value="6">6日（5泊6日）</option>
+                                    <option value="7">7日（6泊7日）</option>
+                                </select>
+                            </div>
+                            <div id="day_type_wrapper">
+                                <label class="block font-bold mb-1" for="in_day_type">日帰りの料金区分</label>
+                                <select id="in_day_type" class="w-full p-2 border rounded font-bold text-gray-700 disabled:bg-gray-200 disabled:text-gray-400" onchange="onBasicChange()">
+                                    <option value="es">小・中学生</option>
+                                    <option value="hs">高校生</option>
+                                    <option value="ad" selected>大学・一般</option>
+                                </select>
+                                <div id="day_type_note" class="text-[10px] text-gray-500 mt-0.5"></div>
+                            </div>
+                            <div>
+                                <label class="block font-bold mb-1" for="in_issue">発行日</label>
+                                <input type="date" id="in_issue" class="w-full p-2 border rounded" onchange="onBasicChange()">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 適用料金の説明 -->
+                    <div id="tariffBox" class="rounded border border-blue-200 bg-blue-50 p-3 text-sm"></div>
+
+                    <!-- STEP2 数量入力 -->
+                    <div>
+                        <div class="flex items-center gap-2 mb-1"><span class="step-badge">2</span><span class="font-bold text-base">人数・食数・利用時間を入力</span></div>
+                        <p class="text-xs text-gray-500 mb-2 ml-8">白いマスをクリックして数字を入力（空欄＝0）。Enterで下へ移動 ／ 見出しをクリックで開閉できます。</p>
+
+                        <div id="warningBox" class="space-y-1 mb-2"></div>
+
+                        <!-- isolation: isolate で表の中の固定セルが下の合計欄に重ならないようにする -->
+                        <div class="overflow-auto bg-white border rounded shadow-sm" style="max-height: 62vh; isolation: isolate;">
+                            <table id="inputTable" class="w-full text-sm">
+                                <thead id="inputTableHead"></thead>
+                                <tbody>
+                                    <tr><td class="p-4 text-center text-gray-500">表を読み込み中...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP3 合計と印刷（画面下に固定） -->
+            <div class="sticky bottom-0 z-40 bg-white border-t-2 border-blue-600 p-4 rounded-b-lg shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
+                <div class="flex items-center justify-between gap-3 flex-wrap">
+                    <div class="flex items-center gap-2">
+                        <span class="step-badge">3</span>
+                        <div>
+                            <div class="text-xs text-gray-500">見積合計（税込）</div>
+                            <div class="text-2xl font-bold text-blue-800">¥<span id="panel_total">0</span></div>
+                        </div>
+                    </div>
+                    <button onclick="printEstimate()" class="bg-blue-700 text-white font-bold py-3 px-6 rounded shadow-lg hover:bg-blue-800 transition flex items-center gap-2 text-lg">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                        見積書を印刷・PDF保存
+                    </button>
+                </div>
+                <div id="saveStatus" class="text-[11px] text-gray-400 mt-1 text-right"></div>
+            </div>
+        </div>
+
+        <!-- ===================== 右側：見積書プレビュー（A4印刷エリア） ===================== -->
+        <div class="w-full xl:w-[52%]">
+            <div class="no-print text-sm font-bold text-gray-500 mb-2 text-center">▼ 印刷プレビュー（この内容が印刷されます）</div>
+            <div class="print-area bg-white p-8 rounded-lg shadow-md text-sm text-gray-900 relative" style="min-height: 297mm; max-width: 210mm; margin: 0 auto;">
+
+                <div class="flex justify-between items-start mb-8">
+                    <div class="w-[55%]">
+                        <div class="text-xl mb-6"><span id="out_customer" class="font-bold border-b border-black inline-block min-w-[200px] pb-1"></span> 御中</div>
+                        <div class="text-2xl tracking-widest font-bold mb-4">御 見 積 書</div>
+                        <div class="mb-3">ご予約ありがとうございます。<br>下記のとおり御見積申し上げます。</div>
+                        <div class="flex items-end mb-2">
+                            <span class="text-xl font-bold mr-2">¥</span>
+                            <span id="out_grand_total" class="text-4xl font-bold border-b-[3px] border-black min-w-[180px] inline-block text-center pr-2">0</span>
+                            <span class="ml-2 text-base">円 (税込み)</span>
+                        </div>
+                        <div class="flex flex-col gap-1 mt-2">
+                            <div class="text-sm font-bold bg-gray-100 inline-block px-3 py-1 rounded w-fit">ご予約期間： <span id="out_date_range"></span></div>
+                            <div class="text-sm font-bold bg-blue-50 text-blue-800 inline-block px-3 py-1 rounded w-fit border border-blue-200">
+                                適用施設料金：<span id="out_apply_status"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="w-[45%] text-right text-xs leading-relaxed">
+                        <div class="mb-3">発行日：<span id="out_issue"></span></div>
+                        <!-- 発行元の情報は JavaScript の FACILITY_INFO（または facility-config.js）から表示する -->
+                        <div id="issuer_name" class="font-bold text-base mb-2"></div>
+                        <div id="issuer_representative" class="mb-2"></div>
+                        <div id="issuer_postal"></div>
+                        <div id="issuer_address"></div>
+                        <div id="issuer_tel"></div>
+                    </div>
+                </div>
+
+                <div id="estimateTableContainer"></div>
+
+                <div class="mt-6 text-xs text-gray-600 space-y-1">
+                    <div>見積書有効期限：<span id="out_expire"></span></div>
+                    <div>※区分・・・AM (8:30~12:30) PM (12:30~17:00) 夜(17:00~21:00)</div>
+                    <div>※食事代、施設使用料等は実際のご利用数に基づき精算となります。</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- お知らせ表示（エラーなど） -->
+    <div id="toast" class="no-print hidden" onclick="this.classList.add('hidden')"></div>
+
+    <!-- ローカル専用の実名設定（Git管理外）。ファイルがなければ下のダミー表記のまま表示する -->
+    <script src="facility-config.js"></script>
+    <script>
+        // ======================================================
+        //  発行元の情報（ダミー表記）
+        //  実名で表示したいときは、このファイルではなく同じフォルダの
+        //  facility-config.js（Git管理外）に window.CUSTOM_FACILITY_INFO を書いてください
+        //  ※テストがこのブロックを読み込むため、目印のコメントは消さないでください
+        // ======================================================
+        // FACILITY_INFO:start
+        const FACILITY_INFO = Object.freeze({
+            organization: '株式会社サンプルリゾート',
+            facilityName: 'あおぞらセミナーハウス',
+            representativeTitle: '支配人',
+            representativeName: '山田 太郎',
+            postalCode: '100-0001',
+            address: '東京都千代田区千代田1-1-1',
+            tel: '03-0000-0000'
+        });
+
+        // 既定値を facility-config.js の設定で上書きする（既定値にあるキーの文字列だけを使う）
+        const resolveFacilityInfo = (defaults, custom) => Object.freeze(Object.fromEntries(
+            Object.entries(defaults).map(([key, value]) =>
+                [key, typeof custom?.[key] === 'string' ? custom[key] : value])
+        ));
+
+        // 見積書の発行元欄に表示する文字列（キーは表示先の要素ID）
+        const buildIssuerLines = (info) => ({
+            issuer_name: `${info.organization} ${info.facilityName}`,
+            issuer_representative: `${info.representativeTitle} ${info.representativeName}`,
+            issuer_postal: `〒${info.postalCode}`,
+            issuer_address: info.address,
+            issuer_tel: `TEL ${info.tel}`
+        });
+
+        const buildPageTitle = (info) => `${info.facilityName} 見積書作成ツール`;
+        // FACILITY_INFO:end
+
+        function renderFacilityInfo(info) {
+            const lines = buildIssuerLines(info);
+            Object.entries(lines).forEach(([id, text]) => {
+                document.getElementById(id).textContent = text;
+            });
+            document.title = buildPageTitle(info);
+        }
+
+        // ======================================================
+        //  料金設定（料金改定時はここを書き換えてください）
+        //   price     : 固定の単価
+        //   calcPrice : (宿泊ありか, 区分 'es'|'hs'|'ad') => 単価
+        //   unit      : 見積書に表示する単位
+        //   max       : 1日に入力できる上限
+        //   note      : 入力表にだけ表示する補足
+        // ======================================================
+        const categories = [
+            {
+                id: 'stay', name: '宿泊料', color: 'bg-blue-100 text-blue-900',
+                guide: '泊まる夜の日付に人数を入力',
+                items: [
+                    { key: 'es', name: '小・中学生', price: 2200, unit: '人' },
+                    { key: 'hs', name: '高校生', price: 2500, unit: '人' },
+                    { key: 'ad', name: '大学・一般', price: 3300, unit: '人' }
+                ]
+            },
+            {
+                id: 'food', name: '食費', color: 'bg-green-100 text-green-900',
+                guide: '食べる日付に食数を入力',
+                items: [
+                    { key: 'bf', name: '朝食', price: 660, unit: '食' },
+                    { key: 'lu', name: '昼食', price: 660, unit: '食' },
+                    { key: 'di', name: '夕食', price: 990, unit: '食' },
+                    { key: 'cu', name: 'カレー食材', price: 400, unit: '食' },
+                    { key: 'be_tatsu', name: '竜田揚げ弁当', price: 700, unit: '食' },
+                    { key: 'be_maku', name: '幕の内弁当', price: 700, unit: '食' },
+                    { key: 'be_kara', name: 'からマヨ丼', price: 600, unit: '食' },
+                    { key: 'be_oni', name: 'おにぎり弁当', price: 400, unit: '食' },
+                    { key: 'te', name: 'お茶', price: 150, unit: '本' },
+                    { key: 'on', name: '塩おにぎり(2個)', price: 200, unit: '食' }
+                ]
+            },
+            {
+                id: 'room', name: '施設使用料等', color: 'bg-orange-100 text-orange-900',
+                guide: '体育館・競技場は区分数、それ以外は時間数を入力',
+                items: [
+                    {
+                        key: 'gym', name: '大体育館', unit: '区分', max: 3, note: '区分数（1日最大3）',
+                        calcPrice: (isStay, type) => isStay ? (type === 'ad' ? 8050 : 5370) : (type === 'ad' ? 10060 : 6710)
+                    },
+                    { key: 'gl_f', name: '大体育館照明(全面)', unit: '時間', note: '時間数', calcPrice: (isStay) => isStay ? 2100 : 2620 },
+                    { key: 'gl_h', name: '大体育館照明(半面)', unit: '時間', note: '時間数', calcPrice: (isStay) => isStay ? 1050 : 1310 },
+                    {
+                        key: 'gym_s', name: '小体育館', unit: '区分', max: 3, note: '区分数（1日最大3）',
+                        calcPrice: (isStay, type) => isStay ? (type === 'ad' ? 4030 : 2690) : (type === 'ad' ? 5030 : 3360)
+                    },
+                    { key: 'gym_sl_f', name: '小体育館照明(全面)', unit: '時間', note: '時間数', calcPrice: (isStay) => isStay ? 1050 : 1310 },
+                    { key: 'gym_sl_h', name: '小体育館照明(半面)', unit: '時間', note: '時間数', calcPrice: (isStay) => isStay ? 530 : 660 },
+                    {
+                        key: 'field', name: '陸上/球技場', unit: '区分', max: 3, note: '区分数（1日最大3）',
+                        calcPrice: (isStay, type) => isStay ? (type === 'ad' ? 5280 : 3520) : (type === 'ad' ? 6600 : 4400)
+                    },
+                    { key: 'field_l', name: '競技場照明', unit: '時間', note: '時間数', calcPrice: (isStay) => isStay ? 1680 : 2100 },
+                    { key: 'kL', name: '大研修室(1･3研)', unit: '時間', note: '時間数', calcPrice: (isStay) => isStay ? 950 : 1890 },
+                    { key: 'kL_c', name: '大研修室 冷暖房', unit: '時間', note: '時間数', calcPrice: () => 1580 },
+                    { key: 'kS', name: '小研修室(2研)', unit: '時間', note: '時間数', calcPrice: (isStay) => isStay ? 630 : 1260 },
+                    { key: 'kS_c', name: '小研修室 冷暖房', unit: '時間', note: '時間数', calcPrice: () => 1050 },
+                    { key: 'mr', name: 'Mルーム', unit: '時間', note: '時間数', calcPrice: (isStay) => isStay ? 330 : 660 },
+                    { key: 'mr_c', name: 'Mルーム 冷暖房', unit: '時間', note: '時間数', calcPrice: () => 400 }
+                ]
+            },
+            {
+                id: 'join', name: '日帰り参加料 (宿泊グループへ合流)', color: 'bg-purple-100 text-purple-900',
+                guide: '宿泊団体に日帰りで合流する人数を入力',
+                items: [
+                    { key: 'jg_es_hs', name: '大体育館 参加(小中高)', price: 220, unit: '人' },
+                    { key: 'jg_ad', name: '大体育館 参加(大学･一般)', price: 320, unit: '人' },
+                    { key: 'js_es_hs', name: '小体育館 参加(小中高)', price: 210, unit: '人' },
+                    { key: 'js_ad', name: '小体育館 参加(大学･一般)', price: 320, unit: '人' },
+                    { key: 'jf_es_hs', name: '陸上/球技場 参加(小中高)', price: 220, unit: '人' },
+                    { key: 'jf_ad', name: '陸上/球技場 参加(大学･一般)', price: 320, unit: '人' }
+                ]
+            }
+        ];
+
+        const STAY_KEYS = ['es', 'hs', 'ad'];
+        const TYPE_NAMES = { es: '小・中学生', hs: '高校生', ad: '大学・一般' };
+        const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+        const STORAGE_KEY = 'reservation_estimate_v1';
+
+        let inputData = {};
+        let collapsed = { join: true };
+        let lastGrandTotal = 0;
+
+        // ---------- 日付まわり ----------
+        // "YYYY-MM-DD" をローカル時刻の日付として読む（タイムゾーンでずれないように）
+        function parseDate(str) {
+            const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str || '');
+            if (!m) return null;
+            return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        }
+        function toInputDate(d) {
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+        function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+        function fmtMD(d) { return `${d.getMonth() + 1}/${d.getDate()}`; }
+        function fmtMDW(d) { return `${d.getMonth() + 1}/${d.getDate()}(${WEEK[d.getDay()]})`; }
+        function fmtJP(d) { return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; }
+
+        function getStartDate() { return parseDate(document.getElementById('in_start').value) || new Date(); }
+        function getDays() { return parseInt(document.getElementById('in_days').value) || 1; }
+
+        // ---------- 起動 ----------
+        function initApp() {
+            renderFacilityInfo(resolveFacilityInfo(FACILITY_INFO, window.CUSTOM_FACILITY_INFO));
+            const hasSaved = loadSaved();
+            const today = toInputDate(new Date());
+            if (!document.getElementById('in_start').value) document.getElementById('in_start').value = today;
+            if (!document.getElementById('in_issue').value) document.getElementById('in_issue').value = today;
+            if (!hasSaved) document.getElementById('helpBox').classList.remove('hidden');
+
+            // マウスホイールで数字が勝手に変わるのを防ぐ
+            document.addEventListener('wheel', e => {
+                if (e.target.type === 'number' && document.activeElement === e.target) e.target.blur();
+            }, { passive: true });
+
+            initGrid();
+        }
+
+        // ---------- 入力表の作成 ----------
+        function initGrid() {
+            const startDate = getStartDate();
+            const days = getDays();
+
+            let thead = '<tr><th class="corner p-2 min-w-[150px] text-left">項目</th><th class="p-2 whitespace-nowrap">単価</th>';
+            for (let i = 0; i < days; i++) {
+                const d = addDays(startDate, i);
+                const dow = d.getDay();
+                const color = dow === 0 ? 'text-red-300' : dow === 6 ? 'text-sky-300' : '';
+                thead += `<th class="p-2 text-center whitespace-nowrap min-w-[64px]"><div class="text-[10px] font-normal text-gray-300">${i + 1}日目</div><div class="${color}">${fmtMDW(d)}</div></th>`;
+            }
+            thead += '<th class="p-2 whitespace-nowrap">合計</th></tr>';
+            document.getElementById('inputTableHead').innerHTML = thead;
+
+            let html = '';
+            let row = 0;
+            categories.forEach(cat => {
+                let titleExtra = '';
+                if (cat.id === 'room') {
+                    titleExtra = '<span class="ml-2 text-[10px] font-normal text-orange-800 bg-orange-200 px-2 py-0.5 rounded">区分：AM(8:30~12:30) / PM(12:30~17:00) / 夜(17:00~21:00)</span>';
+                }
+                html += `<tbody id="tb_${cat.id}" class="${collapsed[cat.id] ? 'cat-collapsed' : ''}">`;
+                html += `<tr class="cursor-pointer select-none" onclick="toggleCat('${cat.id}')" title="クリックで開く／閉じる">
+                            <td colspan="${days + 3}" class="${cat.color} font-bold text-xs p-2">
+                                <div class="cat-label">
+                                    <span class="cat-arrow inline-block w-4">▼</span>${cat.name}
+                                    <span id="catsum_${cat.id}" class="ml-2 font-normal"></span>
+                                    <div class="font-normal opacity-75 mt-0.5 ml-4">${cat.guide}${titleExtra}</div>
+                                </div>
+                            </td>
+                         </tr>`;
+
+                cat.items.forEach(item => {
+                    html += `<tr class="item-row">
+                                <td class="sticky-col p-1.5 text-xs">
+                                    <div class="flex items-center justify-between gap-1">
+                                        <div>
+                                            <div class="font-medium text-gray-800">${item.name}</div>
+                                            ${item.note ? `<div class="text-[10px] text-orange-600">${item.note}</div>` : ''}
+                                        </div>
+                                        ${days > 1 ? `<button type="button" onclick="copyToAll('${item.key}')" class="shrink-0 text-[10px] px-1.5 py-0.5 border border-gray-300 rounded text-gray-500 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-400" title="1日目の数を他の日にもコピーします">全日</button>` : ''}
+                                    </div>
+                                </td>
+                                <td class="p-1.5 text-right text-xs text-gray-600 whitespace-nowrap"><span id="price_${item.key}"></span><span class="text-[10px]">円/${item.unit}</span></td>`;
+                    for (let i = 0; i < days; i++) {
+                        const id = `${item.key}_${i}`;
+                        const val = inputData[id] || '';
+                        html += `<td class="p-0.5">
+                                    <input type="number" inputmode="numeric" id="in_${id}" value="${val}" min="0" ${item.max ? `max="${item.max}"` : ''}
+                                           data-c="${i}" data-r="${row}" aria-label="${item.name} ${i + 1}日目"
+                                           class="w-full p-1 text-right text-sm input-cell bg-transparent ${val ? 'has-value' : ''}"
+                                           onfocus="this.select()" onkeydown="onCellKey(event)"
+                                           oninput="updateData('${id}', this, ${item.max || 'null'})">
+                                 </td>`;
+                    }
+                    html += `<td id="rowtotal_${item.key}" class="p-1.5 text-right text-xs whitespace-nowrap bg-gray-50"></td></tr>`;
+                    row++;
+                });
+                html += '</tbody>';
+            });
+
+            // 既存の tbody を差し替え（カテゴリごとに tbody を分けて開閉できるようにする）
+            const table = document.getElementById('inputTable');
+            table.querySelectorAll('tbody').forEach(tb => tb.remove());
+            table.insertAdjacentHTML('beforeend', html);
+
+            calculateEstimate();
+        }
+
+        function toggleCat(id) {
+            collapsed[id] = !collapsed[id];
+            document.getElementById('tb_' + id).classList.toggle('cat-collapsed', collapsed[id]);
+            saveData();
+        }
+
+        // Enter / ↑↓ で上下のマスへ移動
+        function onCellKey(e) {
+            if (e.key !== 'Enter' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+            e.preventDefault();
+            const c = e.target.dataset.c;
+            const list = Array.from(document.querySelectorAll(`input.input-cell[data-c="${c}"]`)).filter(x => x.offsetParent !== null);
+            const idx = list.indexOf(e.target);
+            const up = e.key === 'ArrowUp' || (e.key === 'Enter' && e.shiftKey);
+            const next = list[idx + (up ? -1 : 1)];
+            if (next) next.focus();
+        }
+
+        // ---------- 入力値の処理 ----------
+        function updateData(id, el, maxVal) {
+            const raw = el.value.trim();
+            let num = raw === '' ? NaN : Math.floor(Number(raw));
+            if (!isNaN(num) && num < 0) {
+                showToast('マイナスの数は入力できません。', 'error');
+                markCellError(el);
+                el.value = '';
+                num = NaN;
+            }
+            if (maxVal !== null && num > maxVal) {
+                showToast(`この項目は1日最大「${maxVal}区分」までです。\n（AM 8:30~12:30 ／ PM 12:30~17:00 ／ 夜 17:00~21:00）\n入力された数を「${maxVal}」に直しました。`, 'error');
+                markCellError(el);
+                num = maxVal;
+                el.value = num;
+            }
+            if (isNaN(num) || num === 0) delete inputData[id];
+            else inputData[id] = num;
+            el.classList.toggle('has-value', num > 0);
+            calculateEstimate();
+            saveData();
+        }
+
+        function copyToAll(key) {
+            const days = getDays();
+            const v = inputData[`${key}_0`];
+            if (!v) { showToast('先に「1日目」のマスに数を入れてから押してください'); return; }
+            // 宿泊は最終日には泊まらないので、最終日を除いてコピー
+            const isStayItem = STAY_KEYS.includes(key);
+            const until = isStayItem && days > 1 ? days - 1 : days;
+            for (let i = 1; i < until; i++) inputData[`${key}_${i}`] = v;
+            initGrid();
+            saveData();
+            showToast(isStayItem && days > 1 ? `最終日を除く${until}日分にコピーしました` : `${until}日分すべてにコピーしました`);
+        }
+
+        function onBasicChange() { calculateEstimate(); saveData(); }
+        function onGridChange() { initGrid(); saveData(); }
+
+        // ---------- 計算 ----------
+        function getPrice(item, isStay, type) {
+            return item.calcPrice ? item.calcPrice(isStay, type) : item.price;
+        }
+
+        function calculateEstimate() {
+            const customer = document.getElementById('in_customer').value.trim();
+            document.getElementById('out_customer').textContent = customer || '○○○○';
+
+            const startDate = getStartDate();
+            const days = getDays();
+            const endDate = addDays(startDate, days - 1);
+            const daysSel = document.getElementById('in_days');
+            const periodLabel = daysSel.options[daysSel.selectedIndex].text.replace(/^.*（(.*)）$/, '$1');
+            document.getElementById('out_date_range').textContent =
+                days === 1 ? `${fmtJP(startDate)}（${WEEK[startDate.getDay()]}）日帰り`
+                           : `${fmtMDW(startDate)} ～ ${fmtMDW(endDate)}　${periodLabel}`;
+
+            const issueDate = parseDate(document.getElementById('in_issue').value) || new Date();
+            document.getElementById('out_issue').textContent = fmtJP(issueDate);
+
+            const expireDate = new Date(startDate);
+            expireDate.setMonth(expireDate.getMonth() + 1);
+            document.getElementById('out_expire').textContent = fmtJP(expireDate);
+
+            // 宿泊の有無と、一番人数の多い宿泊区分を判定
+            const sums = { es: 0, hs: 0, ad: 0 };
+            for (let i = 0; i < days; i++) STAY_KEYS.forEach(k => sums[k] += inputData[`${k}_${i}`] || 0);
+            const isStay = (sums.es + sums.hs + sums.ad) > 0;
+
+            const daySel = document.getElementById('in_day_type');
+            let mainType;
+            if (isStay) {
+                if (sums.es >= sums.hs && sums.es >= sums.ad) mainType = 'es';
+                else if (sums.hs >= sums.es && sums.hs >= sums.ad) mainType = 'hs';
+                else mainType = 'ad';
+            } else {
+                mainType = daySel.value;
+            }
+            const mainTypeName = TYPE_NAMES[mainType];
+            daySel.disabled = isStay;
+            document.getElementById('day_type_note').textContent = isStay ? '宿泊者がいるため自動判定中' : '宿泊者がいない時に使用';
+
+            const applyStatus = isStay ? `宿泊利用料金 (${mainTypeName} 基準)` : `日帰り専有料金 (${mainTypeName} 基準)`;
+            document.getElementById('out_apply_status').textContent = applyStatus;
+            document.getElementById('tariffBox').innerHTML = isStay
+                ? `<div class="font-bold text-blue-900">適用中の施設料金：${applyStatus}</div>
+                   <div class="text-xs text-gray-600 mt-1">宿泊者がいるため「宿泊利用料金」になります。区分は宿泊人数がいちばん多い「${mainTypeName}」で自動判定しています。</div>`
+                : `<div class="font-bold text-blue-900">適用中の施設料金：${applyStatus}</div>
+                   <div class="text-xs text-gray-600 mt-1">宿泊者がいないため「日帰り専有料金」になります。区分は上の「日帰りの料金区分」で変更できます。</div>`;
+
+            // 見積書の表を作成
+            let grandTotal = 0;
+            let html = '<table class="w-full border-collapse out-table text-center text-sm"><tr class="bg-gray-100 font-bold border-b-2 border-black"><td class="w-12">項目</td><td class="w-1/3">内訳 (日付・種別)</td><td class="w-20">単価</td><td class="w-16">数量</td><td>金額</td></tr>';
+            let shownCategories = 0;
+
+            categories.forEach(cat => {
+                const activeRows = [];
+                let catTotal = 0, catCount = 0;
+
+                cat.items.forEach(item => {
+                    const price = getPrice(item, isStay, mainType);
+                    let itemQty = 0;
+                    for (let i = 0; i < days; i++) {
+                        const qty = inputData[`${item.key}_${i}`] || 0;
+                        if (qty > 0) {
+                            const rowTotal = qty * price;
+                            itemQty += qty;
+                            catTotal += rowTotal;
+                            catCount++;
+                            activeRows.push({ date: fmtMD(addDays(startDate, i)), name: item.name, price, qty, unit: item.unit, total: rowTotal });
+                        }
+                    }
+                    // 入力表の単価・行合計を更新
+                    const priceEl = document.getElementById(`price_${item.key}`);
+                    if (priceEl) priceEl.textContent = price.toLocaleString();
+                    const totalEl = document.getElementById(`rowtotal_${item.key}`);
+                    if (totalEl) totalEl.innerHTML = itemQty > 0
+                        ? `<div class="font-bold">${itemQty}${item.unit}</div><div class="text-gray-500">¥${(itemQty * price).toLocaleString()}</div>`
+                        : '<span class="text-gray-300">-</span>';
+                });
+
+                const sumEl = document.getElementById(`catsum_${cat.id}`);
+                if (sumEl) sumEl.textContent = catCount > 0 ? `入力 ${catCount}件 ／ 小計 ¥${catTotal.toLocaleString()}` : '未入力';
+
+                grandTotal += catTotal;
+                if (activeRows.length === 0) return; // 未入力の項目は見積書に載せない
+                shownCategories++;
+
+                html += `<tr><td rowspan="${activeRows.length + 1}" class="font-bold tracking-widest px-2 py-4"><span style="writing-mode: vertical-rl;">${cat.name}</span></td>`;
+                activeRows.forEach((r, idx) => {
+                    if (idx > 0) html += '<tr>';
+                    html += `<td class="text-left pl-3"><span class="text-gray-500 font-bold mr-2">${r.date}</span> ${r.name}</td>
+                             <td class="text-right pr-2">${r.price.toLocaleString()}</td>
+                             <td class="font-bold whitespace-nowrap">${r.qty}<span class="text-[10px] font-normal ml-0.5">${r.unit}</span></td>
+                             <td class="text-right pr-2 font-bold">${r.total.toLocaleString()}</td></tr>`;
+                });
+                html += `<tr class="bg-gray-50"><td colspan="3" class="text-right font-bold pr-4 text-gray-600">小計</td><td class="text-right font-bold pr-2">${catTotal.toLocaleString()}</td></tr>`;
+            });
+
+            if (shownCategories === 0) {
+                html += '<tr><td colspan="5" class="text-gray-400 py-8">左の表に数量を入力すると、ここに明細が表示されます</td></tr>';
+            } else {
+                html += `<tr class="border-t-2 border-black"><td colspan="4" class="text-right font-bold pr-4">合計（税込）</td><td class="text-right font-bold pr-2 text-base">${grandTotal.toLocaleString()}</td></tr>`;
+            }
+            html += '</table>';
+            document.getElementById('estimateTableContainer').innerHTML = html;
+            document.getElementById('out_grand_total').textContent = grandTotal.toLocaleString();
+            document.getElementById('panel_total').textContent = grandTotal.toLocaleString();
+            lastGrandTotal = grandTotal;
+
+            renderWarnings(startDate, days);
+        }
+
+        // 入力ミスの可能性をお知らせ
+        function renderWarnings(startDate, days) {
+            const warnings = [];
+            const lastStay = STAY_KEYS.reduce((s, k) => s + (inputData[`${k}_${days - 1}`] || 0), 0);
+            if (days === 1 && lastStay > 0) {
+                warnings.push('利用日数が「1日（日帰り）」ですが、宿泊人数が入力されています。泊まる場合は利用日数を2日以上にしてください。');
+            } else if (days > 1 && lastStay > 0) {
+                warnings.push(`最終日（${fmtMDW(addDays(startDate, days - 1))}）に宿泊人数が入っています。宿泊は「泊まる夜の日付」に入力します。最終日に泊まらない場合は消してください。`);
+            }
+            if (!document.getElementById('in_customer').value.trim()) {
+                warnings.push('宛名（団体名）が未入力です。');
+            }
+            document.getElementById('warningBox').innerHTML = warnings
+                .map(w => `<div class="flex gap-2 items-start text-sm bg-amber-50 border-2 border-amber-400 border-l-8 text-amber-900 rounded px-4 py-3">
+                              <span class="text-xl leading-none">⚠</span>
+                              <div><div class="font-bold">確認してください</div><div>${w}</div></div>
+                           </div>`)
+                .join('');
+        }
+
+        // ---------- 印刷 ----------
+        function printEstimate() {
+            if (lastGrandTotal === 0 && !confirm('まだ金額が0円です。このまま印刷しますか？')) return;
+            const oldTitle = document.title;
+            const name = document.getElementById('in_customer').value.trim() || '宛名なし';
+            // PDF保存時のファイル名になります
+            document.title = `御見積書_${name}_${toInputDate(getStartDate())}`;
+            window.print();
+            setTimeout(() => { document.title = oldTitle; }, 1000);
+        }
+
+        // ---------- 自動保存 ----------
+        function saveData() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                    customer: document.getElementById('in_customer').value,
+                    start: document.getElementById('in_start').value,
+                    days: document.getElementById('in_days').value,
+                    dayType: document.getElementById('in_day_type').value,
+                    issue: document.getElementById('in_issue').value,
+                    inputData, collapsed
+                }));
+                const now = new Date();
+                document.getElementById('saveStatus').textContent = `自動保存しました（${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}）`;
+            } catch (e) {
+                document.getElementById('saveStatus').textContent = '※このブラウザでは自動保存できません';
+            }
+        }
+
+        function loadSaved() {
+            try {
+                const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+                if (!s) return false;
+                document.getElementById('in_customer').value = s.customer || '';
+                if (s.start) document.getElementById('in_start').value = s.start;
+                if (s.days) document.getElementById('in_days').value = s.days;
+                if (s.dayType) document.getElementById('in_day_type').value = s.dayType;
+                if (s.issue) document.getElementById('in_issue').value = s.issue;
+                inputData = s.inputData || {};
+                collapsed = s.collapsed || collapsed;
+                document.getElementById('saveStatus').textContent = '前回の入力内容を読み込みました';
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function resetAll() {
+            if (!confirm('入力した内容をすべて消して、新しい見積もりを作りますか？\n（この操作は元に戻せません）')) return;
+            try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+            const today = toInputDate(new Date());
+            document.getElementById('in_customer').value = '';
+            document.getElementById('in_start').value = today;
+            document.getElementById('in_issue').value = today;
+            document.getElementById('in_days').value = '3';
+            document.getElementById('in_day_type').value = 'ad';
+            inputData = {};
+            collapsed = { join: true };
+            initGrid();
+            document.getElementById('saveStatus').textContent = '';
+            showToast('入力内容を消去しました');
+        }
+
+        // ---------- お知らせ表示 ----------
+        let toastTimer = null;
+        // type: 'info'（通常のお知らせ） / 'error'（入力ミス：赤く大きく表示）
+        function showToast(msg, type = 'info') {
+            const t = document.getElementById('toast');
+            const isError = type === 'error';
+            t.className = isError
+                ? 'no-print fixed top-6 left-1/2 -translate-x-1/2 z-50 max-w-[90vw] w-[520px] bg-red-600 text-white rounded-xl shadow-2xl border-4 border-red-800 px-6 py-4 cursor-pointer'
+                : 'no-print fixed top-6 left-1/2 -translate-x-1/2 z-50 max-w-[90vw] bg-gray-900 text-white text-base rounded-lg shadow-xl px-6 py-3 text-center cursor-pointer';
+            t.innerHTML = '';
+            if (isError) {
+                const title = document.createElement('div');
+                title.className = 'text-xl font-bold mb-1';
+                title.textContent = '⚠ 入力エラー';
+                t.appendChild(title);
+            }
+            const body = document.createElement('div');
+            body.className = isError ? 'text-base whitespace-pre-line leading-relaxed' : 'whitespace-pre-line';
+            body.textContent = msg;
+            t.appendChild(body);
+            if (isError) {
+                const close = document.createElement('div');
+                close.className = 'text-xs text-red-100 mt-2 text-right';
+                close.textContent = 'クリックで閉じる';
+                t.appendChild(close);
+            }
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => t.classList.add('hidden'), isError ? 6000 : 3000);
+        }
+
+        // 入力ミスのあったマスを赤く点滅させる
+        function markCellError(el) {
+            el.classList.remove('cell-error');
+            void el.offsetWidth; // アニメーションを最初から再生させる
+            el.classList.add('cell-error');
+            setTimeout(() => el.classList.remove('cell-error'), 2500);
+        }
+
+        function toggleHelp() {
+            document.getElementById('helpBox').classList.toggle('hidden');
+        }
+    </script>
+</body>
+</html>

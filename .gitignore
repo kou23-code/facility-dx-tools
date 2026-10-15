@@ -1,0 +1,5 @@
+# 秘密情報（APIキーなど）は絶対にGit管理しない
+Claudeのキー.txt
+
+# 実名の施設情報（ローカル専用）は絶対にGit管理しない
+facility-config.js
