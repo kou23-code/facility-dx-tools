@@ -1,6 +1,26 @@
 # 仕様書：スポーツ施設 見積書作成ツール
 
-対象ファイル：`見積もりツール.html`（HTML・CSS・JavaScriptが1つにまとまったファイル。サーバー不要）
+対象ファイル：`estimate/index.html`（HTML・CSS・JavaScriptが1つにまとまったファイル。サーバー不要）
+
+## 0. フォルダ構成と公開URL
+
+GitHub Pages で、複数のツールを一覧で公開できる構成にしています。URL に日本語が入らないよう、ファイル名・フォルダ名は英数字にしています。
+
+| パス | 内容 | 公開URL（例） |
+|---|---|---|
+| `index.html` | ポータル画面「あおぞらセミナーハウス 業務DXツール集」 | `https://<ユーザー名>.github.io/<リポジトリ名>/` |
+| `estimate/index.html` | 概算見積もりシステム（この仕様書の対象） | `…/<リポジトリ名>/estimate/` |
+| `estimate/facility-config.js` | 実名設定（ローカル専用・Git管理外。10.1章を参照） | 公開されない |
+| `tests/` | 動作確認テスト（11章を参照） | — |
+
+### ポータル画面（`index.html`）
+
+- ツールをカードで並べる。画面の幅に合わせて、横に並ぶ枚数が変わる
+- 「概算見積もりシステム」：公開中。カード全体が `estimate/` へのリンク
+- 「Web予約システム」「スケジュール管理表」：準備中。リンクはなく、点線の枠とグレーで表示する
+- JavaScript は使わず、HTML と CSS だけで作っている。外部ライブラリも使わない
+- ツールを追加するときは、`<li>` を1つ増やし、英数字のフォルダ（例：`reservation/index.html`）を作る
+- パソコン上でファイルを直接開く（`file://`）と、`estimate/` のリンクはフォルダの中身の一覧になる。GitHub Pages などの Web サーバーでは `estimate/index.html` が表示される
 
 この文書は、現在のコードを読み取って、そのとおりの動きをまとめたものです。
 
@@ -203,7 +223,7 @@
 | `address` | 住所 | 東京都千代田区千代田1-1-1 | 発行元欄 |
 | `tel` | 電話番号（TELは付けない） | 03-0000-0000 | 「TEL 03-0000-0000」と表示 |
 
-**実名で表示したいとき**は、`FACILITY_INFO` は書き換えず、`見積もりツール.html` と同じフォルダに `facility-config.js` を作ります（`.gitignore` で除外済みなので Git には入りません）。
+**実名で表示したいとき**は、`FACILITY_INFO` は書き換えず、`estimate/index.html` と同じフォルダ（`estimate/facility-config.js`）に作ります（`.gitignore` で除外済みなので Git には入りません）。
 
 ```js
 // facility-config.js（ローカル専用・Git管理外）
@@ -236,9 +256,9 @@ window.CUSTOM_FACILITY_INFO = {
 
 ## 11. 動作確認テスト
 
-実行方法：`node --test tests/remove-remarks.test.js tests/facility-info.test.js`（Node.js が必要。Chrome も Edge もない環境では、ブラウザを使うテストを飛ばす）
+実行方法：`node --test "tests/**/*.test.js"`（すべてのテストを実行する。Node.js 21 以上が必要。Chrome も Edge もない環境では、ブラウザを使うテストを飛ばす）
 
-- `tests/helpers.js`：テストで共通して使う関数（HTMLの読み込み、ヘッドレスブラウザでの表示など）
+- `tests/helpers.js`：テストで共通して使う関数（ファイルの場所、HTMLの読み込み、ヘッドレスブラウザでの表示など）。見積もりツールの場所は `estimate/index.html`、ポータルは `index.html` として定義している
 - `tests/remove-remarks.test.js`：備考欄を削除したことを確認するテスト
   - 備考に関係する要素（`in_note`・`out_note` など）が HTML に残っていないこと
   - ヘッドレスの Chrome（なければ Edge）でページを開き、計算の最後（単価・有効期限・合計・注意の表示）まで処理が進むこと
@@ -249,6 +269,12 @@ window.CUSTOM_FACILITY_INFO = {
   - `buildIssuerLines`・`buildPageTitle` が、渡された情報から正しい文字列を作ること
   - 自動保存のキーが `reservation_estimate_v1` であること、`facility-config.js` が `.gitignore` で除外されていること
   - ページを一時フォルダにコピーして開き、`facility-config.js` がないときはダミー表記、あるときはその設定で表示されること
+- `tests/portal.test.js`：ポータル画面とフォルダ構成を確認するテスト
+  - タイトルと見出しが「あおぞらセミナーハウス 業務DXツール集」であること
+  - カードが3枚、決められた順番で並び、見積もりだけがリンク付き、残り2枚が準備中であること
+  - リンク先のファイルが存在し、URL に日本語が入っていないこと
+  - 会社名・住所・電話番号らしい表記がポータルに書かれていないこと
+  - 見積もりツールが `estimate/index.html` にあり、HTML のファイル名・フォルダ名に日本語がないこと
 
 ## 12. 現状の注意点（仕様として気づいたこと）
 
