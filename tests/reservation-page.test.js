@@ -42,6 +42,8 @@ const CAPTURE_SOURCE = `const capture = () => ({
     stayPlanNote: document.getElementById('stayPlanNote').textContent,
     stayGroupRow: document.querySelector('#dailyTable .group-row td').textContent,
     feeType: document.getElementById('fee_type').textContent,
+    stayLimitTexts: Array.from(document.querySelectorAll('.stay-limit-text'), (element) => element.textContent),
+    stayRemainings: Array.from(document.querySelectorAll('#availabilityTable .stay-remaining'), (element) => element.textContent),
     dailyRows: Array.from(document.querySelectorAll('#dailyTable tbody th'), (cell) => cell.firstChild.textContent),
     lunchValues: Array.from(document.querySelectorAll('#dailyTable input[data-row="meal_lu"]'), (input) => input.value),
     feeTax: document.getElementById('fee_tax').textContent,
@@ -104,8 +106,8 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
         ['h09', 'h10'].forEach((hourKey) => { document.querySelector('input.slot-check[data-facility="kL"][data-time="' + hourKey + '"]').checked = true; });
         refreshSlots();
         states.push(capture());
-        setValue('in_people', '20');
-        setValue('in_stay_ad_m_0', '16');
+        setValue('in_people', '100');
+        setValue('in_stay_ad_m_0', '96');
         refreshSummary();
         states.push(capture());
         setValue('in_people', '10');
@@ -135,8 +137,8 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.deepStrictEqual(withSamples.staySymbols, ['△', '◎'], '1泊目は85人で残りわずか');
     assert.deepStrictEqual(withSamples.gymSymbols, ['◎', '×', '◎'], '2日目の大体育館はすべて予約済み');
     assert.strictEqual(withSamples.disabledSlots, 17, '予約済みのコマは押せない（区分9コマ＋1時間8コマ）');
-    assert.strictEqual(JSON.parse(withSamples.storage).length, 4);
-    assert.strictEqual(withSamples.storageStatus, 'このブラウザの予約データ：4件（うちサンプル 4件）');
+    assert.strictEqual(JSON.parse(withSamples.storage).length, 11);
+    assert.strictEqual(withSamples.storageStatus, 'このブラウザの予約データ：11件（うちサンプル 11件）');
 
     assert.deepStrictEqual(ready.blockers, []);
     assert.deepStrictEqual(ready.stayNightTotals, ['10人', '10人'], '夜ごとに区分・男女の合計を出す');
@@ -150,16 +152,16 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
 
     assert.strictEqual(overCapacity.buttonDisabled, true, '定員超過では確定できない');
     assert.strictEqual(overCapacity.warnings.length, 1);
-    assert.match(overCapacity.warnings[0], /宿泊定員を超えます（ご希望 20人 ／ 残り 15人）/);
+    assert.match(overCapacity.warnings[0], /1日あたりの宿泊人数の上限（全団体で300人）を超えます（ご希望 100人 ／ 残り 75人）/);
 
     assert.strictEqual(completed.formHidden, true);
     assert.strictEqual(completed.completeHidden, false);
     const stored = JSON.parse(completed.storage);
-    assert.strictEqual(stored.length, 5);
-    assert.strictEqual(completed.storageStatus, 'このブラウザの予約データ：5件（うちサンプル 4件）');
+    assert.strictEqual(stored.length, 12);
+    assert.strictEqual(completed.storageStatus, 'このブラウザの予約データ：12件（うちサンプル 11件）');
     const parsed = parseReservationCode(completed.code);
     assert.strictEqual(parsed.ok, true);
-    assert.deepStrictEqual(parsed.reservation, stored[4], '1行コードは保存した予約と同じ内容');
+    assert.deepStrictEqual(parsed.reservation, stored[11], '1行コードは保存した予約と同じ内容');
     assert.match(parsed.reservation.id, /^R\d{8}-001$/);
     assert.strictEqual(parsed.reservation.estimatedTotal, 96150);
     assert.deepStrictEqual(parsed.reservation.stays, { es_m: [0, 0], es_f: [0, 0], hs_m: [0, 0], hs_f: [0, 0], ad_m: [6, 6], ad_f: [4, 4] });
@@ -218,10 +220,32 @@ test('画面：「全日」で1日目の数をコピーでき、利用日数を�
     assert.deepStrictEqual(dayTrip.staySymbols, [], '日帰りは宿泊の空きを出さない');
 });
 
-test('画面：facility-config.js で施設名と宿泊定員を上書きできる', { skip: !BROWSER }, () => {
+test('画面：facility-config.js で施設名と宿泊の上限（人数・団体数）を上書きできる', { skip: !BROWSER }, () => {
     const configSource = 'window.CUSTOM_FACILITY_INFO = { facilityName: "みどり研修センター" };\n'
-        + 'window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 50 };';
+        + 'window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 4 };';
     const [state] = renderStates('insertSampleReservations(); states.push(capture());', configSource);
     assert.strictEqual(state.title, 'みどり研修センター Web予約システム');
-    assert.deepStrictEqual(state.staySymbols, ['×', '△'], '定員50人なら85人の夜は×、40人の夜は△');
+    assert.deepStrictEqual(state.staySymbols, ['×', '◎'], '上限4団体なら4団体泊まる1泊目は×、2団体の2泊目は◎');
+    assert.deepStrictEqual(state.stayLimitTexts, ['250人・4団体', '250人・4団体']);
+});
+
+test('画面：宿泊の受け入れ団体数が上限（6団体）の夜は、人数に余裕があっても警告を出して確定できない', { skip: !BROWSER }, () => {
+    const today = toLocalDateString(new Date());
+    const [initial, fullNight] = renderStates(`
+        states.push(capture());
+        insertSampleReservations();
+        setValue('in_start', '${addDaysToDateString(today, 10)}');
+        setValue('in_nights', '2');
+        refreshAll();
+        fillApplicant();
+        refreshSummary();
+        states.push(capture());
+    `);
+    assert.deepStrictEqual(initial.stayLimitTexts, ['300人・6団体', '300人・6団体'], '既定の上限を画面に出す');
+    assert.deepStrictEqual(initial.stayRemainings, ['残り300人・6団体', '残り300人・6団体']);
+    assert.deepStrictEqual(fullNight.staySymbols, ['×', '◎'], '10日後の夜は6団体（150人）、11日後の夜は1団体（100人）');
+    assert.deepStrictEqual(fullNight.stayRemainings, ['残り150人・0団体', '残り200人・5団体']);
+    assert.strictEqual(fullNight.buttonDisabled, true);
+    assert.strictEqual(fullNight.warnings.length, 1, '人数の上限ではなく、団体数の上限の警告だけが出る');
+    assert.ok(fullNight.warnings[0].includes('1日あたりの宿泊受け入れ団体数の上限（6団体）に達しています（予約済み 6団体）'));
 });

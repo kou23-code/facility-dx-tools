@@ -39,8 +39,9 @@ const deepFreeze = (value) => {
 
 // 予約の受付ルール。facility-config.js の window.CUSTOM_RESERVATION_CONFIG で、書いたキーだけ上書きできる
 const RESERVATION_CONFIG = deepFreeze({
-    stayCapacity: 100,      // 1泊あたりの宿泊定員（人）
-    fewRatio: 0.3,          // 宿泊の残りが定員のこの割合未満なら「△」
+    stayCapacity: 300,      // 1日（1泊）あたりの、全団体の合計宿泊人数の上限（人）
+    maxStayGroups: 6,       // 1日（1泊）あたりの、宿泊を受け入れる団体数の上限
+    fewRatio: 0.3,          // 宿泊の残りが上限のこの割合未満なら「△」
     maxNights: 6,           // 最大の泊数
     maxPeople: 300,         // 1件の予約の最大人数
     minLeadDays: 1,         // 今日から何日後以降の利用を受け付けるか（1 = 明日から）
@@ -57,7 +58,7 @@ const isClosedDateList = (value) => Array.isArray(value)
 const isEmailAddress = (value) => typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 const CONFIG_VALIDATORS = Object.freeze({
-    stayCapacity: isPositiveInteger, fewRatio: isRatio, maxNights: isPositiveInteger, maxPeople: isPositiveInteger,
+    stayCapacity: isPositiveInteger, maxStayGroups: isPositiveInteger, fewRatio: isRatio, maxNights: isPositiveInteger, maxPeople: isPositiveInteger,
     minLeadDays: isNonNegativeInteger, maxAdvanceDays: isPositiveInteger, closedDates: isClosedDateList, staffEmail: isEmailAddress
 });
 
@@ -308,10 +309,13 @@ const getStayCountOnDate = (reservation, date) => {
 // その夜に泊まる人数の合計
 const countStayGuests = (reservations, date) => reservations
     .reduce((total, reservation) => total + getStayCountOnDate(reservation, date), 0);
-const judgeStayAvailability = (bookedGuests, capacity, fewRatio) => {
-    const remaining = capacity - bookedGuests;
-    if (remaining <= 0) return '×';
-    return remaining < capacity * fewRatio ? '△' : '◎';
+// その夜に宿泊する団体の数（宿泊人数が1人以上の予約の数）
+const countStayGroups = (reservations, date) => reservations.filter((reservation) => getStayCountOnDate(reservation, date) > 0).length;
+// 宿泊の空き：人数が上限に達したか団体数が上限に達したら×、人数の残りが上限の30%未満か団体の残りが1団体なら△、それ以外は◎
+const judgeStayAvailability = (bookedGuests, bookedGroups, config) => {
+    const remaining = config.stayCapacity - bookedGuests;
+    if (remaining <= 0 || bookedGroups >= config.maxStayGroups) return '×';
+    return remaining < config.stayCapacity * config.fewRatio || bookedGroups >= config.maxStayGroups - 1 ? '△' : '◎';
 };
 const isSlotBooked = (reservations, slot) => reservations.some((reservation) => reservation.slots.some((booked) => isSameSlot(booked, slot)));
 // 予約済みのコマのキーの一覧
@@ -322,10 +326,12 @@ const judgeFacilityAvailability = (bookedCount, unitCount) => {
     if (bookedCount === 0) return '◎';
     return bookedCount >= unitCount ? '×' : '△';
 };
+// その夜の宿泊の空き（予約済みの人数・団体数と、それぞれの残り）
 const buildStayStatus = (reservations, date, config) => {
     const booked = countStayGuests(reservations, date);
-    const symbol = judgeStayAvailability(booked, config.stayCapacity, config.fewRatio);
-    return { booked, remaining: Math.max(config.stayCapacity - booked, 0), symbol };
+    const groups = countStayGroups(reservations, date);
+    const symbol = judgeStayAvailability(booked, groups, config);
+    return { booked, remaining: Math.max(config.stayCapacity - booked, 0), groups, remainingGroups: Math.max(config.maxStayGroups - groups, 0), symbol };
 };
 const buildFacilityStatus = (reservations, date, facility, catalog) => {
     const timeUnits = listTimeUnits(facility, catalog);
@@ -356,7 +362,15 @@ const findInvalidSlots = (request, catalog) => request.slots.filter((slot) => !l
     || !findByKey(catalog.facilities, slot.facilityKey) || !findTimeUnit(slot, catalog));
 // "大体育館 AM" ／ "大研修室(1･3研) 9:00~10:00"（知らないキーはそのまま出す）
 const formatSlotName = (slot, catalog) => `${findByKey(catalog.facilities, slot.facilityKey)?.name ?? slot.facilityKey} ${findTimeUnit(slot, catalog)?.label ?? slot.timeKey}`;
-const buildCapacityMessage = (overflow) => `${formatDateLabel(overflow.date)}の夜は宿泊定員を超えます（ご希望 ${overflow.requested}人 ／ 残り ${overflow.remaining}人）。人数か日程を変更してください。`;
+// 宿泊する団体数が上限に達している夜（{ date, groups }）。その夜に泊まらない（0人）なら対象外
+const findGroupLimitOverflows = (reservations, request, maxStayGroups) => listStayNights(request.startDate, request.nights)
+    .map((date, nightIndex) => ({ date, groups: countStayGroups(reservations, date), requested: sumStayOnNight(request.stays, nightIndex) }))
+    .filter(({ groups, requested }) => requested > 0 && groups >= maxStayGroups)
+    .map(({ date, groups }) => ({ date, groups }));
+const buildCapacityMessage = (overflow, capacity) => `${formatDateLabel(overflow.date)}の夜は、1日あたりの宿泊人数の上限（全団体で${capacity}人）を超えます`
+    + `（ご希望 ${overflow.requested}人 ／ 残り ${overflow.remaining}人）。人数か日程を変更してください。`;
+const buildGroupLimitMessage = (overflow, maxStayGroups) => `${formatDateLabel(overflow.date)}の夜は、1日あたりの宿泊受け入れ団体数の上限（${maxStayGroups}団体）に`
+    + `達しています（予約済み ${overflow.groups}団体）。日程を変更してください。`;
 const buildSlotConflictMessage = (slot, catalog) => `${formatDateLabel(slot.date)}の「${formatSlotName(slot, catalog)}」はすでに予約が入っています。別の時間帯か日程を選んでください。`;
 const buildClosedMessage = (date) => `${formatDateLabel(date)}は休館日のため予約できません。日程を変更してください。`;
 const canCheckSchedule = (request, config) => isValidDateString(request.startDate)
@@ -366,11 +380,17 @@ const canCheckSchedule = (request, config) => isValidDateString(request.startDat
 const findAvailabilityConflicts = (request, context) => {
     if (!canCheckSchedule(request, context.config)) return [];
     const closedDates = listUsageDates(request.startDate, request.nights).filter((date) => isClosedDate(date, context.config.closedDates));
-    const overflows = findCapacityOverflows(context.reservations, request, context.config.stayCapacity);
-    return [...closedDates.map(buildClosedMessage), ...overflows.map(buildCapacityMessage),
-        ...findSlotConflicts(context.reservations, request.slots).map((slot) => buildSlotConflictMessage(slot, context.catalog)),
-        ...findDuplicateSlots(request.slots).map((slot) => `${formatDateLabel(slot.date)}の「${formatSlotName(slot, context.catalog)}」が2回選ばれています。`)];
+    const { stayCapacity, maxStayGroups } = context.config;
+    const overflows = findCapacityOverflows(context.reservations, request, stayCapacity);
+    const groupOverflows = findGroupLimitOverflows(context.reservations, request, maxStayGroups);
+    return [...closedDates.map(buildClosedMessage), ...overflows.map((overflow) => buildCapacityMessage(overflow, stayCapacity)),
+        ...groupOverflows.map((overflow) => buildGroupLimitMessage(overflow, maxStayGroups)), ...findSlotMessages(request, context)];
 };
+// 施設コマの重複（予約済み・申込の中で2回）の文言
+const findSlotMessages = (request, context) => [
+    ...findSlotConflicts(context.reservations, request.slots).map((slot) => buildSlotConflictMessage(slot, context.catalog)),
+    ...findDuplicateSlots(request.slots).map((slot) => `${formatDateLabel(slot.date)}の「${formatSlotName(slot, context.catalog)}」が2回選ばれています。`)
+];
 
 // ---------- 入力の不備の判定 ----------
 const REQUIRED_FIELDS = Object.freeze([
@@ -575,7 +595,16 @@ const SAMPLE_SPECS = deepFreeze([
         stays: {}, meals: { be_oni: [30], te: [30] }, slots: [[0, 'gym_s', 'am'], [0, 'gym_s', 'pm'], ...buildSampleHours(0, 'mr', 13, 17)] },
     { offset: 10, nights: 3, people: 100, priceType: 'ad', groupName: 'あおぞら大学 バレーボール部', representative: '田中 三郎', purpose: 'スポーツ合宿',
         stays: { ad_m: [60, 60, 60], ad_f: [40, 40, 40] }, meals: { bf: [0, 100, 100, 100], lu: [100, 100, 100, 0], di: [100, 100, 100, 0] },
-        slots: [[1, 'gym', 'am'], [1, 'gym', 'pm'], [2, 'gym', 'am'], [2, 'gym', 'pm']] }
+        slots: [[1, 'gym', 'am'], [1, 'gym', 'pm'], [2, 'gym', 'am'], [2, 'gym', 'pm']] },
+    // 既定の日程の1泊目を、全団体で225人（上限300人の残り75人）にして△を見せる
+    { offset: 3, nights: 2, people: 60, priceType: 'es', groupName: 'さくら中学校 バスケットボール部', representative: '伊藤 四郎', purpose: 'スポーツ合宿',
+        stays: { es_m: [30, 28], es_f: [30, 27] }, meals: {}, slots: [] },
+    { offset: 3, nights: 1, people: 80, priceType: 'ad', groupName: 'ひかり大学 サッカー部', representative: '渡辺 五郎', purpose: 'スポーツ合宿',
+        stays: { ad_m: [80] }, meals: {}, slots: [] },
+    // 10日後の夜を、上の大学（100人）と合わせて6団体にし、人数に余裕があっても団体数の上限で×になることを見せる
+    ...['わかば剣道クラブ', 'ひまわり合唱団', 'こだま吹奏楽部', 'いずみ研修会', 'あさひ陸上クラブ'].map((groupName, index) => ({
+        offset: 10, nights: 1, people: 10, priceType: 'ad', groupName, representative: `山本 ${['一', '二', '三', '四', '五'][index]}郎`,
+        purpose: 'サークル・クラブ活動', stays: { ad_m: [5], ad_f: [5] }, meals: {}, slots: [] }))
 ]);
 // サンプルの宿泊人数・食事を、すべてのキー・日の配列にする（keyedList：stayGuestTypes か meals）
 const fillCountTable = (specTable, keyedList, length) => Object.fromEntries(keyedList
@@ -604,8 +633,8 @@ if (typeof module !== 'undefined') {
         toHourKey, buildHourSlots, listTimeUnits, mergeHourRanges, formatSlotList,
         toHalfWidthDigits, parseCount, isSameSlot, sortUniqueSlots, buildRequest,
         sumCounts, sumStayOnNight, listNightTotals, countStayOfPriceType, resolveFacilityPriceType, isStayRequest, pickFacilityPrice, calculateIncludedTax, calculateTaxBreakdown, calculateReservationFee, formatYen, formatQuantity, EXTRA_FEE_NOTE,
-        isClosedDate, getStayCountOnDate, countStayGuests, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,
-        findSlotConflicts, findDuplicateSlots, findCapacityOverflows, formatSlotName, findAvailabilityConflicts,
+        isClosedDate, getStayCountOnDate, countStayGuests, countStayGroups, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,
+        findSlotConflicts, findDuplicateSlots, findCapacityOverflows, findGroupLimitOverflows, formatSlotName, findAvailabilityConflicts,
         isPhoneNumber, findInputMessages, findScheduleMessages, findReservationBlockers,
         isValidReservation, parseStoredReservations, serializeReservations, appendReservation, isSampleReservation, mergeSampleReservations,
         createReservationId, createReservation, buildReservationCode, parseReservationCode, importReservationCode,

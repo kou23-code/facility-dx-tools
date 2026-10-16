@@ -130,8 +130,9 @@ test('escapeHtml は HTML の特別な文字を変換する', () => {
 test('createSampleReservations は今日を基準に、毎回同じ・正しい形のサンプル予約を作る', () => {
     const samples = createSampleReservations('2026-10-17', CATALOG);
     assert.deepStrictEqual(toPlain(samples), toPlain(createSampleReservations('2026-10-17', CATALOG)));
-    assert.deepStrictEqual(samples.map((sample) => sample.id), ['SAMPLE-001', 'SAMPLE-002', 'SAMPLE-003', 'SAMPLE-004']);
-    assert.deepStrictEqual(samples.map((sample) => sample.startDate), ['2026-10-20', '2026-10-20', '2026-10-22', '2026-10-27']);
+    assert.deepStrictEqual(samples.map((sample) => sample.id), Array.from({ length: 11 }, (_, index) => `SAMPLE-${String(index + 1).padStart(3, '0')}`));
+    assert.deepStrictEqual(samples.map((sample) => sample.startDate),
+        ['2026-10-20', '2026-10-20', '2026-10-22', '2026-10-27', '2026-10-20', '2026-10-20', ...Array(5).fill('2026-10-27')]);
     assert.ok(samples.every(isValidReservation));
     assert.ok(samples.every((sample) => sample.estimatedTotal > 0));
 });

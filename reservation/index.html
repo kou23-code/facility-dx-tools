@@ -83,7 +83,7 @@
                                 <li><b>宿泊・食事</b>：表に<b>日ごと</b>の宿泊人数（泊まる夜の日付）と、食事・弁当・お茶などの数を入れます。</li>
                                 <li><b>施設コマ・確定</b>：使いたい施設の時間帯を押して選び、概算料金を確認して「予約を確定する」を押します。</li>
                             </ol>
-                            <div class="mt-2 text-xs text-gray-600">※定員超過や予約済みのコマがあるときは、赤い警告が出て確定できません。</div>
+                            <div class="mt-2 text-xs text-gray-600">※宿泊は1日あたり全団体で<span class="stay-limit-text"></span>までです。上限を超える日や予約済みのコマがあるときは、赤い警告が出て確定できません。</div>
                         </div>
 
                         <!-- STEP1 申込者 -->
@@ -177,10 +177,10 @@
                         <p class="text-xs text-gray-600 mb-2">
                             <span class="font-bold text-green-700">◎</span> 空きあり ／
                             <span class="font-bold text-amber-600">△</span> 残りわずか・一部の時間帯が予約済み ／
-                            <span class="font-bold text-red-600">×</span> 満室・すべて予約済み・休館日
+                            <span class="font-bold text-red-600">×</span> 満室（人数か団体数が上限）・すべて予約済み・休館日
                         </p>
                         <div id="availabilityTable" class="overflow-x-auto text-sm"></div>
-                        <p class="text-[11px] text-gray-500 mt-1">宿泊はその日の夜の空き（最終日の夜は泊まらないため「—」）。</p>
+                        <p class="text-[11px] text-gray-500 mt-1">宿泊はその日の夜の空き（1日あたり全団体で<span class="stay-limit-text"></span>まで。最終日の夜は泊まらないため「—」）。</p>
                     </section>
                     <section class="bg-white rounded-lg shadow-md p-4">
                         <h2 class="font-bold text-lg mb-2">概算料金</h2>
@@ -336,6 +336,10 @@
         const renderExtraFeeNotes = (note) => {
             document.querySelectorAll('.extra-fee-note').forEach((element) => { element.textContent = note; });
         };
+        // 宿泊の上限（"300人・6団体"）を、画面の決まった場所（class="stay-limit-text"）に出す
+        const renderStayLimitTexts = (config) => {
+            document.querySelectorAll('.stay-limit-text').forEach((element) => { element.textContent = `${config.stayCapacity}人・${config.maxStayGroups}団体`; });
+        };
         const renderFacilityInfo = (info) => {
             document.title = `${info.facilityName} Web予約システム`;
             byId('pageHeading').textContent = document.title;
@@ -406,10 +410,12 @@
         // ---------- 空き状況の表（◎/△/×） ----------
         const buildSymbolHtml = (symbol) => `<span class="font-bold text-base ${SYMBOL_CLASSES[symbol]}">${symbol}</span>`;
         // 宿泊の欄（その夜の希望の宿泊人数が残りより多いときは「残り」を赤くする）
+        // 宿泊の欄（残りの人数と団体数。その夜の希望が残りの人数より多い、または団体の残りがないときは赤くする）
         const buildStayCellHtml = (stay, requestedStay) => {
             if (!stay) return '<td class="text-gray-400">—</td>';
-            const remainingClass = requestedStay > stay.remaining ? 'text-red-600 font-bold' : 'text-gray-500';
-            return `<td data-stay-symbol="${stay.symbol}">${buildSymbolHtml(stay.symbol)}<div class="text-[10px] ${remainingClass}">残り${stay.remaining}人</div></td>`;
+            const isShort = requestedStay > stay.remaining || (requestedStay > 0 && stay.remainingGroups === 0);
+            return `<td data-stay-symbol="${stay.symbol}">${buildSymbolHtml(stay.symbol)}<div class="stay-remaining text-[10px] ${isShort ? 'text-red-600 font-bold' : 'text-gray-500'}">`
+                + `残り${stay.remaining}人・${stay.remainingGroups}団体</div></td>`;
         };
         const buildAvailabilityRowHtml = (row, requestedStay) => `<tr>${buildDateHeaderHtml(row)}${buildStayCellHtml(row.stay, requestedStay)}${row.facilities
             .map((status) => `<td data-facility="${status.facilityKey}">${buildSymbolHtml(status.symbol)}</td>`).join('')}</tr>`;
@@ -580,6 +586,7 @@
         const initApp = () => {
             renderFacilityInfo(ACTIVE_FACILITY_INFO);
             renderExtraFeeNotes(EXTRA_FEE_NOTE);
+            renderStayLimitTexts(ACTIVE_CONFIG);
             renderFormParts(ACTIVE_CONFIG, CATALOG);
             setDefaultSchedule(getToday(), ACTIVE_CONFIG);
             refreshAll();

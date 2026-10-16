@@ -5,7 +5,7 @@ const assert = require('node:assert');
 const { RESERVATION_LOGIC_PATH } = require('./helpers');
 const {
     RESERVATION_CONFIG: CONFIG, RESERVATION_CATALOG: CATALOG,
-    isClosedDate, getStayCountOnDate, countStayGuests, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,
+    isClosedDate, getStayCountOnDate, countStayGuests, countStayGroups, findGroupLimitOverflows, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,
     findSlotConflicts, findDuplicateSlots, findCapacityOverflows, formatSlotName, findAvailabilityConflicts,
     isPhoneNumber, findInputMessages, findScheduleMessages, findReservationBlockers
 } = require(RESERVATION_LOGIC_PATH);
@@ -33,7 +33,9 @@ const RESERVATIONS = [
     buildReservation('R2', { startDate: '2026-11-03', people: 25, stays: staysOf([25]),
         slots: [slotOf('2026-11-03', 'gym', 'am'), slotOf('2026-11-03', 'gym', 'pm'), slotOf('2026-11-03', 'gym', 'ev')] })
 ];
-const CONTEXT = { reservations: RESERVATIONS, config: CONFIG, catalog: CATALOG, today: '2026-10-17' };
+// 境界を確かめやすいよう、宿泊人数の上限を100人にした設定（団体数の上限は既定の6団体）
+const SMALL_CONFIG = { ...CONFIG, stayCapacity: 100 };
+const CONTEXT = { reservations: RESERVATIONS, config: SMALL_CONFIG, catalog: CATALOG, today: '2026-10-17' };
 
 test('isClosedDate は "MM-DD"（毎年）と "YYYY-MM-DD"（その日だけ）の休館日を判定する', () => {
     assert.strictEqual(isClosedDate('2026-12-31', CONFIG.closedDates), true);
@@ -49,8 +51,13 @@ test('countStayGuests はその夜に泊まる人数だけを合計する（チ�
     assert.strictEqual(countStayGuests([], '2026-11-02'), 0);
 });
 
-test('judgeStayAvailability：残りが定員の30%以上は◎、30%未満は△、0以下は×', () => {
-    assert.deepStrictEqual([0, 70, 71, 99, 100, 120].map((booked) => judgeStayAvailability(booked, 100, 0.3)), ['◎', '◎', '△', '△', '×', '×']);
+test('judgeStayAvailability：人数の残りが上限の30%以上は◎、30%未満は△、0以下は×', () => {
+    assert.deepStrictEqual([0, 70, 71, 99, 100, 120].map((booked) => judgeStayAvailability(booked, 0, SMALL_CONFIG)), ['◎', '◎', '△', '△', '×', '×']);
+    assert.deepStrictEqual([0, 210, 211, 299, 300].map((booked) => judgeStayAvailability(booked, 1, CONFIG)), ['◎', '◎', '△', '△', '×'], '既定の上限は300人');
+});
+
+test('judgeStayAvailability：団体数が上限（6団体）なら人数に余裕があっても×、残り1団体なら△', () => {
+    assert.deepStrictEqual([0, 4, 5, 6, 7].map((groups) => judgeStayAvailability(10, groups, CONFIG)), ['◎', '◎', '△', '×', '×']);
 });
 
 test('judgeFacilityAvailability：予約0区分は◎、一部は△、全区分は×', () => {
@@ -68,7 +75,7 @@ test('buildAvailabilityRows は日ごとに宿泊と施設の空き状況を作�
     const rows = buildAvailabilityRows(RESERVATIONS, '2026-11-02', 2, CONTEXT);
     assert.deepStrictEqual(rows.map((row) => row.date), ['2026-11-02', '2026-11-03', '2026-11-04']);
     assert.deepStrictEqual(toPlain(rows.map((row) => row.stay)), [
-        { booked: 60, remaining: 40, symbol: '◎' }, { booked: 85, remaining: 15, symbol: '△' }, null
+        { booked: 60, remaining: 40, groups: 1, remainingGroups: 5, symbol: '◎' }, { booked: 85, remaining: 15, groups: 2, remainingGroups: 4, symbol: '△' }, null
     ]);
     const symbolsOf = (row) => Object.fromEntries(row.facilities.map((status) => [status.facilityKey, status.symbol]));
     assert.deepStrictEqual(symbolsOf(rows[0]), { gym: '◎', gym_s: '△', field: '◎', kL: '◎', kS: '◎', mr: '◎' });
@@ -142,7 +149,7 @@ test('formatSlotName は施設名と時間帯名を出し、知らないキー�
 test('findAvailabilityConflicts は定員超過・施設コマの重複・休館日を文言にする', () => {
     const request = buildRequest({ slots: [slotOf('2026-11-03', 'gym', 'ev'), slotOf('2026-11-03', 'gym_s', 'ev')] });
     assert.deepStrictEqual(findAvailabilityConflicts(request, CONTEXT), [
-        '11/3(火)の夜は宿泊定員を超えます（ご希望 20人 ／ 残り 15人）。人数か日程を変更してください。',
+        '11/3(火)の夜は、1日あたりの宿泊人数の上限（全団体で100人）を超えます（ご希望 20人 ／ 残り 15人）。人数か日程を変更してください。',
         '11/3(火)の「大体育館 夜」はすでに予約が入っています。別の時間帯か日程を選んでください。'
     ]);
     assert.deepStrictEqual(findAvailabilityConflicts(buildRequest({ startDate: '2026-12-28', nights: 1, stays: staysOf([1]) }), CONTEXT),
@@ -232,4 +239,36 @@ test('findReservationBlockers は入力の不備・受付期間・空き状況�
     const blockers = findReservationBlockers(buildRequest({ groupName: '', startDate: '2026-10-17' }), { ...CONTEXT, reservations: [] });
     assert.deepStrictEqual(blockers, ['団体名が未入力です', '利用開始日は2026年10月18日(日)以降を選んでください']);
     assert.strictEqual(findReservationBlockers(buildRequest({ people: 50, stays: staysOf([50, 50]) }), CONTEXT).length, 2, '2泊とも定員超過');
+});
+
+test('countStayGroups はその夜に1人以上泊まる予約（団体）の数を数える', () => {
+    const reservations = [buildReservation('G1', { stays: staysOf([10]) }), buildReservation('G2', { stays: staysOf([0]) }),
+        buildReservation('G3', { nights: 2, stays: { hs_f: [0, 3], es_m: [2, 0] } })];
+    assert.deepStrictEqual(['2026-11-01', '2026-11-02', '2026-11-03'].map((date) => countStayGroups(reservations, date)), [0, 2, 1]);
+});
+
+// 11/2 の夜に、宿泊する団体を count 団体（1団体10人）入れた予約の一覧
+const buildGroups = (count) => Array.from({ length: count }, (_, index) => buildReservation(`G${index}`, { stays: staysOf([10]) }));
+
+test('findGroupLimitOverflows：5団体までなら6団体目を受け入れ、6団体に達した夜は7団体目を受け入れない', () => {
+    assert.deepStrictEqual(findGroupLimitOverflows(buildGroups(5), buildRequest({ stays: staysOf([1, 1]) }), 6), []);
+    assert.deepStrictEqual(toPlain(findGroupLimitOverflows(buildGroups(6), buildRequest({ stays: staysOf([1, 1]) }), 6)), [{ date: '2026-11-02', groups: 6 }]);
+    assert.deepStrictEqual(findGroupLimitOverflows(buildGroups(6), buildRequest({ stays: staysOf([0, 1]) }), 6), [], 'その夜に泊まらなければ対象外');
+    assert.deepStrictEqual(findGroupLimitOverflows(buildGroups(6), buildRequest({ nights: 0, stays: staysOf([]) }), 6), [], '日帰りは対象外');
+});
+
+test('findAvailabilityConflicts：既定の上限（全団体で300人・6団体）を超える夜はエラーにする（ちょうどは可）', () => {
+    const context = { reservations: [buildReservation('B1', { stays: staysOf([280]) })], config: CONFIG, catalog: CATALOG };
+    assert.deepStrictEqual(findAvailabilityConflicts(buildRequest({ people: 20, stays: staysOf([20, 20]) }), context), [], '280＋20＝300人はちょうど');
+    assert.deepStrictEqual(findAvailabilityConflicts(buildRequest({ people: 21, stays: staysOf([21, 21]) }), context),
+        ['11/2(月)の夜は、1日あたりの宿泊人数の上限（全団体で300人）を超えます（ご希望 21人 ／ 残り 20人）。人数か日程を変更してください。']);
+    const groupContext = { ...context, reservations: buildGroups(6) };
+    assert.deepStrictEqual(findAvailabilityConflicts(buildRequest({ stays: staysOf([1, 1]) }), groupContext),
+        ['11/2(月)の夜は、1日あたりの宿泊受け入れ団体数の上限（6団体）に達しています（予約済み 6団体）。日程を変更してください。']);
+    assert.strictEqual(findReservationBlockers(buildRequest({ stays: staysOf([1, 1]) }), { ...groupContext, today: '2026-10-17' }).length, 1, '確定できない');
+});
+
+test('buildAvailabilityRows：宿泊の空きに予約済みの団体数と残りの団体数を出す', () => {
+    const [row] = buildAvailabilityRows(buildGroups(6), '2026-11-02', 1, { config: CONFIG, catalog: CATALOG });
+    assert.deepStrictEqual(toPlain(row.stay), { booked: 60, remaining: 240, groups: 6, remainingGroups: 0, symbol: '×' });
 });

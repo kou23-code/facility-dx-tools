@@ -46,7 +46,7 @@ const buildSampleRequest = (overrides) => ({
 
 test('RESERVATION_CONFIG の既定値と、書き換えられないこと', () => {
     assert.deepStrictEqual(toPlain(RESERVATION_CONFIG), {
-        stayCapacity: 100, fewRatio: 0.3, maxNights: 6, maxPeople: 300, minLeadDays: 1, maxAdvanceDays: 365,
+        stayCapacity: 300, maxStayGroups: 6, fewRatio: 0.3, maxNights: 6, maxPeople: 300, minLeadDays: 1, maxAdvanceDays: 365,
         closedDates: ['12-29', '12-30', '12-31', '01-01', '01-02', '01-03'], staffEmail: 'reservation@example.com'
     });
     assert.ok(Object.isFrozen(RESERVATION_CONFIG) && Object.isFrozen(RESERVATION_CONFIG.closedDates));
@@ -60,7 +60,7 @@ test('resolveReservationConfig は設定がなければ既定値、書いたキ�
 });
 
 test('resolveReservationConfig は正しくない値と知らないキーを無視する', () => {
-    const custom = { stayCapacity: 0, fewRatio: 1, maxNights: 2.5, maxPeople: '50', minLeadDays: -1, maxAdvanceDays: null,
+    const custom = { stayCapacity: 0, maxStayGroups: 0, fewRatio: 1, maxNights: 2.5, maxPeople: '50', minLeadDays: -1, maxAdvanceDays: null,
         closedDates: ['11/3'], staffEmail: 'not-mail', unknownKey: 1 };
     assert.deepStrictEqual(toPlain(resolveReservationConfig(RESERVATION_CONFIG, custom)), toPlain(RESERVATION_CONFIG));
     assert.strictEqual(resolveReservationConfig(RESERVATION_CONFIG, { minLeadDays: 0 }).minLeadDays, 0, '0日（当日から）は認める');
