@@ -31,6 +31,7 @@
         .input-cell.has-value:focus { background-color: #e0f2fe; }
         /* 入力ミスのあったマス */
         @keyframes cellErrorBlink { 0%, 50% { background-color: #fca5a5; } 25%, 75% { background-color: #fee2e2; } 100% { background-color: #fecaca; } }
+        .input-cell.over-limit { outline: 3px solid #dc2626; outline-offset: -3px; background-color: #fecaca; }
         .input-cell.cell-error { outline: 3px solid #dc2626; outline-offset: -3px; animation: cellErrorBlink 1s ease-in-out; background-color: #fecaca; }
         /* 数字入力の上下ボタンを隠す（誤操作防止） */
         input[type=number]::-webkit-inner-spin-button,
@@ -86,11 +87,15 @@
                     <div class="bg-gray-50 p-3 rounded border">
                         <div class="flex items-center gap-2 mb-3"><span class="step-badge">1</span><span class="font-bold text-base">基本情報を入力</span></div>
 
-                        <label class="block font-bold mb-1" for="in_customer">宛名（団体名など）</label>
+                        <label class="block font-bold mb-1" for="in_customer">宛名（団体名・個人名）</label>
                         <div class="flex items-center gap-2">
-                            <input type="text" id="in_customer" class="flex-1 p-2 border rounded text-lg font-bold" placeholder="例：○○中学校 バレーボール部" oninput="onBasicChange()">
-                            <span class="font-bold">御中</span>
+                            <input type="text" id="in_customer" class="flex-1 p-2 border rounded text-lg font-bold" placeholder="例：○○中学校 バレーボール部／山田 太郎" oninput="onBasicChange()">
+                            <select id="in_honorific" class="p-2 border rounded font-bold" aria-label="敬称" title="団体名なら「御中」、個人名なら「様」" onchange="onBasicChange()">
+                                <option value="御中" selected>御中</option>
+                                <option value="様">様</option>
+                            </select>
                         </div>
+                        <div class="text-[10px] text-gray-500 mt-0.5">敬称：団体・会社あては「御中」、個人あては「様」</div>
 
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
                             <div>
@@ -175,7 +180,7 @@
 
                 <div class="flex justify-between items-start mb-8">
                     <div class="w-[55%]">
-                        <div class="text-xl mb-6"><span id="out_customer" class="font-bold border-b border-black inline-block min-w-[200px] pb-1"></span> 御中</div>
+                        <div class="text-xl mb-6"><span id="out_customer" class="font-bold border-b border-black inline-block min-w-[200px] pb-1"></span> <span id="out_honorific">御中</span></div>
                         <div class="text-2xl tracking-widest font-bold mb-4">御 見 積 書</div>
                         <div class="mb-3">ご予約ありがとうございます。<br>下記のとおり御見積申し上げます。</div>
                         <div class="flex items-end mb-2">
@@ -340,6 +345,10 @@
 
         const STAY_KEYS = ['es', 'hs', 'ad'];
         const JOIN_KEYS = categories.find(cat => cat.id === 'join').items.map(item => item.key);
+        // 1日の上限がある項目（体育館・競技場の区分数）
+        const LIMIT_BY_ITEM = Object.fromEntries(categories.flatMap(cat => cat.items).filter(item => item.max)
+            .map(item => [item.key, { name: item.name, unit: item.unit, max: item.max }]));
+        const CHECK_RULES = { stayKeys: STAY_KEYS, joinKeys: JOIN_KEYS, limitByItem: LIMIT_BY_ITEM };
         const TYPE_NAMES = { es: '小・中学生', hs: '高校生', ad: '大学・一般' };
         const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
         const STORAGE_KEY = 'reservation_estimate_v1';
@@ -406,6 +415,21 @@
             const isAllowed = ([cellId]) => !isLockedStayCell(cellId, days, stayKeys);
             return Object.fromEntries(Object.entries(quantityByCell).filter(isAllowed));
         }
+        // 入力できない日帰り参加料のマスか（日帰りは宿泊している団体がいないので、日帰り参加料は発生しない）
+        function isLockedJoinCell(cellId, days, joinKeys) {
+            return days === 1 && extractDayIndex(cellId) !== null && joinKeys.includes(extractItemKey(cellId));
+        }
+        // 入力できない日帰り参加料を除いた、新しい数量データを返す（元のデータは書き換えない）
+        function removeLockedJoinData(quantityByCell, days, joinKeys) {
+            const isAllowed = ([cellId]) => !isLockedJoinCell(cellId, days, joinKeys);
+            return Object.fromEntries(Object.entries(quantityByCell).filter(isAllowed));
+        }
+        // 入力できないマスの理由（入力できるマスなら空文字）
+        function findLockReason(cellId, days, stayKeys, joinKeys) {
+            if (isLockedJoinCell(cellId, days, joinKeys)) return '日帰りのため日帰り参加料は発生しません';
+            if (!isLockedStayCell(cellId, days, stayKeys)) return '';
+            return days === 1 ? '日帰りのため宿泊人数は入力できません' : '最終日の夜は泊まらないため入力できません';
+        }
         // STAY_LOCK:end
 
         // INPUT_CHECK:start
@@ -416,27 +440,58 @@
                 .filter(([cellId]) => itemKeys.includes(extractItemKey(cellId)))
                 .reduce((total, [, quantity]) => total + quantity, 0);
         }
-        // 入力の矛盾（印刷を止めるエラー）の文言の一覧を返す
-        function findInputConflicts(quantityByCell, stayKeys, joinKeys) {
-            const hasStay = sumQuantities(quantityByCell, stayKeys) > 0;
-            const hasJoin = sumQuantities(quantityByCell, joinKeys) > 0;
-            return !hasStay && hasJoin ? [JOIN_WITHOUT_STAY_MESSAGE] : [];
+        // 1日の上限（limitByItem：項目キー → { name, unit, max }）を超えたマスか
+        function isOverLimitCell(cellId, quantity, limitByItem) {
+            const limit = limitByItem[extractItemKey(cellId)];
+            return Boolean(limit) && quantity > limit.max;
+        }
+        // 上限を超えたマス1つ分のエラーの文言
+        function buildOverLimitMessage(cellId, quantity, limit) {
+            const dayLabel = `${extractDayIndex(cellId) + 1}日目`;
+            return `「${limit.name}」の${dayLabel}が${quantity}${limit.unit}になっています。1日最大${limit.max}${limit.unit}（AM 8:30~12:30 ／ PM 12:30~17:00 ／ 夜 17:00~21:00）までにしてください。`;
+        }
+        // 上限を超えたマスごとのエラーの文言の一覧を返す
+        function findOverLimitMessages(quantityByCell, limitByItem) {
+            return Object.entries(quantityByCell)
+                .filter(([cellId, quantity]) => isOverLimitCell(cellId, quantity, limitByItem))
+                .map(([cellId, quantity]) => buildOverLimitMessage(cellId, quantity, limitByItem[extractItemKey(cellId)]));
+        }
+        // 入力エラー（印刷を止めるエラー）の文言の一覧を返す（checkRules：{ stayKeys, joinKeys, limitByItem }）
+        function findInputConflicts(quantityByCell, checkRules) {
+            const hasStay = sumQuantities(quantityByCell, checkRules.stayKeys) > 0;
+            const hasJoin = sumQuantities(quantityByCell, checkRules.joinKeys) > 0;
+            const joinMessages = !hasStay && hasJoin ? [JOIN_WITHOUT_STAY_MESSAGE] : [];
+            return [...joinMessages, ...findOverLimitMessages(quantityByCell, checkRules.limitByItem)];
         }
         // 印刷できない理由の一覧を返す（空なら印刷できる）
         function findPrintBlockers(customerName, grandTotal, conflictCount) {
             return [
                 customerName.trim() === '' && '宛名が未入力です',
                 grandTotal === 0 && '見積合計が0円です',
-                conflictCount > 0 && '入力内容に矛盾があります（赤い表示を確認してください）'
+                conflictCount > 0 && '入力エラーがあります（赤い表示を確認してください）'
             ].filter(Boolean);
         }
         // INPUT_CHECK:end
 
+        // HONORIFIC:start
+        // 選べる敬称（先頭が初期値）。団体・会社あては「御中」、個人あては「様」
+        const HONORIFICS = ['御中', '様'];
+        // 選べる敬称ならそのまま、それ以外（古い保存データ・不正な値）は初期値の「御中」を返す
+        function resolveHonorific(value) {
+            return HONORIFICS.includes(value) ? value : HONORIFICS[0];
+        }
+        // 見積書の宛名欄に出す宛名と敬称（宛名が空なら仮の「○○○○」）
+        function buildAddressee(customerName, honorific) {
+            return { name: customerName.trim() || '○○○○', honorific: resolveHonorific(honorific) };
+        }
+        // HONORIFIC:end
+
         function getStartDate() { return parseDate(document.getElementById('in_start').value) || new Date(); }
         function getDays() { return parseInt(document.getElementById('in_days').value) || 1; }
-        // 範囲外の日と、入力できない日の宿泊人数を除いた数量データを返す
-        function cleanQuantityData(quantityByCell, days, stayKeys) {
-            return removeLockedStayData(removeOutOfRangeDays(quantityByCell, days), days, stayKeys);
+        // 範囲外の日と、入力できない日の宿泊人数・日帰り参加料を除いた数量データを返す
+        function cleanQuantityData(quantityByCell, days, stayKeys, joinKeys) {
+            const withoutLockedStay = removeLockedStayData(removeOutOfRangeDays(quantityByCell, days), days, stayKeys);
+            return removeLockedJoinData(withoutLockedStay, days, joinKeys);
         }
 
         // ---------- 起動 ----------
@@ -504,14 +559,14 @@
                     for (let i = 0; i < days; i++) {
                         const id = `${item.key}_${i}`;
                         const val = inputData[id] || '';
-                        const isLocked = isLockedStayCell(id, days, STAY_KEYS);
+                        const lockReason = findLockReason(id, days, STAY_KEYS, JOIN_KEYS);
                         html += `<td class="p-0.5">
                                     <input type="number" inputmode="numeric" id="in_${id}" value="${val}" min="0" ${item.max ? `max="${item.max}"` : ''}
-                                           ${isLocked ? `disabled title="${days === 1 ? '日帰りのため宿泊人数は入力できません' : '最終日の夜は泊まらないため入力できません'}"` : ''}
+                                           ${lockReason ? `disabled title="${lockReason}"` : ''}
                                            data-c="${i}" data-r="${row}" aria-label="${item.name} ${i + 1}日目"
-                                           class="w-full p-1 text-right text-sm input-cell bg-transparent disabled:bg-gray-200 disabled:cursor-not-allowed ${val ? 'has-value' : ''}"
+                                           class="w-full p-1 text-right text-sm input-cell bg-transparent disabled:bg-gray-200 disabled:cursor-not-allowed ${val ? 'has-value' : ''} ${isOverLimitCell(id, val, LIMIT_BY_ITEM) ? 'over-limit' : ''}"
                                            onfocus="this.select()" onkeydown="onCellKey(event)"
-                                           oninput="updateData('${id}', this, ${item.max || 'null'})">
+                                           oninput="updateData('${id}', this)">
                                  </td>`;
                     }
                     html += `<td id="rowtotal_${item.key}" class="p-1.5 text-right text-xs whitespace-nowrap bg-gray-50"></td></tr>`;
@@ -547,7 +602,8 @@
         }
 
         // ---------- 入力値の処理 ----------
-        function updateData(id, el, maxVal) {
+        // 上限を超えた数は直さずにそのまま残し、警告ボックスの入力エラーで知らせる（印刷もできなくなる）
+        function updateData(id, el) {
             const raw = el.value.trim();
             let num = raw === '' ? NaN : Math.floor(Number(raw));
             if (!isNaN(num) && num < 0) {
@@ -556,15 +612,10 @@
                 el.value = '';
                 num = NaN;
             }
-            if (maxVal !== null && num > maxVal) {
-                showToast(`この項目は1日最大「${maxVal}区分」までです。\n（AM 8:30~12:30 ／ PM 12:30~17:00 ／ 夜 17:00~21:00）\n入力された数を「${maxVal}」に直しました。`, 'error');
-                markCellError(el);
-                num = maxVal;
-                el.value = num;
-            }
             if (isNaN(num) || num === 0) delete inputData[id];
             else inputData[id] = num;
             el.classList.toggle('has-value', num > 0);
+            el.classList.toggle('over-limit', isOverLimitCell(id, num, LIMIT_BY_ITEM));
             calculateEstimate();
             saveData();
         }
@@ -584,7 +635,7 @@
 
         function onBasicChange() { calculateEstimate(); saveData(); }
         function onGridChange() {
-            const cleanedData = cleanQuantityData(inputData, getDays(), STAY_KEYS);
+            const cleanedData = cleanQuantityData(inputData, getDays(), STAY_KEYS, JOIN_KEYS);
             const removedCount = Object.keys(inputData).length - Object.keys(cleanedData).length;
             inputData = cleanedData;
             initGrid();
@@ -599,7 +650,9 @@
 
         function calculateEstimate() {
             const customer = document.getElementById('in_customer').value.trim();
-            document.getElementById('out_customer').textContent = customer || '○○○○';
+            const addressee = buildAddressee(customer, document.getElementById('in_honorific').value);
+            document.getElementById('out_customer').textContent = addressee.name;
+            document.getElementById('out_honorific').textContent = addressee.honorific;
 
             const startDate = getStartDate();
             const days = getDays();
@@ -701,7 +754,7 @@
             document.getElementById('out_grand_total').textContent = grandTotal.toLocaleString();
             document.getElementById('panel_total').textContent = grandTotal.toLocaleString();
 
-            const conflicts = findInputConflicts(inputData, STAY_KEYS, JOIN_KEYS);
+            const conflicts = findInputConflicts(inputData, CHECK_RULES);
             renderWarnings(conflicts, customer);
             renderPrintGuard(findPrintBlockers(customer, grandTotal, conflicts.length));
         }
@@ -711,7 +764,7 @@
             const style = isError ? 'bg-red-50 border-red-500 text-red-900' : 'bg-amber-50 border-amber-400 text-amber-900';
             return `<div class="flex gap-2 items-start text-sm ${style} border-2 border-l-8 rounded px-4 py-3">
                         <span class="text-xl leading-none">⚠</span>
-                        <div><div class="font-bold">${isError ? '入力が矛盾しています（印刷できません）' : '確認してください'}</div><div>${message}</div></div>
+                        <div><div class="font-bold">${isError ? '入力エラー（直すまで印刷できません）' : '確認してください'}</div><div>${message}</div></div>
                     </div>`;
         }
 
@@ -746,6 +799,7 @@
             try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify({
                     customer: document.getElementById('in_customer').value,
+                    honorific: document.getElementById('in_honorific').value,
                     start: document.getElementById('in_start').value,
                     days: document.getElementById('in_days').value,
                     dayType: document.getElementById('in_day_type').value,
@@ -764,11 +818,12 @@
                 const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
                 if (!s) return false;
                 document.getElementById('in_customer').value = s.customer || '';
+                document.getElementById('in_honorific').value = resolveHonorific(s.honorific);
                 if (s.start) document.getElementById('in_start').value = s.start;
                 if (s.days) document.getElementById('in_days').value = s.days;
                 if (s.dayType) document.getElementById('in_day_type').value = s.dayType;
                 if (s.issue) document.getElementById('in_issue').value = s.issue;
-                inputData = cleanQuantityData(s.inputData || {}, getDays(), STAY_KEYS);
+                inputData = cleanQuantityData(s.inputData || {}, getDays(), STAY_KEYS, JOIN_KEYS);
                 collapsed = s.collapsed || collapsed;
                 document.getElementById('saveStatus').textContent = '前回の入力内容を読み込みました';
                 return true;
@@ -782,6 +837,7 @@
             try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
             const today = toInputDate(new Date());
             document.getElementById('in_customer').value = '';
+            document.getElementById('in_honorific').value = HONORIFICS[0];
             document.getElementById('in_start').value = today;
             document.getElementById('in_issue').value = today;
             document.getElementById('in_days').value = '3';
