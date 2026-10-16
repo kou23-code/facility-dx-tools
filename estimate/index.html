@@ -357,6 +357,15 @@
         function fmtMD(d) { return `${d.getMonth() + 1}/${d.getDate()}`; }
         function fmtMDW(d) { return `${d.getMonth() + 1}/${d.getDate()}(${WEEK[d.getDay()]})`; }
         function fmtJP(d) { return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; }
+        // EXPIRATION:start
+        // 発行日の1か月後の同じ日を返す（翌月にその日がなければ翌月の月末日にする。例：1/31 → 2/28）
+        function calculateExpirationDate(issueDate) {
+            const year = issueDate.getFullYear();
+            const nextMonthIndex = issueDate.getMonth() + 1;
+            const lastDayOfNextMonth = new Date(year, nextMonthIndex + 1, 0).getDate();
+            return new Date(year, nextMonthIndex, Math.min(issueDate.getDate(), lastDayOfNextMonth));
+        }
+        // EXPIRATION:end
 
         function getStartDate() { return parseDate(document.getElementById('in_start').value) || new Date(); }
         function getDays() { return parseInt(document.getElementById('in_days').value) || 1; }
@@ -526,8 +535,7 @@
             const issueDate = parseDate(document.getElementById('in_issue').value) || new Date();
             document.getElementById('out_issue').textContent = fmtJP(issueDate);
 
-            const expireDate = new Date(startDate);
-            expireDate.setMonth(expireDate.getMonth() + 1);
+            const expireDate = calculateExpirationDate(issueDate);
             document.getElementById('out_expire').textContent = fmtJP(expireDate);
 
             // 宿泊の有無と、一番人数の多い宿泊区分を判定
