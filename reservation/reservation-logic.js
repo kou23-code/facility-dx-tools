@@ -216,6 +216,125 @@ const calculateReservationFee = (request, catalog) => {
 };
 const formatYen = (amount) => `${amount.toLocaleString('ja-JP')}円`;
 
+// ---------- 空き状況（◎：空きあり ／ △：残りわずか・一部予約あり ／ ×：満室・予約済み） ----------
+// 休館日か（closedDates の "MM-DD" は毎年、"YYYY-MM-DD" はその日だけ）
+const isClosedDate = (date, closedDates) => closedDates.some((closedDate) => closedDate === date || closedDate === date.slice(5));
+// その夜に泊まる人数の合計
+const countStayGuests = (reservations, date) => reservations
+    .filter((reservation) => listStayNights(reservation.startDate, reservation.nights).includes(date))
+    .reduce((total, reservation) => total + reservation.people, 0);
+const judgeStayAvailability = (bookedGuests, capacity, fewRatio) => {
+    const remaining = capacity - bookedGuests;
+    if (remaining <= 0) return '×';
+    return remaining < capacity * fewRatio ? '△' : '◎';
+};
+const isSlotBooked = (reservations, slot) => reservations.some((reservation) => reservation.slots.some((booked) => isSameSlot(booked, slot)));
+// 予約済みの時間帯のキーの一覧
+const listBookedPeriodKeys = (reservations, date, facilityKey, periods) => periods
+    .filter((period) => isSlotBooked(reservations, { date, facilityKey, periodKey: period.key }))
+    .map((period) => period.key);
+const judgeFacilityAvailability = (bookedCount, periodCount) => {
+    if (bookedCount === 0) return '◎';
+    return bookedCount >= periodCount ? '×' : '△';
+};
+const buildStayStatus = (reservations, date, config) => {
+    const booked = countStayGuests(reservations, date);
+    const symbol = judgeStayAvailability(booked, config.stayCapacity, config.fewRatio);
+    return { booked, remaining: Math.max(config.stayCapacity - booked, 0), symbol };
+};
+const buildFacilityStatus = (reservations, date, facility, periods) => {
+    const bookedPeriodKeys = listBookedPeriodKeys(reservations, date, facility.key, periods);
+    return { facilityKey: facility.key, bookedPeriodKeys, symbol: judgeFacilityAvailability(bookedPeriodKeys.length, periods.length) };
+};
+// 日程の日ごとの空き状況（stay はその夜の宿泊。チェックアウト日・日帰りの日は null。休館日は施設もすべて×）
+const buildAvailabilityRows = (reservations, startDate, nights, context) => listUsageDates(startDate, nights).map((date, index) => {
+    const isClosed = isClosedDate(date, context.config.closedDates);
+    const stay = index < nights ? buildStayStatus(reservations, date, context.config) : null;
+    const facilities = context.catalog.facilities.map((facility) => buildFacilityStatus(reservations, date, facility, context.catalog.periods));
+    const closedFacilities = facilities.map((status) => ({ ...status, symbol: '×' }));
+    return { date, isClosed, stay: stay && isClosed ? { ...stay, symbol: '×' } : stay, facilities: isClosed ? closedFacilities : facilities };
+});
+
+// ---------- 重複・定員超過・予約不可の判定 ----------
+// すでに予約が入っている施設コマ
+const findSlotConflicts = (reservations, slots) => slots.filter((slot) => isSlotBooked(reservations, slot));
+// 申込の中で2回以上選ばれている施設コマ（2回目以降を返す）
+const findDuplicateSlots = (slots) => slots.filter((slot, index) => slots.findIndex((otherSlot) => isSameSlot(otherSlot, slot)) !== index);
+// 宿泊定員を超える夜（{ date, booked, requested, remaining }）
+const findCapacityOverflows = (reservations, request, capacity) => listStayNights(request.startDate, request.nights)
+    .map((date) => ({ date, booked: countStayGuests(reservations, date) }))
+    .filter(({ booked }) => booked + request.people > capacity)
+    .map(({ date, booked }) => ({ date, booked, requested: request.people, remaining: Math.max(capacity - booked, 0) }));
+// 日程の外の日、または知らない施設・時間帯の施設コマ
+const findInvalidSlots = (request, catalog) => request.slots.filter((slot) => !listUsageDates(request.startDate, request.nights).includes(slot.date)
+    || !findByKey(catalog.facilities, slot.facilityKey) || !findByKey(catalog.periods, slot.periodKey));
+const formatSlotName = (slot, catalog) => `${findByKey(catalog.facilities, slot.facilityKey)?.name ?? slot.facilityKey} ${findByKey(catalog.periods, slot.periodKey)?.name ?? slot.periodKey}`;
+const buildCapacityMessage = (overflow) => `${formatDateLabel(overflow.date)}の夜は宿泊定員を超えます（ご希望 ${overflow.requested}人 ／ 残り ${overflow.remaining}人）。人数か日程を変更してください。`;
+const buildSlotConflictMessage = (slot, catalog) => `${formatDateLabel(slot.date)}の「${formatSlotName(slot, catalog)}」はすでに予約が入っています。別の時間帯か日程を選んでください。`;
+const buildClosedMessage = (date) => `${formatDateLabel(date)}は休館日のため予約できません。日程を変更してください。`;
+const canCheckSchedule = (request, config) => isValidDateString(request.startDate)
+    && isNonNegativeInteger(request.nights) && request.nights <= config.maxNights;
+
+// 空き状況による予約不可の理由（休館日・宿泊定員の超過・施設コマの重複）。context：{ reservations, config, catalog }
+const findAvailabilityConflicts = (request, context) => {
+    if (!canCheckSchedule(request, context.config)) return [];
+    const closedDates = listUsageDates(request.startDate, request.nights).filter((date) => isClosedDate(date, context.config.closedDates));
+    const people = toSafeCount(request.people);
+    const overflows = findCapacityOverflows(context.reservations, { ...request, people }, context.config.stayCapacity);
+    return [...closedDates.map(buildClosedMessage), ...overflows.map(buildCapacityMessage),
+        ...findSlotConflicts(context.reservations, request.slots).map((slot) => buildSlotConflictMessage(slot, context.catalog)),
+        ...findDuplicateSlots(request.slots).map((slot) => `${formatDateLabel(slot.date)}の「${formatSlotName(slot, context.catalog)}」が2回選ばれています。`)];
+};
+
+// ---------- 入力の不備の判定 ----------
+const REQUIRED_FIELDS = Object.freeze([
+    ['groupName', '団体名'], ['representative', '代表者名'], ['phone', '電話番号'], ['email', 'メールアドレス'], ['purpose', '利用目的']
+]);
+// 数字とハイフンだけで、数字が10〜11桁
+const isPhoneNumber = (value) => /^[\d-]+$/.test(value) && /^\d{10,11}$/.test(value.replace(/-/g, ''));
+const findMissingFieldMessages = (request) => REQUIRED_FIELDS
+    .filter(([key]) => trimText(request[key]) === '').map(([, label]) => `${label}が未入力です`);
+const findFormatMessages = (request, catalog) => [
+    request.phone !== '' && !isPhoneNumber(request.phone) && '電話番号は数字とハイフンで10〜11桁を入力してください',
+    request.email !== '' && !isEmailAddress(request.email) && 'メールアドレスの形が正しくありません',
+    request.purpose !== '' && !catalog.purposes.includes(request.purpose) && '利用目的を一覧から選んでください'
+].filter(Boolean);
+const findCountMessages = (request, config, catalog) => [
+    !isValidDateString(request.startDate) && '利用開始日を選んでください',
+    !(isNonNegativeInteger(request.nights) && request.nights <= config.maxNights) && `泊数は日帰り〜${config.maxNights}泊から選んでください`,
+    !(isPositiveInteger(request.people) && request.people <= config.maxPeople) && `人数は1〜${config.maxPeople}人で入力してください`,
+    !findByKey(catalog.priceTypes, request.priceType) && '料金区分を選んでください'
+].filter(Boolean);
+// 食数は0以上、人数×利用日数まで
+const findMealMessages = (request, catalog) => {
+    const limit = toSafeCount(request.people) * (toSafeCount(request.nights) + 1);
+    return catalog.meals.filter((meal) => !(isNonNegativeInteger(request.meals?.[meal.key]) && request.meals[meal.key] <= limit))
+        .map((meal) => `${meal.name}の食数は0〜${limit}食（人数×利用日数まで）で入力してください`);
+};
+const findEmptyRequestMessages = (request) => (request.nights === 0 && request.slots.length === 0
+    ? ['宿泊（1泊以上）か、施設の利用コマを1つ以上選んでください'] : []);
+// 入力の不備の一覧
+const findInputMessages = (request, config, catalog) => [
+    ...findMissingFieldMessages(request), ...findFormatMessages(request, catalog), ...findCountMessages(request, config, catalog),
+    ...findMealMessages(request, catalog), ...findEmptyRequestMessages(request),
+    ...(canCheckSchedule(request, config) ? findInvalidSlots(request, catalog) : []).map((slot) => `${formatDateLabel(slot.date)}の施設コマは選べません`)
+];
+// 受付期間の外か（today：今日の "YYYY-MM-DD"）
+const findScheduleMessages = (request, config, today) => {
+    if (!isValidDateString(request.startDate)) return [];
+    const leadDays = countDaysBetween(today, request.startDate);
+    return [
+        leadDays < config.minLeadDays && `利用開始日は${formatDateJapanese(addDaysToDateString(today, config.minLeadDays))}以降を選んでください`,
+        leadDays > config.maxAdvanceDays && `利用開始日は${formatDateJapanese(addDaysToDateString(today, config.maxAdvanceDays))}までを選んでください`
+    ].filter(Boolean);
+};
+// 予約を確定できない理由のすべて（空なら確定できる）。context：{ reservations, config, catalog, today }
+const findReservationBlockers = (request, context) => [
+    ...findInputMessages(request, context.config, context.catalog),
+    ...findScheduleMessages(request, context.config, context.today),
+    ...findAvailabilityConflicts(request, context)
+];
+
 // RESERVATION_EXPORTS:start
 // Node.js（テスト）から読み込んだときだけ、関数をまとめて渡す（ブラウザでは何もしない）
 if (typeof module !== 'undefined') {
@@ -225,7 +344,10 @@ if (typeof module !== 'undefined') {
         parseDateString, isValidDateString, addDaysToDateString, countDaysBetween, formatDateLabel, formatDateJapanese,
         toLocalDateString, toLocalDateTimeString, listUsageDates, listStayNights, formatScheduleLabel,
         toHalfWidthDigits, parseCount, isSameSlot, sortUniqueSlots, buildRequest,
-        isStayRequest, pickFacilityPrice, calculateIncludedTax, calculateReservationFee, formatYen
+        isStayRequest, pickFacilityPrice, calculateIncludedTax, calculateReservationFee, formatYen,
+        isClosedDate, countStayGuests, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,
+        findSlotConflicts, findDuplicateSlots, findCapacityOverflows, formatSlotName, findAvailabilityConflicts,
+        isPhoneNumber, findInputMessages, findScheduleMessages, findReservationBlockers
     };
 }
 // RESERVATION_EXPORTS:end
