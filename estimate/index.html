@@ -61,13 +61,12 @@
                 <div class="flex justify-between items-center border-b pb-3 mb-4 gap-2 flex-wrap">
                     <h1 class="text-xl font-bold">見積書作成ツール</h1>
                     <div class="flex gap-2 text-sm">
-                        <button type="button" onclick="toggleHelp()" class="px-3 py-1.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">？ 使い方</button>
                         <button type="button" onclick="resetAll()" class="px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50">新しく作る（全消去）</button>
                     </div>
                 </div>
 
-                <!-- 使い方 -->
-                <div id="helpBox" class="hidden mb-4 bg-blue-50 border border-blue-200 rounded p-4 text-sm leading-relaxed">
+                <!-- 使い方（開閉せず、いつも表示する） -->
+                <div id="helpBox" class="mb-4 bg-blue-50 border border-blue-200 rounded p-4 text-sm leading-relaxed">
                     <div class="font-bold text-blue-900 mb-2">かんたん3ステップ</div>
                     <ol class="list-decimal pl-5 space-y-1 text-gray-800">
                         <li><b>基本情報</b>：宛名・予約開始日・利用日数を入力します。</li>
@@ -354,7 +353,7 @@
         const STORAGE_KEY = 'reservation_estimate_v1';
 
         let inputData = {};
-        let collapsed = { join: true };
+        let collapsed = createInitialCollapsed();
 
         // ---------- 日付まわり ----------
         // "YYYY-MM-DD" をローカル時刻の日付として読む（タイムゾーンでずれないように）
@@ -486,6 +485,18 @@
         }
         // HONORIFIC:end
 
+        // COLLAPSE:start
+        // 最初の開閉状態（閉じているカテゴリの id だけを true で持つ）。最初はすべてのカテゴリを開いておく
+        function createInitialCollapsed() {
+            return {};
+        }
+        // 保存データの開閉状態を使う。オブジェクトでなければ（保存データが古い・壊れている）最初の状態にする
+        function resolveCollapsed(savedCollapsed) {
+            const isPlainObject = typeof savedCollapsed === 'object' && savedCollapsed !== null && !Array.isArray(savedCollapsed);
+            return isPlainObject ? { ...savedCollapsed } : createInitialCollapsed();
+        }
+        // COLLAPSE:end
+
         function getStartDate() { return parseDate(document.getElementById('in_start').value) || new Date(); }
         function getDays() { return parseInt(document.getElementById('in_days').value) || 1; }
         // 範囲外の日と、入力できない日の宿泊人数・日帰り参加料を除いた数量データを返す
@@ -497,11 +508,10 @@
         // ---------- 起動 ----------
         function initApp() {
             renderFacilityInfo(resolveFacilityInfo(FACILITY_INFO, window.CUSTOM_FACILITY_INFO));
-            const hasSaved = loadSaved();
+            loadSaved();
             const today = toInputDate(new Date());
             if (!document.getElementById('in_start').value) document.getElementById('in_start').value = today;
             if (!document.getElementById('in_issue').value) document.getElementById('in_issue').value = today;
-            if (!hasSaved) document.getElementById('helpBox').classList.remove('hidden');
 
             // マウスホイールで数字が勝手に変わるのを防ぐ
             document.addEventListener('wheel', e => {
@@ -824,7 +834,7 @@
                 if (s.dayType) document.getElementById('in_day_type').value = s.dayType;
                 if (s.issue) document.getElementById('in_issue').value = s.issue;
                 inputData = cleanQuantityData(s.inputData || {}, getDays(), STAY_KEYS, JOIN_KEYS);
-                collapsed = s.collapsed || collapsed;
+                collapsed = resolveCollapsed(s.collapsed);
                 document.getElementById('saveStatus').textContent = '前回の入力内容を読み込みました';
                 return true;
             } catch (e) {
@@ -843,7 +853,7 @@
             document.getElementById('in_days').value = '3';
             document.getElementById('in_day_type').value = 'ad';
             inputData = {};
-            collapsed = { join: true };
+            collapsed = createInitialCollapsed();
             initGrid();
             document.getElementById('saveStatus').textContent = '';
             showToast('入力内容を消去しました');
@@ -885,10 +895,6 @@
             void el.offsetWidth; // アニメーションを最初から再生させる
             el.classList.add('cell-error');
             setTimeout(() => el.classList.remove('cell-error'), 2500);
-        }
-
-        function toggleHelp() {
-            document.getElementById('helpBox').classList.toggle('hidden');
         }
     </script>
 </body>
