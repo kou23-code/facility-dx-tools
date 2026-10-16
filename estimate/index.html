@@ -187,6 +187,8 @@
                             <span id="out_grand_total" class="text-4xl font-bold border-b-[3px] border-black min-w-[180px] inline-block text-center pr-2">0</span>
                             <span class="ml-2 text-base">円 (税込み)</span>
                         </div>
+                        <!-- 消費税（内税）の内訳：10%対象・税・8%対象・税の4行 -->
+                        <div id="out_tax_breakdown" class="text-sm leading-snug mb-2"></div>
                         <div class="flex flex-col gap-1 mt-2">
                             <div class="text-sm font-bold bg-gray-100 inline-block px-3 py-1 rounded w-fit">ご予約期間： <span id="out_date_range"></span></div>
                             <div class="text-sm font-bold bg-blue-50 text-blue-800 inline-block px-3 py-1 rounded w-fit border border-blue-200">
@@ -256,6 +258,34 @@
 
         const buildPageTitle = (info) => `${info.facilityName} 見積書作成ツール`;
         // FACILITY_INFO:end
+
+        // ======================================================
+        //  消費税の設定（単価はすべて税込＝内税）
+        //  税率や軽減税率の対象を変えるときは、ここだけを直してください
+        //  facility-config.js に window.CUSTOM_TAX_CONFIG を書くと上書きできます（書いたキーだけ）
+        //  ※テストがこのブロックを読み込むため、目印のコメントは消さないでください
+        // ======================================================
+        // TAX_CONFIG:start
+        const TAX_CONFIG = Object.freeze({
+            standardRate: 0.10, // 標準税率（宿泊・食堂の食事・施設使用料・日帰り参加料など、下以外のすべて）
+            reducedRate: 0.08,  // 軽減税率
+            // 軽減税率の対象（料金表の項目キー）：弁当4種・お茶・塩おにぎり
+            reducedItemIds: Object.freeze(['be_tatsu', 'be_maku', 'be_kara', 'be_oni', 'te', 'on'])
+        });
+        // 税率として使える値か（0以上1未満の数。例：0.1 は 10%）
+        function isValidTaxRate(rate) {
+            return typeof rate === 'number' && Number.isFinite(rate) && rate >= 0 && rate < 1;
+        }
+        // 既定値を facility-config.js の設定で上書きする（正しい形の値だけを使う）
+        function resolveTaxConfig(defaults, custom) {
+            const pickRate = (key) => (isValidTaxRate(custom?.[key]) ? custom[key] : defaults[key]);
+            const customIds = custom?.reducedItemIds;
+            const isValidIds = Array.isArray(customIds) && customIds.every(id => typeof id === 'string');
+            const reducedItemIds = Object.freeze([...(isValidIds ? customIds : defaults.reducedItemIds)]);
+            return Object.freeze({ standardRate: pickRate('standardRate'), reducedRate: pickRate('reducedRate'), reducedItemIds });
+        }
+        // TAX_CONFIG:end
+        const ACTIVE_TAX_CONFIG = resolveTaxConfig(TAX_CONFIG, window.CUSTOM_TAX_CONFIG);
 
         function renderFacilityInfo(info) {
             const lines = buildIssuerLines(info);
@@ -471,6 +501,51 @@
             ].filter(Boolean);
         }
         // INPUT_CHECK:end
+
+        // TAX_CALC:start
+        // 軽減税率の対象の項目か
+        function isReducedTaxItem(itemKey, taxConfig) {
+            return taxConfig.reducedItemIds.includes(itemKey);
+        }
+        // 項目ごとの税込金額の一覧（{ itemKey, amount }）を作る。getUnitPrice は項目から税込単価を返す関数
+        function buildAmountLines(items, quantityByCell, getUnitPrice) {
+            return items.map(item => ({ itemKey: item.key, amount: sumQuantities(quantityByCell, [item.key]) * getUnitPrice(item) }));
+        }
+        // 税込金額を、標準税率の対象と軽減税率の対象に分けて合計する
+        function sumAmountsByTaxRate(amountLines, taxConfig) {
+            const sumOf = (lines) => lines.reduce((total, line) => total + line.amount, 0);
+            const reducedLines = amountLines.filter(line => isReducedTaxItem(line.itemKey, taxConfig));
+            const standardLines = amountLines.filter(line => !isReducedTaxItem(line.itemKey, taxConfig));
+            return { standard: sumOf(standardLines), reduced: sumOf(reducedLines) };
+        }
+        // 税込金額から内消費税を出す（1円未満は切り捨て）。税抜は「税込−税」なので、税抜＋税＝税込 が必ず一致する
+        // 小数の誤差が出ないよう、税率を1万分率の整数にして計算する
+        function splitTaxIncludedAmount(taxIncludedAmount, rate) {
+            const rateBasisPoints = Math.round(rate * 10000);
+            const tax = Math.floor(taxIncludedAmount * rateBasisPoints / (10000 + rateBasisPoints));
+            return { rate, taxIncluded: taxIncludedAmount, taxExcluded: taxIncludedAmount - tax, tax };
+        }
+        // 税率ごとの内訳（standard：標準税率、reduced：軽減税率）
+        function calculateTaxBreakdown(amountLines, taxConfig) {
+            const sums = sumAmountsByTaxRate(amountLines, taxConfig);
+            return {
+                standard: splitTaxIncludedAmount(sums.standard, taxConfig.standardRate),
+                reduced: splitTaxIncludedAmount(sums.reduced, taxConfig.reducedRate)
+            };
+        }
+        // 税率を「10%」の形にする（0.075 なら「7.5%」）
+        function formatTaxRate(rate) {
+            return `${Math.round(rate * 1000) / 10}%`;
+        }
+        // 見積書の合計欄の下に出す4行（税率ごとの対象額は税抜。対象額＋税をすべて足すと税込合計になる）
+        function buildTaxBreakdownLines(breakdown) {
+            const linesOf = (part) => [
+                `（${formatTaxRate(part.rate)}対象 ${part.taxExcluded.toLocaleString('ja-JP')}円）`,
+                `（税 ${part.tax.toLocaleString('ja-JP')}円）`
+            ];
+            return [...linesOf(breakdown.standard), ...linesOf(breakdown.reduced)];
+        }
+        // TAX_CALC:end
 
         // HONORIFIC:start
         // 選べる敬称（先頭が初期値）。団体・会社あては「御中」、個人あては「様」
@@ -763,10 +838,18 @@
             document.getElementById('estimateTableContainer').innerHTML = html;
             document.getElementById('out_grand_total').textContent = grandTotal.toLocaleString();
             document.getElementById('panel_total').textContent = grandTotal.toLocaleString();
+            const amountLines = buildAmountLines(categories.flatMap(cat => cat.items), inputData, item => getPrice(item, isStay, mainType));
+            renderTaxBreakdown(calculateTaxBreakdown(amountLines, ACTIVE_TAX_CONFIG));
 
             const conflicts = findInputConflicts(inputData, CHECK_RULES);
             renderWarnings(conflicts, customer);
             renderPrintGuard(findPrintBlockers(customer, grandTotal, conflicts.length));
+        }
+
+        // 見積書の合計欄の下に、消費税の内訳を4行で表示する
+        function renderTaxBreakdown(breakdown) {
+            document.getElementById('out_tax_breakdown').innerHTML = buildTaxBreakdownLines(breakdown)
+                .map(line => `<div>${line}</div>`).join('');
         }
 
         // 注意表示1件分の HTML（矛盾エラーは赤、それ以外は黄色）
