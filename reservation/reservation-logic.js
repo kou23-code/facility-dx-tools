@@ -79,6 +79,9 @@ const buildHourSlots = (startHour, endHour) => Array.from({ length: Math.max(end
     return { key: toHourKey(hour), name: String(hour), label: `${hour}:00~${hour + 1}:00`, startHour: hour };
 });
 
+// 1時間のコマの表の見出し（9時のコマ → "9-10時"。1時間の枠であることがわかるようにする）
+const formatHourHeader = (hourSlot) => `${hourSlot.startHour}-${hourSlot.startHour + 1}時`;
+
 const RESERVATION_CATALOG = deepFreeze({
     priceTypes: [{ key: 'es', name: '小・中学生' }, { key: 'hs', name: '高校生' }, { key: 'ad', name: '大学・一般' }],
     stayPrices: { es: 2200, hs: 2500, ad: 3300 }, // 宿泊料（1人1泊）
@@ -563,7 +566,7 @@ if (typeof module !== 'undefined') {
         RESERVATION_CONFIG, resolveReservationConfig, RESERVATION_CATALOG,
         parseDateString, isValidDateString, addDaysToDateString, countDaysBetween, formatDateLabel, formatDateJapanese,
         toLocalDateString, toLocalDateTimeString, listUsageDates, listStayNights, formatScheduleLabel,
-        toHourKey, buildHourSlots, listTimeUnits, mergeHourRanges, formatSlotList,
+        toHourKey, buildHourSlots, formatHourHeader, listTimeUnits, mergeHourRanges, formatSlotList,
         toHalfWidthDigits, parseCount, isSameSlot, sortUniqueSlots, buildRequest,
         sumCounts, isStayRequest, pickFacilityPrice, calculateIncludedTax, calculateTaxBreakdown, calculateReservationFee, formatYen, formatQuantity, EXTRA_FEE_NOTE,
         isClosedDate, getStayCountOnDate, countStayGuests, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,

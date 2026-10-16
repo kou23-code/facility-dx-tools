@@ -41,6 +41,7 @@ const CAPTURE_SOURCE = `const capture = () => ({
     dailyRows: Array.from(document.querySelectorAll('#dailyTable tbody th'), (cell) => cell.firstChild.textContent),
     lunchValues: Array.from(document.querySelectorAll('#dailyTable input[data-row="meal_lu"]'), (input) => input.value),
     feeTax: document.getElementById('fee_tax').textContent,
+    hourHeaders: Array.from(document.querySelectorAll('#slotGrid table:last-of-type thead th'), (cell) => cell.textContent).slice(2),
     feeQuantities: Array.from(document.querySelectorAll('#feeTable tbody tr'), (row) => row.cells[2].textContent),
     extraFeeNotes: Array.from(document.querySelectorAll('.extra-fee-note'), (element) => element.textContent)
 });
@@ -121,6 +122,8 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.ok(initial.blockers.includes('団体名が未入力です'));
     assert.deepStrictEqual(initial.staySymbols, ['◎', '◎']);
     assert.strictEqual(initial.storage, null);
+    assert.deepStrictEqual(initial.hourHeaders, ['9-10時', '10-11時', '11-12時', '12-13時', '13-14時', '14-15時', '15-16時', '16-17時',
+        '17-18時', '18-19時', '19-20時', '20-21時'], '研修室・ミーティングルームの見出しは1時間の枠がわかる表記');
     assert.deepStrictEqual(initial.dailyHead.slice(1, 4).map((text) => text.slice(0, 3)), ['1日目', '2日目', '3日目']);
     assert.strictEqual(initial.stayInputs, 2, '宿泊人数は泊まる夜（2泊）だけ入力できる');
     assert.deepStrictEqual(initial.dailyRows,
