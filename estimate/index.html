@@ -87,11 +87,15 @@
                     <div class="bg-gray-50 p-3 rounded border">
                         <div class="flex items-center gap-2 mb-3"><span class="step-badge">1</span><span class="font-bold text-base">基本情報を入力</span></div>
 
-                        <label class="block font-bold mb-1" for="in_customer">宛名（団体名など）</label>
+                        <label class="block font-bold mb-1" for="in_customer">宛名（団体名・個人名）</label>
                         <div class="flex items-center gap-2">
-                            <input type="text" id="in_customer" class="flex-1 p-2 border rounded text-lg font-bold" placeholder="例：○○中学校 バレーボール部" oninput="onBasicChange()">
-                            <span class="font-bold">御中</span>
+                            <input type="text" id="in_customer" class="flex-1 p-2 border rounded text-lg font-bold" placeholder="例：○○中学校 バレーボール部／山田 太郎" oninput="onBasicChange()">
+                            <select id="in_honorific" class="p-2 border rounded font-bold" aria-label="敬称" title="団体名なら「御中」、個人名なら「様」" onchange="onBasicChange()">
+                                <option value="御中" selected>御中</option>
+                                <option value="様">様</option>
+                            </select>
                         </div>
+                        <div class="text-[10px] text-gray-500 mt-0.5">敬称：団体・会社あては「御中」、個人あては「様」</div>
 
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
                             <div>
@@ -176,7 +180,7 @@
 
                 <div class="flex justify-between items-start mb-8">
                     <div class="w-[55%]">
-                        <div class="text-xl mb-6"><span id="out_customer" class="font-bold border-b border-black inline-block min-w-[200px] pb-1"></span> 御中</div>
+                        <div class="text-xl mb-6"><span id="out_customer" class="font-bold border-b border-black inline-block min-w-[200px] pb-1"></span> <span id="out_honorific">御中</span></div>
                         <div class="text-2xl tracking-widest font-bold mb-4">御 見 積 書</div>
                         <div class="mb-3">ご予約ありがとうございます。<br>下記のとおり御見積申し上げます。</div>
                         <div class="flex items-end mb-2">
@@ -469,6 +473,19 @@
         }
         // INPUT_CHECK:end
 
+        // HONORIFIC:start
+        // 選べる敬称（先頭が初期値）。団体・会社あては「御中」、個人あては「様」
+        const HONORIFICS = ['御中', '様'];
+        // 選べる敬称ならそのまま、それ以外（古い保存データ・不正な値）は初期値の「御中」を返す
+        function resolveHonorific(value) {
+            return HONORIFICS.includes(value) ? value : HONORIFICS[0];
+        }
+        // 見積書の宛名欄に出す宛名と敬称（宛名が空なら仮の「○○○○」）
+        function buildAddressee(customerName, honorific) {
+            return { name: customerName.trim() || '○○○○', honorific: resolveHonorific(honorific) };
+        }
+        // HONORIFIC:end
+
         function getStartDate() { return parseDate(document.getElementById('in_start').value) || new Date(); }
         function getDays() { return parseInt(document.getElementById('in_days').value) || 1; }
         // 範囲外の日と、入力できない日の宿泊人数・日帰り参加料を除いた数量データを返す
@@ -633,7 +650,9 @@
 
         function calculateEstimate() {
             const customer = document.getElementById('in_customer').value.trim();
-            document.getElementById('out_customer').textContent = customer || '○○○○';
+            const addressee = buildAddressee(customer, document.getElementById('in_honorific').value);
+            document.getElementById('out_customer').textContent = addressee.name;
+            document.getElementById('out_honorific').textContent = addressee.honorific;
 
             const startDate = getStartDate();
             const days = getDays();
@@ -780,6 +799,7 @@
             try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify({
                     customer: document.getElementById('in_customer').value,
+                    honorific: document.getElementById('in_honorific').value,
                     start: document.getElementById('in_start').value,
                     days: document.getElementById('in_days').value,
                     dayType: document.getElementById('in_day_type').value,
@@ -798,6 +818,7 @@
                 const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
                 if (!s) return false;
                 document.getElementById('in_customer').value = s.customer || '';
+                document.getElementById('in_honorific').value = resolveHonorific(s.honorific);
                 if (s.start) document.getElementById('in_start').value = s.start;
                 if (s.days) document.getElementById('in_days').value = s.days;
                 if (s.dayType) document.getElementById('in_day_type').value = s.dayType;
@@ -816,6 +837,7 @@
             try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
             const today = toInputDate(new Date());
             document.getElementById('in_customer').value = '';
+            document.getElementById('in_honorific').value = HONORIFICS[0];
             document.getElementById('in_start').value = today;
             document.getElementById('in_issue').value = today;
             document.getElementById('in_days').value = '3';
