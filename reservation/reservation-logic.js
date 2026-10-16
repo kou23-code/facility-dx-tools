@@ -27,7 +27,7 @@ const buildIssuerLines = (info) => [`${info.organization} ${info.facilityName}`,
 // ---------- 共通の設定 ----------
 const RESERVATION_STORAGE_KEY = 'facility_dx_reservations'; // 予約データを保存する localStorage のキー（ツール共通）
 const RESERVATION_CODE_TYPE = 'facility_dx_reservation';   // 職員取込用コードの種類
-const RESERVATION_CODE_VERSION = 1;                         // 職員取込用コードの版
+const RESERVATION_CODE_VERSION = 2;                         // 職員取込用コードの版（2：宿泊人数・食事を日ごとの配列にした版）
 const SAMPLE_ID_PREFIX = 'SAMPLE-';                         // デモ用サンプル予約の予約番号の頭文字
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -74,7 +74,19 @@ const resolveReservationConfig = (defaults, custom) => deepFreeze(Object.fromEnt
 const RESERVATION_CATALOG = deepFreeze({
     priceTypes: [{ key: 'es', name: '小・中学生' }, { key: 'hs', name: '高校生' }, { key: 'ad', name: '大学・一般' }],
     stayPrices: { es: 2200, hs: 2500, ad: 3300 }, // 宿泊料（1人1泊）
-    meals: [{ key: 'bf', name: '朝食', price: 660 }, { key: 'lu', name: '昼食', price: 660 }, { key: 'di', name: '夕食', price: 990 }],
+    // 日ごとに数を入れる食事など。perPerson：1日あたり利用人数まで ／ reducedTax：軽減税率（8%）の対象
+    meals: [
+        { key: 'bf', name: '朝食', price: 660, unit: '食', group: '食堂の食事', perPerson: true, reducedTax: false },
+        { key: 'lu', name: '昼食', price: 660, unit: '食', group: '食堂の食事', perPerson: true, reducedTax: false },
+        { key: 'di', name: '夕食', price: 990, unit: '食', group: '食堂の食事', perPerson: true, reducedTax: false },
+        { key: 'be_tatsu', name: '竜田揚げ弁当', price: 700, unit: '食', group: '弁当', perPerson: false, reducedTax: true },
+        { key: 'be_maku', name: '幕の内弁当', price: 700, unit: '食', group: '弁当', perPerson: false, reducedTax: true },
+        { key: 'be_kara', name: 'からマヨ丼', price: 600, unit: '食', group: '弁当', perPerson: false, reducedTax: true },
+        { key: 'be_oni', name: 'おにぎり弁当', price: 400, unit: '食', group: '弁当', perPerson: false, reducedTax: true },
+        { key: 'te', name: 'お茶', price: 150, unit: '本', group: 'お茶・おにぎり', perPerson: false, reducedTax: true },
+        { key: 'on', name: '塩おにぎり(2個)', price: 200, unit: '食', group: 'お茶・おにぎり', perPerson: false, reducedTax: true }
+    ],
+    maxDailyItemCount: 999, // perPerson でない品目の1日あたりの上限
     periods: [
         { key: 'am', name: 'AM', time: '8:30~12:30', hours: 4 },
         { key: 'pm', name: 'PM', time: '12:30~17:00', hours: 4.5 },
@@ -91,7 +103,8 @@ const RESERVATION_CATALOG = deepFreeze({
         { key: 'mr', name: 'ミーティングルーム', billing: 'hour', prices: { stayAdult: 330, stayYouth: 330, dayAdult: 660, dayYouth: 660 } }
     ],
     purposes: ['スポーツ合宿', '大会・試合', '研修・会議', '学校行事', 'サークル・クラブ活動', 'その他'],
-    taxRate: 0.10 // 宿泊・食堂の食事・施設使用料はすべて標準税率
+    standardTaxRate: 0.10, // 宿泊・食堂の食事・施設使用料
+    reducedTaxRate: 0.08   // 弁当・お茶・おにぎり（meals の reducedTax: true）
 });
 
 // ---------- 日付（"YYYY-MM-DD" の文字列のまま扱い、タイムゾーンでずれないよう UTC で計算する） ----------
@@ -170,61 +183,88 @@ const buildContactPart = (formValues) => ({
     email: trimText(formValues.email),
     purpose: trimText(formValues.purpose)
 });
-const buildUsagePart = (formValues, catalog) => ({
-    startDate: trimText(formValues.startDate),
-    nights: parseCount(formValues.nights),
-    priceType: trimText(formValues.priceType),
-    people: parseCount(formValues.people),
-    meals: Object.fromEntries(catalog.meals.map((meal) => [meal.key, parseCount(formValues.meals?.[meal.key])]))
-});
-// 予約申込の内容（formValues：画面の入力値の文字列、slots：選んだ施設コマ）
+// 日ごとの数の一覧を、決まった日数分の整数にする（足りない日は0、余った日は捨てる）
+const fitCounts = (values, length) => Array.from({ length }, (_, index) => parseCount(Array.isArray(values) ? values[index] : undefined));
+const buildUsagePart = (formValues, catalog) => {
+    const nights = parseCount(formValues.nights);
+    const dayCount = toSafeCount(nights) + 1;
+    return {
+        startDate: trimText(formValues.startDate), nights, priceType: trimText(formValues.priceType), people: parseCount(formValues.people),
+        stays: fitCounts(formValues.stays, dayCount - 1),
+        meals: Object.fromEntries(catalog.meals.map((meal) => [meal.key, fitCounts(formValues.meals?.[meal.key], dayCount)]))
+    };
+};
+// 予約申込の内容（formValues：画面の入力値の文字列。stays は泊まる夜ごと、meals は品目ごとに利用日ごとの配列。slots：選んだ施設コマ）
 const buildRequest = (formValues, slots, catalog) => ({
     ...buildContactPart(formValues), ...buildUsagePart(formValues, catalog), slots: sortUniqueSlots(slots, catalog)
 });
 
 // ---------- 概算料金 ----------
 const findByKey = (list, key) => list.find((entry) => entry.key === key);
+// 日ごとの数の合計（正しくない数は0として数える）
+const sumCounts = (counts) => (Array.isArray(counts) ? counts : []).reduce((total, count) => total + toSafeCount(count), 0);
 // 宿泊者がいるか（いれば施設は「宿泊利用料金」、いなければ「日帰り専有料金」）
-const isStayRequest = (request) => toSafeCount(request.nights) > 0 && toSafeCount(request.people) > 0;
+const isStayRequest = (request) => sumCounts(request.stays) > 0;
 const pickFacilityPrice = (facility, isStay, priceType) => facility.prices[`${isStay ? 'stay' : 'day'}${priceType === 'ad' ? 'Adult' : 'Youth'}`];
 const sumSlotHours = (slots, periods) => slots.reduce((total, slot) => total + (findByKey(periods, slot.periodKey)?.hours ?? 0), 0);
-const buildLine = (label, unitPrice, quantity, unit) => ({ label, unitPrice, quantity, unit, amount: Math.round(unitPrice * quantity) });
+// 明細1行（isReducedTax：軽減税率の対象か）
+const buildLine = (label, unitPrice, quantity, unit, isReducedTax) => ({ label, unitPrice, quantity, unit, isReducedTax, amount: Math.round(unitPrice * quantity) });
+// 何日目（何泊目）かの表示。日付が正しければ "10/20(火)"、正しくなければ "1日目"
+const formatDayOfRequest = (request, dayIndex) => (isValidDateString(request.startDate)
+    ? formatDateLabel(addDaysToDateString(request.startDate, dayIndex)) : `${dayIndex + 1}日目`);
 
-const buildStayFeeLine = (request, catalog) => {
+// 宿泊料は泊まる夜ごとに1行（数量の単位は「人／泊」）
+const buildStayFeeLines = (request, catalog) => {
     const typeName = findByKey(catalog.priceTypes, request.priceType)?.name ?? '';
     const unitPrice = catalog.stayPrices[request.priceType] ?? 0;
-    return buildLine(`宿泊料（${typeName}）`, unitPrice, toSafeCount(request.people) * toSafeCount(request.nights), '人泊');
+    return (request.stays ?? []).map((count, nightIndex) =>
+        buildLine(`宿泊料（${typeName}） ${formatDayOfRequest(request, nightIndex)}泊`, unitPrice, toSafeCount(count), '人／泊', false));
 };
 const buildMealFeeLines = (request, catalog) => catalog.meals
-    .map((meal) => buildLine(meal.name, meal.price, toSafeCount(request.meals?.[meal.key]), '食'));
+    .map((meal) => buildLine(meal.name, meal.price, sumCounts(request.meals?.[meal.key]), meal.unit, meal.reducedTax));
 const buildFacilityFeeLine = (facility, request, catalog) => {
     const ownSlots = request.slots.filter((slot) => slot.facilityKey === facility.key);
     const isHourly = facility.billing === 'hour';
     const quantity = isHourly ? sumSlotHours(ownSlots, catalog.periods) : ownSlots.length;
     const unitPrice = pickFacilityPrice(facility, isStayRequest(request), request.priceType);
-    return buildLine(facility.name, unitPrice, quantity, isHourly ? '時間' : '区分');
+    return buildLine(facility.name, unitPrice, quantity, isHourly ? '時間' : '区分', false);
 };
 // 税込金額から内消費税を出す（1円未満は切り捨て。小数の誤差が出ないよう税率を1万分率の整数にする）
 const calculateIncludedTax = (taxIncludedAmount, rate) => {
     const rateBasisPoints = Math.round(rate * 10000);
     return Math.floor(taxIncludedAmount * rateBasisPoints / (10000 + rateBasisPoints));
 };
-// 概算料金（数量が1以上の明細行、税込合計、うち消費税、宿泊利用料金かどうか）
+const sumLineAmounts = (lines) => lines.reduce((sum, line) => sum + line.amount, 0);
+const buildTaxPart = (lines, rate) => {
+    const taxIncluded = sumLineAmounts(lines);
+    return { rate, taxIncluded, tax: calculateIncludedTax(taxIncluded, rate) };
+};
+// 税率ごとの内訳（standard：標準税率、reduced：軽減税率）
+const calculateTaxBreakdown = (lines, catalog) => ({
+    standard: buildTaxPart(lines.filter((line) => !line.isReducedTax), catalog.standardTaxRate),
+    reduced: buildTaxPart(lines.filter((line) => line.isReducedTax), catalog.reducedTaxRate)
+});
+// 概算料金（数量が1以上の明細行、税込合計、税率ごとの内訳、うち消費税の合計、宿泊利用料金かどうか）
 const calculateReservationFee = (request, catalog) => {
-    const lines = [buildStayFeeLine(request, catalog), ...buildMealFeeLines(request, catalog),
+    const lines = [...buildStayFeeLines(request, catalog), ...buildMealFeeLines(request, catalog),
         ...catalog.facilities.map((facility) => buildFacilityFeeLine(facility, request, catalog))].filter((line) => line.quantity > 0);
-    const total = lines.reduce((sum, line) => sum + line.amount, 0);
-    return { lines, total, tax: calculateIncludedTax(total, catalog.taxRate), isStay: isStayRequest(request) };
+    const taxBreakdown = calculateTaxBreakdown(lines, catalog);
+    const tax = taxBreakdown.standard.tax + taxBreakdown.reduced.tax;
+    return { lines, total: sumLineAmounts(lines), taxBreakdown, tax, isStay: isStayRequest(request) };
 };
 const formatYen = (amount) => `${amount.toLocaleString('ja-JP')}円`;
 
 // ---------- 空き状況（◎：空きあり ／ △：残りわずか・一部予約あり ／ ×：満室・予約済み） ----------
 // 休館日か（closedDates の "MM-DD" は毎年、"YYYY-MM-DD" はその日だけ）
 const isClosedDate = (date, closedDates) => closedDates.some((closedDate) => closedDate === date || closedDate === date.slice(5));
+// 予約1件の、その夜の宿泊人数（泊まる夜でなければ0）
+const getStayCountOnDate = (reservation, date) => {
+    const nightIndex = countDaysBetween(reservation.startDate, date);
+    return nightIndex >= 0 && nightIndex < reservation.nights ? toSafeCount(reservation.stays[nightIndex]) : 0;
+};
 // その夜に泊まる人数の合計
 const countStayGuests = (reservations, date) => reservations
-    .filter((reservation) => listStayNights(reservation.startDate, reservation.nights).includes(date))
-    .reduce((total, reservation) => total + reservation.people, 0);
+    .reduce((total, reservation) => total + getStayCountOnDate(reservation, date), 0);
 const judgeStayAvailability = (bookedGuests, capacity, fewRatio) => {
     const remaining = capacity - bookedGuests;
     if (remaining <= 0) return '×';
@@ -262,11 +302,11 @@ const buildAvailabilityRows = (reservations, startDate, nights, context) => list
 const findSlotConflicts = (reservations, slots) => slots.filter((slot) => isSlotBooked(reservations, slot));
 // 申込の中で2回以上選ばれている施設コマ（2回目以降を返す）
 const findDuplicateSlots = (slots) => slots.filter((slot, index) => slots.findIndex((otherSlot) => isSameSlot(otherSlot, slot)) !== index);
-// 宿泊定員を超える夜（{ date, booked, requested, remaining }）
+// 宿泊定員を超える夜（{ date, booked, requested, remaining }）。その夜に泊まらない（0人）なら超えない
 const findCapacityOverflows = (reservations, request, capacity) => listStayNights(request.startDate, request.nights)
-    .map((date) => ({ date, booked: countStayGuests(reservations, date) }))
-    .filter(({ booked }) => booked + request.people > capacity)
-    .map(({ date, booked }) => ({ date, booked, requested: request.people, remaining: Math.max(capacity - booked, 0) }));
+    .map((date, nightIndex) => ({ date, booked: countStayGuests(reservations, date), requested: toSafeCount(request.stays?.[nightIndex]) }))
+    .filter(({ booked, requested }) => requested > 0 && booked + requested > capacity)
+    .map((overflow) => ({ ...overflow, remaining: Math.max(capacity - overflow.booked, 0) }));
 // 日程の外の日、または知らない施設・時間帯の施設コマ
 const findInvalidSlots = (request, catalog) => request.slots.filter((slot) => !listUsageDates(request.startDate, request.nights).includes(slot.date)
     || !findByKey(catalog.facilities, slot.facilityKey) || !findByKey(catalog.periods, slot.periodKey));
@@ -281,8 +321,7 @@ const canCheckSchedule = (request, config) => isValidDateString(request.startDat
 const findAvailabilityConflicts = (request, context) => {
     if (!canCheckSchedule(request, context.config)) return [];
     const closedDates = listUsageDates(request.startDate, request.nights).filter((date) => isClosedDate(date, context.config.closedDates));
-    const people = toSafeCount(request.people);
-    const overflows = findCapacityOverflows(context.reservations, { ...request, people }, context.config.stayCapacity);
+    const overflows = findCapacityOverflows(context.reservations, request, context.config.stayCapacity);
     return [...closedDates.map(buildClosedMessage), ...overflows.map(buildCapacityMessage),
         ...findSlotConflicts(context.reservations, request.slots).map((slot) => buildSlotConflictMessage(slot, context.catalog)),
         ...findDuplicateSlots(request.slots).map((slot) => `${formatDateLabel(slot.date)}の「${formatSlotName(slot, context.catalog)}」が2回選ばれています。`)];
@@ -303,22 +342,32 @@ const findFormatMessages = (request, catalog) => [
 ].filter(Boolean);
 const findCountMessages = (request, config, catalog) => [
     !isValidDateString(request.startDate) && '利用開始日を選んでください',
-    !(isNonNegativeInteger(request.nights) && request.nights <= config.maxNights) && `泊数は日帰り〜${config.maxNights}泊から選んでください`,
-    !(isPositiveInteger(request.people) && request.people <= config.maxPeople) && `人数は1〜${config.maxPeople}人で入力してください`,
+    !(isNonNegativeInteger(request.nights) && request.nights <= config.maxNights) && `利用日数は1〜${config.maxNights + 1}日から選んでください`,
+    !(isPositiveInteger(request.people) && request.people <= config.maxPeople) && `利用人数は1〜${config.maxPeople}人で入力してください`,
     !findByKey(catalog.priceTypes, request.priceType) && '料金区分を選んでください'
 ].filter(Boolean);
-// 食数は0以上、人数×利用日数まで
-const findMealMessages = (request, catalog) => {
-    const limit = toSafeCount(request.people) * (toSafeCount(request.nights) + 1);
-    return catalog.meals.filter((meal) => !(isNonNegativeInteger(request.meals?.[meal.key]) && request.meals[meal.key] <= limit))
-        .map((meal) => `${meal.name}の食数は0〜${limit}食（人数×利用日数まで）で入力してください`);
+// 日ごとの数のうち、0〜上限の整数でない日のインデックス
+const findInvalidDayIndexes = (counts, limit) => (Array.isArray(counts) ? counts : [])
+    .map((count, dayIndex) => (isNonNegativeInteger(count) && count <= limit ? null : dayIndex)).filter((dayIndex) => dayIndex !== null);
+// 宿泊人数は夜ごとに0〜利用人数まで
+const findStayMessages = (request) => {
+    const limit = toSafeCount(request.people);
+    return findInvalidDayIndexes(request.stays, limit)
+        .map((nightIndex) => `${formatDayOfRequest(request, nightIndex)}の宿泊人数は0〜${limit}人（利用人数まで）で入力してください`);
 };
-const findEmptyRequestMessages = (request) => (request.nights === 0 && request.slots.length === 0
-    ? ['宿泊（1泊以上）か、施設の利用コマを1つ以上選んでください'] : []);
+// 食事などは日ごとに0〜上限まで（食堂の食事は利用人数まで、それ以外は maxDailyItemCount まで）
+const findMealMessages = (request, catalog) => catalog.meals.flatMap((meal) => {
+    const limit = meal.perPerson ? toSafeCount(request.people) : catalog.maxDailyItemCount;
+    return findInvalidDayIndexes(request.meals?.[meal.key], limit).map((dayIndex) =>
+        `${formatDayOfRequest(request, dayIndex)}の${meal.name}は0〜${limit}${meal.unit}${meal.perPerson ? '（利用人数まで）' : ''}で入力してください`);
+});
+const hasAnyMeal = (request) => Object.values(request.meals ?? {}).some((counts) => sumCounts(counts) > 0);
+const findEmptyRequestMessages = (request) => (sumCounts(request.stays) === 0 && request.slots.length === 0 && !hasAnyMeal(request)
+    ? ['宿泊人数・施設コマ・食事のどれかを入力してください'] : []);
 // 入力の不備の一覧
 const findInputMessages = (request, config, catalog) => [
     ...findMissingFieldMessages(request), ...findFormatMessages(request, catalog), ...findCountMessages(request, config, catalog),
-    ...findMealMessages(request, catalog), ...findEmptyRequestMessages(request),
+    ...findStayMessages(request), ...findMealMessages(request, catalog), ...findEmptyRequestMessages(request),
     ...(canCheckSchedule(request, config) ? findInvalidSlots(request, catalog) : []).map((slot) => `${formatDateLabel(slot.date)}の施設コマは選べません`)
 ];
 // 受付期間の外か（today：今日の "YYYY-MM-DD"）
@@ -340,10 +389,15 @@ const findReservationBlockers = (request, context) => [
 // ---------- 予約データ（localStorage に保存する配列） ----------
 const isValidSlot = (slot) => typeof slot === 'object' && slot !== null && isValidDateString(slot.date)
     && typeof slot.facilityKey === 'string' && typeof slot.periodKey === 'string';
-// 予約1件として使える形か（空き状況の計算に使う項目を確認する）
+// 決まった日数分の、0以上の整数の配列か
+const isCountList = (value, length) => Array.isArray(value) && value.length === length && value.every(isNonNegativeInteger);
+const isValidMeals = (meals, dayCount) => typeof meals === 'object' && meals !== null && !Array.isArray(meals)
+    && Object.values(meals).every((counts) => isCountList(counts, dayCount));
+// 予約1件として使える形か（空き状況の計算に使う項目を確認する。宿泊人数は夜ごと、食事は利用日ごとの配列）
 const isValidReservation = (value) => typeof value === 'object' && value !== null
     && typeof value.id === 'string' && value.id !== '' && typeof value.groupName === 'string'
     && isValidDateString(value.startDate) && isNonNegativeInteger(value.nights) && isNonNegativeInteger(value.people)
+    && isCountList(value.stays, value.nights) && isValidMeals(value.meals, value.nights + 1)
     && Array.isArray(value.slots) && value.slots.every(isValidSlot);
 const safeParseJson = (text) => {
     try { return JSON.parse(text); } catch (error) { return null; }
@@ -395,15 +449,29 @@ const importReservationCode = (reservations, codeText) => {
 const formatSlotList = (slots, catalog) => [...new Set(slots.map((slot) => slot.date))]
     .map((date) => `${formatDateLabel(date)} ${slots.filter((slot) => slot.date === date).map((slot) => formatSlotName(slot, catalog)).join('・')}`)
     .join(' ／ ');
-const formatMealCounts = (meals, catalog) => catalog.meals.map((meal) => `${meal.name} ${toSafeCount(meals?.[meal.key])}食`).join('・');
+// "10/20(火) 40人・10/21(水) 38人"（日帰りは「なし（日帰り）」、全員0人は「なし」）
+const formatStayCounts = (reservation) => {
+    if (reservation.nights === 0) return 'なし（日帰り）';
+    if (sumCounts(reservation.stays) === 0) return 'なし';
+    return reservation.stays.map((count, nightIndex) => `${formatDayOfRequest(reservation, nightIndex)} ${count}人`).join('・');
+};
+// "朝食 80食（10/21(水) 40・10/22(木) 40） ／ お茶 45本（10/20(火) 45）"（数が1以上の品目と日だけ。なければ「なし」）
+const formatMealCounts = (reservation, catalog) => catalog.meals
+    .filter((meal) => sumCounts(reservation.meals?.[meal.key]) > 0)
+    .map((meal) => {
+        const days = reservation.meals[meal.key].map((count, dayIndex) => ({ count, dayIndex })).filter(({ count }) => count > 0);
+        const dayText = days.map(({ count, dayIndex }) => `${formatDayOfRequest(reservation, dayIndex)} ${count}`).join('・');
+        return `${meal.name} ${sumCounts(reservation.meals[meal.key])}${meal.unit}（${dayText}）`;
+    }).join(' ／ ') || 'なし';
 // 控えとメールに載せる [見出し, 内容] の一覧
 const buildReservationSummary = (reservation, catalog) => [
     ['予約番号', reservation.id], ['申込日時', reservation.createdAt.replace('T', ' ')],
     ['団体名', reservation.groupName], ['代表者名', reservation.representative],
     ['電話番号', reservation.phone], ['メールアドレス', reservation.email], ['利用目的', reservation.purpose],
     ['日程', formatScheduleLabel(reservation.startDate, reservation.nights)],
-    ['人数', `${reservation.people}人（${findByKey(catalog.priceTypes, reservation.priceType)?.name ?? ''}）`],
-    ['施設コマ', formatSlotList(reservation.slots, catalog) || 'なし'], ['食事数', formatMealCounts(reservation.meals, catalog)]
+    ['利用人数', `${reservation.people}人（${findByKey(catalog.priceTypes, reservation.priceType)?.name ?? ''}）`],
+    ['宿泊人数', formatStayCounts(reservation)],
+    ['施設コマ', formatSlotList(reservation.slots, catalog) || 'なし'], ['食事など', formatMealCounts(reservation, catalog)]
 ];
 const buildMailSubject = (reservation) => `【Web予約申込】${reservation.groupName} ${formatDateLabel(reservation.startDate)}〜（予約番号 ${reservation.id}）`;
 const buildMailBody = (reservation, catalog) => [
@@ -419,25 +487,32 @@ const escapeHtml = (text) => String(text).replace(/[&<>"']/g, (char) => ({ '&': 
 
 // ---------- デモ用のサンプル予約（baseDate：今日の "YYYY-MM-DD"。offset は今日から何日後か） ----------
 // 既定の日程（3日後から2泊）を開くと、宿泊の△・大体育館の×・施設の△がすぐ確認できる並びにしている
+// stays は泊まる夜ごと、meals は利用日ごとの数（書いていない品目は毎日0）
 const SAMPLE_SPECS = deepFreeze([
     { offset: 3, nights: 2, people: 40, priceType: 'hs', groupName: 'サンプル高校 陸上部', representative: '佐藤 花子', purpose: 'スポーツ合宿',
-        meals: { bf: 80, lu: 80, di: 80 }, slots: [[0, 'field', 'am'], [0, 'field', 'pm'], [1, 'field', 'am'], [1, 'field', 'pm']] },
+        stays: [40, 38], meals: { bf: [0, 40, 38], lu: [40, 40, 38], di: [40, 38, 0] },
+        slots: [[0, 'field', 'am'], [0, 'field', 'pm'], [1, 'field', 'am'], [1, 'field', 'pm']] },
     { offset: 3, nights: 1, people: 45, priceType: 'ad', groupName: 'みどりスポーツクラブ', representative: '鈴木 一郎', purpose: 'サークル・クラブ活動',
-        meals: { bf: 45, lu: 0, di: 45 }, slots: [[0, 'kL', 'ev'], [1, 'gym', 'am'], [1, 'gym', 'pm'], [1, 'gym', 'ev']] },
+        stays: [45], meals: { bf: [0, 45], di: [45, 0], te: [45, 0] },
+        slots: [[0, 'kL', 'ev'], [1, 'gym', 'am'], [1, 'gym', 'pm'], [1, 'gym', 'ev']] },
     { offset: 5, nights: 0, people: 30, priceType: 'es', groupName: 'やまびこスポーツ少年団', representative: '高橋 次郎', purpose: '大会・試合',
-        meals: { bf: 0, lu: 30, di: 0 }, slots: [[0, 'gym_s', 'am'], [0, 'gym_s', 'pm'], [0, 'mr', 'pm']] },
+        stays: [], meals: { be_oni: [30], te: [30] }, slots: [[0, 'gym_s', 'am'], [0, 'gym_s', 'pm'], [0, 'mr', 'pm']] },
     { offset: 10, nights: 3, people: 100, priceType: 'ad', groupName: 'あおぞら大学 バレーボール部', representative: '田中 三郎', purpose: 'スポーツ合宿',
-        meals: { bf: 300, lu: 300, di: 300 }, slots: [[1, 'gym', 'am'], [1, 'gym', 'pm'], [2, 'gym', 'am'], [2, 'gym', 'pm']] }
+        stays: [100, 100, 100], meals: { bf: [0, 100, 100, 100], lu: [100, 100, 100, 0], di: [100, 100, 100, 0] },
+        slots: [[1, 'gym', 'am'], [1, 'gym', 'pm'], [2, 'gym', 'am'], [2, 'gym', 'pm']] }
 ]);
-const buildSampleRequest = (spec, startDate, index) => ({
+// サンプルの食事を、すべての品目・利用日の配列にする
+const buildSampleMeals = (specMeals, dayCount, catalog) => Object.fromEntries(catalog.meals
+    .map((meal) => [meal.key, Array.from({ length: dayCount }, (_, dayIndex) => specMeals[meal.key]?.[dayIndex] ?? 0)]));
+const buildSampleRequest = (spec, startDate, index, catalog) => ({
     groupName: spec.groupName, representative: spec.representative, phone: `000000000${index + 1}`,
     email: `sample${index + 1}@example.com`, purpose: spec.purpose, startDate, nights: spec.nights, priceType: spec.priceType,
-    people: spec.people, meals: { ...spec.meals },
+    people: spec.people, stays: [...spec.stays], meals: buildSampleMeals(spec.meals, spec.nights + 1, catalog),
     slots: spec.slots.map(([day, facilityKey, periodKey]) => ({ date: addDaysToDateString(startDate, day), facilityKey, periodKey }))
 });
 // 動作確認用のサンプル予約（同じ baseDate なら毎回同じ内容）
 const createSampleReservations = (baseDate, catalog) => SAMPLE_SPECS.map((spec, index) => ({
-    ...createReservation(buildSampleRequest(spec, addDaysToDateString(baseDate, spec.offset), index), [], `${baseDate}T09:00`, catalog),
+    ...createReservation(buildSampleRequest(spec, addDaysToDateString(baseDate, spec.offset), index, catalog), [], `${baseDate}T09:00`, catalog),
     id: `${SAMPLE_ID_PREFIX}${String(index + 1).padStart(3, '0')}`
 }));
 
@@ -450,8 +525,8 @@ if (typeof module !== 'undefined') {
         parseDateString, isValidDateString, addDaysToDateString, countDaysBetween, formatDateLabel, formatDateJapanese,
         toLocalDateString, toLocalDateTimeString, listUsageDates, listStayNights, formatScheduleLabel,
         toHalfWidthDigits, parseCount, isSameSlot, sortUniqueSlots, buildRequest,
-        isStayRequest, pickFacilityPrice, calculateIncludedTax, calculateReservationFee, formatYen,
-        isClosedDate, countStayGuests, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,
+        sumCounts, isStayRequest, pickFacilityPrice, calculateIncludedTax, calculateTaxBreakdown, calculateReservationFee, formatYen,
+        isClosedDate, getStayCountOnDate, countStayGuests, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,
         findSlotConflicts, findDuplicateSlots, findCapacityOverflows, formatSlotName, findAvailabilityConflicts,
         isPhoneNumber, findInputMessages, findScheduleMessages, findReservationBlockers,
         isValidReservation, parseStoredReservations, serializeReservations, appendReservation, isSampleReservation, mergeSampleReservations,

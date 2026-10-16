@@ -17,8 +17,8 @@ const toPlain = (value) => JSON.parse(JSON.stringify(value));
 
 const REQUEST = Object.freeze({
     groupName: 'サンプル高校 陸上部', representative: '山田 太郎', phone: '000-0000-0000', email: 'sample@example.com',
-    purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 1, priceType: 'hs', people: 20,
-    meals: { bf: 20, lu: 0, di: 20 },
+    purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 1, priceType: 'hs', people: 20, stays: [20],
+    meals: Object.fromEntries(CATALOG.meals.map((meal) => [meal.key, ({ bf: [0, 20], di: [20, 0], te: [20, 0] })[meal.key] ?? [0, 0]])),
     slots: [{ date: '2026-11-02', facilityKey: 'gym', periodKey: 'pm' }, { date: '2026-11-03', facilityKey: 'gym', periodKey: 'am' }]
 });
 const RESERVATION = createReservation(REQUEST, [], '2026-10-17T14:05', CATALOG);
@@ -36,7 +36,7 @@ test('createReservationId は申込日ごとの通し番号を作り、使われ
 
 test('createReservation は申込の内容に予約番号・申込日時・概算料金を付け、申込を書き換えない', () => {
     assert.deepStrictEqual(toPlain(RESERVATION), {
-        id: 'R20261017-001', createdAt: '2026-10-17T14:05', ...toPlain(REQUEST), estimatedTotal: 50000 + 13200 + 19800 + 10740
+        id: 'R20261017-001', createdAt: '2026-10-17T14:05', ...toPlain(REQUEST), estimatedTotal: 50000 + 13200 + 19800 + 3000 + 10740
     });
     assert.strictEqual(Object.prototype.hasOwnProperty.call(REQUEST, 'id'), false);
 });
@@ -45,7 +45,9 @@ test('isValidReservation は空き状況の計算に使う項目がそろった�
     assert.strictEqual(isValidReservation(RESERVATION), true);
     [null, 'text', [], {}, { ...RESERVATION, id: '' }, { ...RESERVATION, startDate: '2026-02-30' }, { ...RESERVATION, nights: -1 },
         { ...RESERVATION, people: 1.5 }, { ...RESERVATION, slots: 'gym' }, { ...RESERVATION, slots: [{ date: 'x', facilityKey: 'gym', periodKey: 'am' }] },
-        { ...RESERVATION, groupName: undefined }].forEach((value, index) => assert.strictEqual(isValidReservation(value), false, `${index}番目`));
+        { ...RESERVATION, groupName: undefined }, { ...RESERVATION, stays: undefined }, { ...RESERVATION, stays: [20, 20] },
+        { ...RESERVATION, stays: [-1] }, { ...RESERVATION, meals: { bf: [1] } }, { ...RESERVATION, meals: { bf: 20 } }, { ...RESERVATION, meals: [] }
+    ].forEach((value, index) => assert.strictEqual(isValidReservation(value), false, `${index}番目`));
 });
 
 test('parseStoredReservations は保存データがない・壊れているときは空にし、形の違う予約を除く', () => {
@@ -78,7 +80,7 @@ test('parseReservationCode は別のデータ・違う版・壊れた予約を�
     assert.deepStrictEqual(parseReservationCode('not json'), { ok: false, error: '予約の取込用コードではありません' });
     assert.deepStrictEqual(parseReservationCode(undefined), { ok: false, error: '予約の取込用コードではありません' });
     assert.deepStrictEqual(parseReservationCode(wrap({ type: 'other' })), { ok: false, error: '予約の取込用コードではありません' });
-    assert.deepStrictEqual(parseReservationCode(wrap({ version: 2 })), { ok: false, error: '対応していない版のコードです（version 2）' });
+    assert.deepStrictEqual(parseReservationCode(wrap({ version: 1 })), { ok: false, error: '対応していない版のコードです（version 1）' }, '宿泊人数・食事が日ごとでない古い版');
     assert.deepStrictEqual(parseReservationCode(wrap({ reservation: { id: 'R1' } })), { ok: false, error: '予約の内容が正しくありません' });
 });
 
@@ -95,17 +97,22 @@ test('buildReservationSummary は控えとメールに載せる見出しと内�
     assert.deepStrictEqual(buildReservationSummary(RESERVATION, CATALOG), [
         ['予約番号', 'R20261017-001'], ['申込日時', '2026-10-17 14:05'], ['団体名', 'サンプル高校 陸上部'], ['代表者名', '山田 太郎'],
         ['電話番号', '000-0000-0000'], ['メールアドレス', 'sample@example.com'], ['利用目的', 'スポーツ合宿'],
-        ['日程', '2026年11月2日(月)〜11月3日(火) 1泊2日'], ['人数', '20人（高校生）'],
-        ['施設コマ', '11/2(月) 大体育館 PM ／ 11/3(火) 大体育館 AM'], ['食事数', '朝食 20食・昼食 0食・夕食 20食']
+        ['日程', '2026年11月2日(月)〜11月3日(火) 1泊2日'], ['利用人数', '20人（高校生）'], ['宿泊人数', '11/2(月) 20人'],
+        ['施設コマ', '11/2(月) 大体育館 PM ／ 11/3(火) 大体育館 AM'],
+        ['食事など', '朝食 20食（11/3(火) 20） ／ 夕食 20食（11/2(月) 20） ／ お茶 20本（11/2(月) 20）']
     ]);
-    assert.strictEqual(buildReservationSummary({ ...RESERVATION, slots: [] }, CATALOG)[9][1], 'なし');
+    const summaryOf = (overrides) => Object.fromEntries(buildReservationSummary({ ...RESERVATION, ...overrides }, CATALOG));
+    assert.strictEqual(summaryOf({ slots: [] })['施設コマ'], 'なし');
+    assert.strictEqual(summaryOf({ stays: [0] })['宿泊人数'], 'なし');
+    assert.strictEqual(summaryOf({ nights: 0, stays: [] })['宿泊人数'], 'なし（日帰り）');
+    assert.strictEqual(summaryOf({ meals: {} })['食事など'], 'なし');
 });
 
 test('職員宛てメールの件名・本文・mailto の URL', () => {
     assert.strictEqual(buildMailSubject(RESERVATION), '【Web予約申込】サンプル高校 陸上部 11/2(月)〜（予約番号 R20261017-001）');
     const body = buildMailBody(RESERVATION, CATALOG);
     assert.ok(body.includes('団体名：サンプル高校 陸上部'));
-    assert.ok(body.includes('概算料金：93,740円（税込）'));
+    assert.ok(body.includes('概算料金：96,740円（税込）'));
     assert.strictEqual(body.split('\n').at(-1), buildReservationCode(RESERVATION), '最後の行が1行コード');
     const url = buildStaffMailUrl(CONFIG.staffEmail, 'a&b', '1行目\n2行目');
     assert.strictEqual(url, 'mailto:reservation@example.com?subject=a%26b&body=1%E8%A1%8C%E7%9B%AE%0A2%E8%A1%8C%E7%9B%AE');

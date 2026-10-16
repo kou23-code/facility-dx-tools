@@ -5,7 +5,7 @@ const assert = require('node:assert');
 const { RESERVATION_LOGIC_PATH } = require('./helpers');
 const {
     RESERVATION_CONFIG: CONFIG, RESERVATION_CATALOG: CATALOG,
-    isClosedDate, countStayGuests, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,
+    isClosedDate, getStayCountOnDate, countStayGuests, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,
     findSlotConflicts, findDuplicateSlots, findCapacityOverflows, formatSlotName, findAvailabilityConflicts,
     isPhoneNumber, findInputMessages, findScheduleMessages, findReservationBlockers
 } = require(RESERVATION_LOGIC_PATH);
@@ -16,18 +16,19 @@ const slotOf = (date, facilityKey, periodKey) => ({ date, facilityKey, periodKey
 const buildReservation = (id, overrides) => ({
     id, createdAt: '2026-10-01T09:00', groupName: '既存の団体', representative: '鈴木 一郎', phone: '0000000000',
     email: 'booked@example.com', purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 1, priceType: 'ad', people: 0,
-    meals: { bf: 0, lu: 0, di: 0 }, slots: [], ...overrides
+    stays: [0], meals: {}, slots: [], ...overrides
 });
+// 申込（11/2 から2泊3日、利用人数20人、宿泊は毎晩20人。食事は書いた品目だけ）
 const buildRequest = (overrides) => ({
     groupName: 'サンプル高校 陸上部', representative: '山田 太郎', phone: '000-0000-0000', email: 'sample@example.com',
     purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 2, priceType: 'hs', people: 20,
-    meals: { bf: 0, lu: 0, di: 0 }, slots: [], ...overrides
+    stays: [20, 20], meals: {}, slots: [], ...overrides
 });
 
 // 11/2〜11/3 に60人、11/3 に25人（11/3 の夜は85人）。11/3 の大体育館は全区分、11/2 の小体育館は AM だけ予約済み
 const RESERVATIONS = [
-    buildReservation('R1', { nights: 2, people: 60, slots: [slotOf('2026-11-02', 'gym_s', 'am')] }),
-    buildReservation('R2', { startDate: '2026-11-03', people: 25,
+    buildReservation('R1', { nights: 2, people: 60, stays: [60, 60], slots: [slotOf('2026-11-02', 'gym_s', 'am')] }),
+    buildReservation('R2', { startDate: '2026-11-03', people: 25, stays: [25],
         slots: [slotOf('2026-11-03', 'gym', 'am'), slotOf('2026-11-03', 'gym', 'pm'), slotOf('2026-11-03', 'gym', 'ev')] })
 ];
 const CONTEXT = { reservations: RESERVATIONS, config: CONFIG, catalog: CATALOG, today: '2026-10-17' };
@@ -92,12 +93,25 @@ test('findSlotConflicts・findDuplicateSlots は予約済みのコマと、申�
 });
 
 test('findCapacityOverflows は定員ちょうどまで許し、超える夜だけを返す', () => {
-    assert.deepStrictEqual(findCapacityOverflows(RESERVATIONS, buildRequest({ people: 15 }), 100), []);
-    assert.deepStrictEqual(toPlain(findCapacityOverflows(RESERVATIONS, buildRequest({ people: 16 }), 100)), [
+    assert.deepStrictEqual(findCapacityOverflows(RESERVATIONS, buildRequest({ stays: [40, 15] }), 100), []);
+    assert.deepStrictEqual(toPlain(findCapacityOverflows(RESERVATIONS, buildRequest({ stays: [40, 16] }), 100)), [
         { date: '2026-11-03', booked: 85, requested: 16, remaining: 15 }
     ]);
-    assert.strictEqual(findCapacityOverflows(RESERVATIONS, buildRequest({ people: 41 }), 100).length, 2);
-    assert.deepStrictEqual(findCapacityOverflows(RESERVATIONS, buildRequest({ nights: 0, people: 300 }), 100), [], '日帰りは定員の対象外');
+    assert.strictEqual(findCapacityOverflows(RESERVATIONS, buildRequest({ stays: [41, 41] }), 100).length, 2);
+    assert.deepStrictEqual(findCapacityOverflows(RESERVATIONS, buildRequest({ nights: 0, stays: [] }), 100), [], '日帰りは定員の対象外');
+});
+
+test('findCapacityOverflows は宿泊人数を夜ごとに見て、泊まらない夜（0人）は満室でも超えない', () => {
+    const full = [buildReservation('F1', { nights: 2, people: 100, stays: [100, 0] })];
+    assert.deepStrictEqual(findCapacityOverflows(full, buildRequest({ stays: [0, 30] }), 100), []);
+    assert.deepStrictEqual(toPlain(findCapacityOverflows(full, buildRequest({ stays: [1, 30] }), 100)),
+        [{ date: '2026-11-02', booked: 100, requested: 1, remaining: 0 }]);
+});
+
+test('getStayCountOnDate は予約のその夜の宿泊人数を返し、泊まる夜でなければ0にする', () => {
+    const reservation = buildReservation('S1', { nights: 2, stays: [30, 12] });
+    assert.deepStrictEqual(['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04'].map((date) => getStayCountOnDate(reservation, date)), [0, 30, 12, 0]);
+    assert.strictEqual(countStayGuests([reservation, buildReservation('S2', { stays: [5] })], '2026-11-02'), 35);
 });
 
 test('formatSlotName は施設名と時間帯名を出し、知らないキーはそのまま出す', () => {
@@ -106,14 +120,14 @@ test('formatSlotName は施設名と時間帯名を出し、知らないキー�
 });
 
 test('findAvailabilityConflicts は定員超過・施設コマの重複・休館日を文言にする', () => {
-    const request = buildRequest({ people: 20, slots: [slotOf('2026-11-03', 'gym', 'ev'), slotOf('2026-11-03', 'gym_s', 'ev')] });
+    const request = buildRequest({ slots: [slotOf('2026-11-03', 'gym', 'ev'), slotOf('2026-11-03', 'gym_s', 'ev')] });
     assert.deepStrictEqual(findAvailabilityConflicts(request, CONTEXT), [
         '11/3(火)の夜は宿泊定員を超えます（ご希望 20人 ／ 残り 15人）。人数か日程を変更してください。',
         '11/3(火)の「大体育館 夜」はすでに予約が入っています。別の時間帯か日程を選んでください。'
     ]);
-    assert.deepStrictEqual(findAvailabilityConflicts(buildRequest({ startDate: '2026-12-28', nights: 1, people: 1 }), CONTEXT),
+    assert.deepStrictEqual(findAvailabilityConflicts(buildRequest({ startDate: '2026-12-28', nights: 1, stays: [1] }), CONTEXT),
         ['12/29(火)は休館日のため予約できません。日程を変更してください。']);
-    assert.deepStrictEqual(findAvailabilityConflicts(buildRequest({ people: 15 }), CONTEXT), []);
+    assert.deepStrictEqual(findAvailabilityConflicts(buildRequest({ stays: [20, 15] }), CONTEXT), []);
 });
 
 test('findAvailabilityConflicts は日程が正しくないときは判定しない', () => {
@@ -128,7 +142,8 @@ test('isPhoneNumber は数字とハイフンで10〜11桁だけを認める', ()
 });
 
 test('findInputMessages：正しい申込なら空', () => {
-    assert.deepStrictEqual(findInputMessages(buildRequest({ meals: { bf: 40, lu: 60, di: 40 } }), CONFIG, CATALOG), []);
+    const meals = { bf: [0, 20, 20], lu: [20, 20, 20], di: [20, 20, 0], be_maku: [0, 0, 999], te: [999, 0, 0] };
+    assert.deepStrictEqual(findInputMessages(buildRequest({ meals }), CONFIG, CATALOG), []);
 });
 
 test('findInputMessages：必須の項目が空・空白だけなら未入力にする', () => {
@@ -141,20 +156,33 @@ test('findInputMessages：電話番号・メール・利用目的・日付・泊
     const request = buildRequest({ phone: '123', email: 'a@b', purpose: '旅行', startDate: '2026-02-30', nights: 7, people: 301, priceType: 'zz' });
     assert.deepStrictEqual(findInputMessages(request, CONFIG, CATALOG), [
         '電話番号は数字とハイフンで10〜11桁を入力してください', 'メールアドレスの形が正しくありません', '利用目的を一覧から選んでください',
-        '利用開始日を選んでください', '泊数は日帰り〜6泊から選んでください', '人数は1〜300人で入力してください', '料金区分を選んでください'
+        '利用開始日を選んでください', '利用日数は1〜7日から選んでください', '利用人数は1〜300人で入力してください', '料金区分を選んでください'
     ]);
-    assert.deepStrictEqual(findInputMessages(buildRequest({ people: 0 }), CONFIG, CATALOG), ['人数は1〜300人で入力してください']);
+    assert.deepStrictEqual(findInputMessages(buildRequest({ people: 0, stays: [0, 0], slots: [slotOf('2026-11-02', 'gym', 'am')] }), CONFIG, CATALOG),
+        ['利用人数は1〜300人で入力してください']);
 });
 
-test('findInputMessages：食数は人数×利用日数まで（ちょうどは可）、正しくない数はエラー', () => {
-    assert.deepStrictEqual(findInputMessages(buildRequest({ meals: { bf: 61, lu: 60, di: NaN } }), CONFIG, CATALOG), [
-        '朝食の食数は0〜60食（人数×利用日数まで）で入力してください', '夕食の食数は0〜60食（人数×利用日数まで）で入力してください'
+test('findInputMessages：宿泊人数は夜ごとに0〜利用人数まで（ちょうどは可）、正しくない数はエラー', () => {
+    assert.deepStrictEqual(findInputMessages(buildRequest({ stays: [20, 0] }), CONFIG, CATALOG), []);
+    assert.deepStrictEqual(findInputMessages(buildRequest({ stays: [21, NaN] }), CONFIG, CATALOG), [
+        '11/2(月)の宿泊人数は0〜20人（利用人数まで）で入力してください', '11/3(火)の宿泊人数は0〜20人（利用人数まで）で入力してください'
     ]);
 });
 
-test('findInputMessages：日帰りで施設コマもないときと、日程の外のコマを止める', () => {
-    assert.deepStrictEqual(findInputMessages(buildRequest({ nights: 0 }), CONFIG, CATALOG), ['宿泊（1泊以上）か、施設の利用コマを1つ以上選んでください']);
-    assert.deepStrictEqual(findInputMessages(buildRequest({ nights: 0, slots: [slotOf('2026-11-02', 'gym', 'am')] }), CONFIG, CATALOG), []);
+test('findInputMessages：食堂の食事は日ごとに利用人数まで、弁当・お茶などは999まで（ちょうどは可）', () => {
+    const meals = { bf: [21, 20, 0], di: [0, NaN, 0], te: [0, 0, 1000], be_oni: [999, 0, 0] };
+    assert.deepStrictEqual(findInputMessages(buildRequest({ meals }), CONFIG, CATALOG), [
+        '11/2(月)の朝食は0〜20食（利用人数まで）で入力してください', '11/3(火)の夕食は0〜20食（利用人数まで）で入力してください',
+        '11/4(水)のお茶は0〜999本で入力してください'
+    ]);
+});
+
+test('findInputMessages：宿泊・施設コマ・食事がどれもないときと、日程の外のコマを止める', () => {
+    const empty = '宿泊人数・施設コマ・食事のどれかを入力してください';
+    assert.deepStrictEqual(findInputMessages(buildRequest({ nights: 0, stays: [] }), CONFIG, CATALOG), [empty]);
+    assert.deepStrictEqual(findInputMessages(buildRequest({ stays: [0, 0] }), CONFIG, CATALOG), [empty], '2泊3日でも宿泊0人で何もなければ止める');
+    assert.deepStrictEqual(findInputMessages(buildRequest({ nights: 0, stays: [], meals: { be_maku: [10] } }), CONFIG, CATALOG), [], '弁当だけでも申し込める');
+    assert.deepStrictEqual(findInputMessages(buildRequest({ nights: 0, stays: [], slots: [slotOf('2026-11-02', 'gym', 'am')] }), CONFIG, CATALOG), []);
     assert.deepStrictEqual(findInputMessages(buildRequest({ slots: [slotOf('2026-11-05', 'gym', 'am')] }), CONFIG, CATALOG), ['11/5(木)の施設コマは選べません']);
     assert.deepStrictEqual(findInputMessages(buildRequest({ slots: [slotOf('2026-11-02', 'pool', 'am')] }), CONFIG, CATALOG), ['11/2(月)の施設コマは選べません']);
 });
@@ -170,8 +198,8 @@ test('findScheduleMessages は今日・過去の日と、受付期間より先�
 });
 
 test('findReservationBlockers は入力の不備・受付期間・空き状況の理由をまとめて返す', () => {
-    assert.deepStrictEqual(findReservationBlockers(buildRequest({ people: 15 }), CONTEXT), []);
-    const blockers = findReservationBlockers(buildRequest({ groupName: '', startDate: '2026-10-17', people: 20 }), { ...CONTEXT, reservations: [] });
+    assert.deepStrictEqual(findReservationBlockers(buildRequest({ stays: [15, 15] }), CONTEXT), []);
+    const blockers = findReservationBlockers(buildRequest({ groupName: '', startDate: '2026-10-17' }), { ...CONTEXT, reservations: [] });
     assert.deepStrictEqual(blockers, ['団体名が未入力です', '利用開始日は2026年10月18日(日)以降を選んでください']);
-    assert.strictEqual(findReservationBlockers(buildRequest({ people: 50 }), CONTEXT).length, 2, '2泊とも定員超過');
+    assert.strictEqual(findReservationBlockers(buildRequest({ people: 50, stays: [50, 50] }), CONTEXT).length, 2, '2泊とも定員超過');
 });
