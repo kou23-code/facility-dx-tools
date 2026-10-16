@@ -37,7 +37,11 @@ const CAPTURE_SOURCE = `const capture = () => ({
     mailHref: document.getElementById('mailButton').getAttribute('href'),
     receiptText: document.getElementById('receipt').textContent.replace(/\\s+/g, ' '),
     dailyHead: Array.from(document.querySelectorAll('#dailyTable thead th'), (cell) => cell.textContent),
-    stayInputs: document.querySelectorAll('#dailyTable input[data-row="stay"]').length,
+    stayInputs: document.querySelectorAll('#dailyTable input[data-row^="stay_"]').length,
+    stayNightTotals: Array.from(document.querySelectorAll('#dailyTable td[id^="total_stay_night_"]'), (cell) => cell.textContent),
+    stayPlanNote: document.getElementById('stayPlanNote').textContent,
+    stayGroupRow: document.querySelector('#dailyTable .group-row td').textContent,
+    feeType: document.getElementById('fee_type').textContent,
     dailyRows: Array.from(document.querySelectorAll('#dailyTable tbody th'), (cell) => cell.firstChild.textContent),
     lunchValues: Array.from(document.querySelectorAll('#dailyTable input[data-row="meal_lu"]'), (input) => input.value),
     feeTax: document.getElementById('fee_tax').textContent,
@@ -49,7 +53,7 @@ const setValue = (id, value) => { document.getElementById(id).value = value; };
 const fillApplicant = () => {
     [['in_group', 'テスト団体'], ['in_representative', '山田 太郎'], ['in_phone', '000-0000-0000'],
      ['in_email', 'test@example.com'], ['in_purpose', 'スポーツ合宿'], ['in_price_type', 'ad'], ['in_people', '10'],
-     ['in_stay_0', '10'], ['in_stay_1', '10'], ['in_meal_bf_1', '10'], ['in_meal_bf_2', '10'], ['in_meal_be_maku_0', '10']]
+     ['in_stay_ad_m_0', '6'], ['in_stay_ad_f_0', '4'], ['in_stay_ad_m_1', '6'], ['in_stay_ad_f_1', '4'], ['in_meal_bf_1', '10'], ['in_meal_bf_2', '10'], ['in_meal_be_maku_0', '10']]
         .forEach(([id, value]) => setValue(id, value));
 };`;
 
@@ -101,11 +105,11 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
         refreshSlots();
         states.push(capture());
         setValue('in_people', '20');
-        setValue('in_stay_0', '20');
+        setValue('in_stay_ad_m_0', '16');
         refreshSummary();
         states.push(capture());
         setValue('in_people', '10');
-        setValue('in_stay_0', '10');
+        setValue('in_stay_ad_m_0', '6');
         refreshSummary();
         confirmReservation();
         states.push(capture());
@@ -122,9 +126,11 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.deepStrictEqual(initial.staySymbols, ['◎', '◎']);
     assert.strictEqual(initial.storage, null);
     assert.deepStrictEqual(initial.dailyHead.slice(1, 4).map((text) => text.slice(0, 3)), ['1日目', '2日目', '3日目']);
-    assert.strictEqual(initial.stayInputs, 2, '宿泊人数は泊まる夜（2泊）だけ入力できる');
-    assert.deepStrictEqual(initial.dailyRows,
-        ['宿泊人数', '朝食', '昼食', '夕食', '竜田揚げ弁当', '幕の内弁当', 'からマヨ丼', 'おにぎり弁当', 'お茶', '塩おにぎり(2個)']);
+    assert.strictEqual(initial.stayInputs, 12, '宿泊人数は区分×男女の6行で、泊まる夜（2泊）だけ入力できる');
+    assert.strictEqual(initial.stayPlanNote, '※現時点での予定人数で構いません（後日変更可能です）');
+    assert.ok(initial.stayGroupRow.includes('※現時点での予定人数で構いません（後日変更可能です）'), '表の宿泊の見出しにも注記');
+    assert.deepStrictEqual(initial.dailyRows, ['小学生・中学生 男性', '小学生・中学生 女性', '高校生 男性', '高校生 女性',
+        '大学生・一般 男性', '大学生・一般 女性', '宿泊人数 合計', '朝食', '昼食', '夕食', '竜田揚げ弁当', '幕の内弁当', 'からマヨ丼', 'おにぎり弁当', 'お茶', '塩おにぎり(2個)']);
 
     assert.deepStrictEqual(withSamples.staySymbols, ['△', '◎'], '1泊目は85人で残りわずか');
     assert.deepStrictEqual(withSamples.gymSymbols, ['◎', '×', '◎'], '2日目の大体育館はすべて予約済み');
@@ -133,6 +139,8 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.strictEqual(withSamples.storageStatus, 'このブラウザの予約データ：4件（うちサンプル 4件）');
 
     assert.deepStrictEqual(ready.blockers, []);
+    assert.deepStrictEqual(ready.stayNightTotals, ['10人', '10人'], '夜ごとに区分・男女の合計を出す');
+    assert.strictEqual(ready.feeType, '施設は「宿泊利用料金（大学生・一般 基準）」で計算しています');
     assert.strictEqual(ready.buttonDisabled, false);
     assert.strictEqual(ready.total, '96,150', '宿泊 3,300円×(10＋10)人＋大体育館 8,050円＋大研修室 950円×2時間＋朝食 660円×20食＋幕の内弁当 700円×10食');
     assert.strictEqual(ready.feeTax, '（うち消費税 10%：8,104円 ／ 8%：518円）', '弁当は軽減税率');
@@ -154,7 +162,7 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.deepStrictEqual(parsed.reservation, stored[4], '1行コードは保存した予約と同じ内容');
     assert.match(parsed.reservation.id, /^R\d{8}-001$/);
     assert.strictEqual(parsed.reservation.estimatedTotal, 96150);
-    assert.deepStrictEqual(parsed.reservation.stays, [10, 10]);
+    assert.deepStrictEqual(parsed.reservation.stays, { es_m: [0, 0], es_f: [0, 0], hs_m: [0, 0], hs_f: [0, 0], ad_m: [6, 6], ad_f: [4, 4] });
     assert.deepStrictEqual([parsed.reservation.meals.bf, parsed.reservation.meals.be_maku], [[0, 10, 10], [10, 0, 0]]);
     const firstDay = addDaysToDateString(today, 3);
     assert.deepStrictEqual(parsed.reservation.slots, [{ date: firstDay, facilityKey: 'gym', timeKey: 'am' },
@@ -194,18 +202,18 @@ test('画面：「全日」で1日目の数をコピーでき、利用日数を�
     const states = renderStates(`
         setValue('in_meal_lu_0', '7');
         copyFirstDayToAll('meal_lu');
-        setValue('in_stay_0', '5');
+        setValue('in_stay_hs_f_0', '5');
         states.push(capture());
         setValue('in_nights', '1');
         refreshAll();
-        states.push(Object.assign(capture(), { stayValue: document.getElementById('in_stay_0').value }));
+        states.push(Object.assign(capture(), { stayValue: document.getElementById('in_stay_hs_f_0').value }));
         setValue('in_nights', '0');
         refreshAll();
         states.push(capture());
     `);
     const [copied, twoDays, dayTrip] = states;
     assert.deepStrictEqual(copied.lunchValues, ['7', '7', '7']);
-    assert.deepStrictEqual([twoDays.lunchValues, twoDays.stayInputs, twoDays.stayValue], [['7', '7'], 1, '5']);
+    assert.deepStrictEqual([twoDays.lunchValues, twoDays.stayInputs, twoDays.stayValue], [['7', '7'], 6, '5']);
     assert.deepStrictEqual([dayTrip.lunchValues, dayTrip.stayInputs], [['7'], 0], '日帰りは宿泊人数を入力できない');
     assert.deepStrictEqual(dayTrip.staySymbols, [], '日帰りは宿泊の空きを出さない');
 });
