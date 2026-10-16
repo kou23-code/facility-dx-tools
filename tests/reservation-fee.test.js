@@ -21,6 +21,8 @@ const loadEstimateCategories = () => {
     const source = /const categories = (\[[\s\S]*?\n {8}\]);/.exec(readHtml())[1];
     return vm.runInNewContext(`(${source})`);
 };
+// 予約システムだけ表記を変えている施設（料金は同じ）
+const RENAMED_FACILITIES = Object.freeze({ mr: 'ミーティングルーム' });
 const findEstimateItem = (categories, key) => categories.flatMap((category) => category.items).find((item) => item.key === key);
 
 const buildSampleRequest = (overrides) => ({
@@ -57,7 +59,7 @@ test('予約システムの料金は、概算見積もりシステムの料金�
     CATALOG.meals.forEach((meal) => assert.strictEqual(meal.price, findEstimateItem(categories, meal.key).price, meal.key));
     CATALOG.facilities.forEach((facility) => {
         const item = findEstimateItem(categories, facility.key);
-        assert.strictEqual(facility.name, item.name);
+        assert.strictEqual(facility.name, RENAMED_FACILITIES[facility.key] ?? item.name);
         [[true, 'ad'], [true, 'es'], [true, 'hs'], [false, 'ad'], [false, 'es'], [false, 'hs']].forEach(([isStay, type]) => {
             assert.strictEqual(pickFacilityPrice(facility, isStay, type), item.calcPrice(isStay, type), `${facility.key} ${isStay} ${type}`);
         });
@@ -158,7 +160,7 @@ test('calculateReservationFee：宿泊・食事・区分の施設・時間の施
 test('calculateReservationFee：日帰りは日帰り専有料金（大学・一般）になる', () => {
     const slots = [{ date: '2026-11-02', facilityKey: 'field', periodKey: 'am' }, { date: '2026-11-02', facilityKey: 'mr', periodKey: 'pm' }];
     const fee = calculateReservationFee(buildSampleRequest({ nights: 0, priceType: 'ad', slots }), CATALOG);
-    assert.deepStrictEqual(toPlain(fee.lines.map((line) => [line.label, line.amount])), [['陸上/球技場', 6600], ['Mルーム', 2970]]);
+    assert.deepStrictEqual(toPlain(fee.lines.map((line) => [line.label, line.amount])), [['陸上/球技場', 6600], ['ミーティングルーム', 2970]]);
     assert.strictEqual(fee.total, 9570);
     assert.strictEqual(fee.isStay, false);
 });
@@ -172,4 +174,13 @@ test('calculateIncludedTax は内消費税を切り捨てで出し、formatYen �
     assert.deepStrictEqual([0, 1, 110, 1100, 184815].map((amount) => calculateIncludedTax(amount, 0.10)), [0, 0, 10, 100, 16801]);
     assert.strictEqual(formatYen(1234567), '1,234,567円');
     assert.strictEqual(formatYen(0), '0円');
+});
+
+test('予約システムでは「Mルーム」を使わず「ミーティングルーム」と表記する', () => {
+    const fs = require('node:fs');
+    const { RESERVATION_HTML_PATH } = require('./helpers');
+    assert.strictEqual(CATALOG.facilities.find((facility) => facility.key === 'mr').name, 'ミーティングルーム');
+    [RESERVATION_LOGIC_PATH, RESERVATION_HTML_PATH].forEach((filePath) => {
+        assert.doesNotMatch(fs.readFileSync(filePath, 'utf8'), /Mルーム/, filePath);
+    });
 });

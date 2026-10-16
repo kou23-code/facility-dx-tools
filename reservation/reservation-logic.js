@@ -88,7 +88,7 @@ const RESERVATION_CATALOG = deepFreeze({
         { key: 'field', name: '陸上/球技場', billing: 'slot', prices: { stayAdult: 5280, stayYouth: 3520, dayAdult: 6600, dayYouth: 4400 } },
         { key: 'kL', name: '大研修室(1･3研)', billing: 'hour', prices: { stayAdult: 950, stayYouth: 950, dayAdult: 1890, dayYouth: 1890 } },
         { key: 'kS', name: '小研修室(2研)', billing: 'hour', prices: { stayAdult: 630, stayYouth: 630, dayAdult: 1260, dayYouth: 1260 } },
-        { key: 'mr', name: 'Mルーム', billing: 'hour', prices: { stayAdult: 330, stayYouth: 330, dayAdult: 660, dayYouth: 660 } }
+        { key: 'mr', name: 'ミーティングルーム', billing: 'hour', prices: { stayAdult: 330, stayYouth: 330, dayAdult: 660, dayYouth: 660 } }
     ],
     purposes: ['スポーツ合宿', '大会・試合', '研修・会議', '学校行事', 'サークル・クラブ活動', 'その他'],
     taxRate: 0.10 // 宿泊・食堂の食事・施設使用料はすべて標準税率
