@@ -11,6 +11,9 @@
             @page { size: A4; margin: 10mm; }
             body { background-color: white; padding: 0 !important; font-size: 12px !important; }
             .no-print { display: none !important; }
+            /* 印刷できない状態でブラウザの印刷（Ctrl+P）を使ったときは、見積書の代わりに案内だけを出す */
+            body.print-blocked .print-area { display: none !important; }
+            body.print-blocked::before { content: '入力内容に不備があるため、見積書を印刷できません。画面の案内を確認してください。'; display: block; font-size: 16px; font-weight: bold; }
             .print-area { width: 100%; max-width: none !important; min-height: 0 !important; box-shadow: none !important; border: none !important; padding: 0 !important; margin: 0 !important; }
             .mb-8 { margin-bottom: 12px !important; }
             .mb-6 { margin-bottom: 8px !important; }
@@ -155,11 +158,12 @@
                             <div class="text-2xl font-bold text-blue-800">¥<span id="panel_total">0</span></div>
                         </div>
                     </div>
-                    <button onclick="printEstimate()" class="bg-blue-700 text-white font-bold py-3 px-6 rounded shadow-lg hover:bg-blue-800 transition flex items-center gap-2 text-lg">
+                    <button type="button" id="printButton" onclick="printEstimate()" class="bg-blue-700 text-white font-bold py-3 px-6 rounded shadow-lg hover:bg-blue-800 transition flex items-center gap-2 text-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-700">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
                         見積書を印刷・PDF保存
                     </button>
                 </div>
+                <div id="printBlockers" class="text-xs text-red-600 mt-1 text-right"></div>
                 <div id="saveStatus" class="text-[11px] text-gray-400 mt-1 text-right"></div>
             </div>
         </div>
@@ -335,13 +339,13 @@
         ];
 
         const STAY_KEYS = ['es', 'hs', 'ad'];
+        const JOIN_KEYS = categories.find(cat => cat.id === 'join').items.map(item => item.key);
         const TYPE_NAMES = { es: '小・中学生', hs: '高校生', ad: '大学・一般' };
         const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
         const STORAGE_KEY = 'reservation_estimate_v1';
 
         let inputData = {};
         let collapsed = { join: true };
-        let lastGrandTotal = 0;
 
         // ---------- 日付まわり ----------
         // "YYYY-MM-DD" をローカル時刻の日付として読む（タイムゾーンでずれないように）
@@ -403,6 +407,30 @@
             return Object.fromEntries(Object.entries(quantityByCell).filter(isAllowed));
         }
         // STAY_LOCK:end
+
+        // INPUT_CHECK:start
+        const JOIN_WITHOUT_STAY_MESSAGE = '宿泊人数が0人なのに「日帰り参加料（宿泊グループへ合流）」に人数が入っています。日帰り参加料は宿泊している団体に合流する人の料金です。宿泊人数を入れるか、日帰り参加料を消してください。';
+        // 指定した項目のマスの数量を、日をまたいで合計する
+        function sumQuantities(quantityByCell, itemKeys) {
+            return Object.entries(quantityByCell)
+                .filter(([cellId]) => itemKeys.includes(extractItemKey(cellId)))
+                .reduce((total, [, quantity]) => total + quantity, 0);
+        }
+        // 入力の矛盾（印刷を止めるエラー）の文言の一覧を返す
+        function findInputConflicts(quantityByCell, stayKeys, joinKeys) {
+            const hasStay = sumQuantities(quantityByCell, stayKeys) > 0;
+            const hasJoin = sumQuantities(quantityByCell, joinKeys) > 0;
+            return !hasStay && hasJoin ? [JOIN_WITHOUT_STAY_MESSAGE] : [];
+        }
+        // 印刷できない理由の一覧を返す（空なら印刷できる）
+        function findPrintBlockers(customerName, grandTotal, conflictCount) {
+            return [
+                customerName.trim() === '' && '宛名が未入力です',
+                grandTotal === 0 && '見積合計が0円です',
+                conflictCount > 0 && '入力内容に矛盾があります（赤い表示を確認してください）'
+            ].filter(Boolean);
+        }
+        // INPUT_CHECK:end
 
         function getStartDate() { return parseDate(document.getElementById('in_start').value) || new Date(); }
         function getDays() { return parseInt(document.getElementById('in_days').value) || 1; }
@@ -672,29 +700,39 @@
             document.getElementById('estimateTableContainer').innerHTML = html;
             document.getElementById('out_grand_total').textContent = grandTotal.toLocaleString();
             document.getElementById('panel_total').textContent = grandTotal.toLocaleString();
-            lastGrandTotal = grandTotal;
 
-            renderWarnings();
+            const conflicts = findInputConflicts(inputData, STAY_KEYS, JOIN_KEYS);
+            renderWarnings(conflicts, customer);
+            renderPrintGuard(findPrintBlockers(customer, grandTotal, conflicts.length));
+        }
+
+        // 注意表示1件分の HTML（矛盾エラーは赤、それ以外は黄色）
+        function buildNoticeHtml(message, isError) {
+            const style = isError ? 'bg-red-50 border-red-500 text-red-900' : 'bg-amber-50 border-amber-400 text-amber-900';
+            return `<div class="flex gap-2 items-start text-sm ${style} border-2 border-l-8 rounded px-4 py-3">
+                        <span class="text-xl leading-none">⚠</span>
+                        <div><div class="font-bold">${isError ? '入力が矛盾しています（印刷できません）' : '確認してください'}</div><div>${message}</div></div>
+                    </div>`;
         }
 
         // 入力ミスの可能性をお知らせ
         // （日帰りの宿泊人数・最終日の宿泊人数は入力できないようにしたので、ここでは確認しない）
-        function renderWarnings() {
-            const warnings = [];
-            if (!document.getElementById('in_customer').value.trim()) {
-                warnings.push('宛名（団体名）が未入力です。');
-            }
-            document.getElementById('warningBox').innerHTML = warnings
-                .map(w => `<div class="flex gap-2 items-start text-sm bg-amber-50 border-2 border-amber-400 border-l-8 text-amber-900 rounded px-4 py-3">
-                              <span class="text-xl leading-none">⚠</span>
-                              <div><div class="font-bold">確認してください</div><div>${w}</div></div>
-                           </div>`)
-                .join('');
+        function renderWarnings(conflicts, customer) {
+            const errorNotices = conflicts.map(message => buildNoticeHtml(message, true));
+            const customerNotices = customer ? [] : [buildNoticeHtml('宛名（団体名）が未入力です。', false)];
+            document.getElementById('warningBox').innerHTML = [...errorNotices, ...customerNotices].join('');
+        }
+
+        // 印刷できない理由があれば、印刷ボタンを押せなくして理由を表示する
+        function renderPrintGuard(blockers) {
+            document.getElementById('printButton').disabled = blockers.length > 0;
+            document.body.classList.toggle('print-blocked', blockers.length > 0);
+            document.getElementById('printBlockers').textContent = blockers.length > 0 ? `印刷できません：${blockers.join('／')}` : '';
         }
 
         // ---------- 印刷 ----------
         function printEstimate() {
-            if (lastGrandTotal === 0 && !confirm('まだ金額が0円です。このまま印刷しますか？')) return;
+            if (document.getElementById('printButton').disabled) return;
             const oldTitle = document.title;
             const name = document.getElementById('in_customer').value.trim() || '宛名なし';
             // PDF保存時のファイル名になります
