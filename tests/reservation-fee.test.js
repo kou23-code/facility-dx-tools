@@ -264,3 +264,13 @@ test('予約システムでは「Mルーム」を使わず「ミーティング�
         assert.doesNotMatch(fs.readFileSync(filePath, 'utf8'), /Mルーム/, filePath);
     });
 });
+
+test('formatQuantity は数量の単位を「20（人／泊）」のように括弧で囲む', () => {
+    const { formatQuantity } = logic;
+    assert.deepStrictEqual([[20, '人／泊'], [3, '時間'], [2, '区分'], [1200, '食'], [0, '本']].map(([quantity, unit]) => formatQuantity(quantity, unit)),
+        ['20（人／泊）', '3（時間）', '2（区分）', '1,200（食）', '0（本）']);
+});
+
+test('別途料金の案内の文言', () => {
+    assert.strictEqual(logic.EXTRA_FEE_NOTE, '※体育館の照明代金、研修室の冷暖房代などは別途料金がかかります');
+});

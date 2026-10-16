@@ -40,7 +40,9 @@ const CAPTURE_SOURCE = `const capture = () => ({
     stayInputs: document.querySelectorAll('#dailyTable input[data-row="stay"]').length,
     dailyRows: Array.from(document.querySelectorAll('#dailyTable tbody th'), (cell) => cell.firstChild.textContent),
     lunchValues: Array.from(document.querySelectorAll('#dailyTable input[data-row="meal_lu"]'), (input) => input.value),
-    feeTax: document.getElementById('fee_tax').textContent
+    feeTax: document.getElementById('fee_tax').textContent,
+    feeQuantities: Array.from(document.querySelectorAll('#feeTable tbody tr'), (row) => row.cells[2].textContent),
+    extraFeeNotes: Array.from(document.querySelectorAll('.extra-fee-note'), (element) => element.textContent)
 });
 const setValue = (id, value) => { document.getElementById(id).value = value; };
 // 利用人数10人、宿泊は2泊とも10人、朝食は2日目・3日目に10食ずつ、幕の内弁当は1日目に10食
@@ -134,6 +136,9 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.strictEqual(ready.buttonDisabled, false);
     assert.strictEqual(ready.total, '96,150', '宿泊 3,300円×(10＋10)人＋大体育館 8,050円＋大研修室 950円×2時間＋朝食 660円×20食＋幕の内弁当 700円×10食');
     assert.strictEqual(ready.feeTax, '（うち消費税 10%：8,104円 ／ 8%：518円）', '弁当は軽減税率');
+    assert.deepStrictEqual(ready.feeQuantities, ['10（人／泊）', '10（人／泊）', '20（食）', '10（食）', '1（区分）', '2（時間）']);
+    assert.deepStrictEqual(ready.extraFeeNotes, Array(2).fill('※体育館の照明代金、研修室の冷暖房代などは別途料金がかかります'),
+        '施設コマの下と概算料金の下に、別途料金の案内を出す');
 
     assert.strictEqual(overCapacity.buttonDisabled, true, '定員超過では確定できない');
     assert.strictEqual(overCapacity.warnings.length, 1);
@@ -159,6 +164,8 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.ok(completed.receiptText.includes('予約申込控え') && completed.receiptText.includes('テスト団体'));
     assert.ok(completed.receiptText.includes('合計（税込） 96,150円'));
     assert.ok(completed.receiptText.includes('朝食 20食（'));
+    assert.ok(completed.receiptText.includes('※体育館の照明代金、研修室の冷暖房代などは別途料金がかかります'), '控えにも別途料金の案内');
+    assert.ok(completed.receiptText.includes('10（人／泊）'));
     assert.ok(completed.receiptText.includes(`${CATALOG.facilities[0].name} AM、大研修室(1･3研) 9:00~11:00`));
 });
 

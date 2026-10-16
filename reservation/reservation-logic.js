@@ -266,6 +266,10 @@ const calculateReservationFee = (request, catalog) => {
     return { lines, total: sumLineAmounts(lines), taxBreakdown, tax, isStay: isStayRequest(request) };
 };
 const formatYen = (amount) => `${amount.toLocaleString('ja-JP')}円`;
+// 明細の数量の表示（"20（人／泊）" ／ "3（時間）" ／ "40（食）"）
+const formatQuantity = (quantity, unit) => `${quantity.toLocaleString('ja-JP')}（${unit}）`;
+// 概算料金に含めない料金の案内（画面と予約申込控えに出す）
+const EXTRA_FEE_NOTE = '※体育館の照明代金、研修室の冷暖房代などは別途料金がかかります';
 
 // ---------- 空き状況（◎：空きあり ／ △：残りわずか・一部予約あり ／ ×：満室・予約済み） ----------
 // 休館日か（closedDates の "MM-DD" は毎年、"YYYY-MM-DD" はその日だけ）
@@ -561,7 +565,7 @@ if (typeof module !== 'undefined') {
         toLocalDateString, toLocalDateTimeString, listUsageDates, listStayNights, formatScheduleLabel,
         toHourKey, buildHourSlots, listTimeUnits, mergeHourRanges, formatSlotList,
         toHalfWidthDigits, parseCount, isSameSlot, sortUniqueSlots, buildRequest,
-        sumCounts, isStayRequest, pickFacilityPrice, calculateIncludedTax, calculateTaxBreakdown, calculateReservationFee, formatYen,
+        sumCounts, isStayRequest, pickFacilityPrice, calculateIncludedTax, calculateTaxBreakdown, calculateReservationFee, formatYen, formatQuantity, EXTRA_FEE_NOTE,
         isClosedDate, getStayCountOnDate, countStayGuests, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,
         findSlotConflicts, findDuplicateSlots, findCapacityOverflows, formatSlotName, findAvailabilityConflicts,
         isPhoneNumber, findInputMessages, findScheduleMessages, findReservationBlockers,

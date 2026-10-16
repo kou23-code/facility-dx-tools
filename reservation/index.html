@@ -149,6 +149,7 @@
                             <div class="flex items-center gap-2 mb-1"><span class="step-badge">4</span><span class="font-bold text-base">希望する施設コマ</span></div>
                             <p class="text-xs text-gray-500 mb-2 ml-8">体育館・競技場は区分（AM 8:30~12:30 ／ PM 12:30~17:00 ／ 夜 17:00~21:00）、研修室・ミーティングルームは9時〜21時の1時間単位で選びます。押すと青くなり選ばれます。灰色の「×」は予約済みで選べません。</p>
                             <div id="slotGrid" class="overflow-x-auto"></div>
+                            <p class="extra-fee-note mt-2 text-sm font-bold text-amber-800 bg-amber-50 border border-amber-300 rounded px-3 py-2"></p>
                         </section>
                     </div>
 
@@ -188,7 +189,8 @@
                             <div id="fee_tax" class="text-xs text-gray-600"></div>
                             <div id="fee_type" class="text-xs text-gray-600"></div>
                         </div>
-                        <p class="text-[11px] text-gray-500 mt-2">※概算です。実際のご利用数に基づき精算します。照明・冷暖房は当日の利用に応じて別途精算します。</p>
+                        <p class="extra-fee-note mt-3 text-sm font-bold text-amber-800 bg-amber-50 border border-amber-300 rounded px-3 py-2"></p>
+                        <p class="text-[11px] text-gray-500 mt-2">※概算です。実際のご利用数に基づき精算します。</p>
                     </section>
                 </div>
             </div>
@@ -313,6 +315,10 @@
             startInput.max = addDaysToDateString(today, config.maxAdvanceDays);
             startInput.value = addDaysToDateString(today, Math.max(DEFAULT_START_OFFSET_DAYS, config.minLeadDays));
         };
+        // 別途料金の案内を、画面の決まった場所（class="extra-fee-note"）に出す
+        const renderExtraFeeNotes = (note) => {
+            document.querySelectorAll('.extra-fee-note').forEach((element) => { element.textContent = note; });
+        };
         const renderFacilityInfo = (info) => {
             document.title = `${info.facilityName} Web予約システム`;
             byId('pageHeading').textContent = document.title;
@@ -399,7 +405,7 @@
 
         // ---------- 概算料金 ----------
         const buildFeeRowHtml = (line) => `<tr><td class="text-left">${escapeHtml(line.label)}</td><td class="text-right">${formatNumber(line.unitPrice)}</td>`
-            + `<td class="text-right whitespace-nowrap">${line.quantity}${line.unit}</td><td class="text-right font-bold">${formatNumber(line.amount)}</td></tr>`;
+            + `<td class="text-right whitespace-nowrap">${escapeHtml(formatQuantity(line.quantity, line.unit))}</td><td class="text-right font-bold">${formatNumber(line.amount)}</td></tr>`;
         const buildFeeTableHtml = (fee) => (fee.lines.length === 0
             ? '<p class="text-gray-400 text-center py-6">人数・施設コマ・食事数を入力すると、ここに概算料金が表示されます</p>'
             : `<table class="fee-table w-full text-sm"><thead><tr><th>項目</th><th>単価(円)</th><th>数量</th><th>金額(円)</th></tr></thead><tbody>${fee.lines.map(buildFeeRowHtml).join('')}</tbody></table>`);
@@ -471,8 +477,9 @@
         // ---------- 完了画面・予約申込控え ----------
         const RECEIPT_NOTES_HTML = `<div class="mt-6 text-xs text-gray-600 space-y-1">
                 <div>※この控えは、Web予約の申込を受け付けた内容の控えです。施設の職員から確認の連絡をいたします。</div>
-                <div>※料金は概算です。食事代・施設使用料等は実際のご利用数に基づき精算します。照明・冷暖房は当日の利用に応じて別途精算します。</div>
-                <div>※区分・・・AM (8:30~12:30) PM (12:30~17:00) 夜(17:00~21:00)</div></div>`;
+                <div class="font-bold text-gray-800">${escapeHtml(EXTRA_FEE_NOTE)}</div>
+                <div>※料金は概算です。食事代・施設使用料等は実際のご利用数に基づき精算します。</div>
+                <div>※区分・・・AM (8:30~12:30) PM (12:30~17:00) 夜(17:00~21:00)。研修室・ミーティングルームは1時間単位です。</div></div>`;
         const buildSummaryRowsHtml = (summary) => summary
             .map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join('');
         const buildIssuerHtml = (info) => `<div class="text-right text-xs leading-relaxed">${buildIssuerLines(info)
@@ -553,6 +560,7 @@
         // ---------- 起動 ----------
         const initApp = () => {
             renderFacilityInfo(ACTIVE_FACILITY_INFO);
+            renderExtraFeeNotes(EXTRA_FEE_NOTE);
             renderFormParts(ACTIVE_CONFIG, CATALOG);
             setDefaultSchedule(getToday(), ACTIVE_CONFIG);
             refreshAll();
