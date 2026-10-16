@@ -98,7 +98,8 @@ const preparePage = (html) => {
 test('画面で日数を減らすと、内部データと localStorage から範囲外の日のデータが消える', { skip: !BROWSER }, () => {
     const dom = renderDom(BROWSER, preparePage(readHtml()));
     const dump = JSON.parse(decodeURIComponent(findById(dom, 'test_dump') || 'null'));
-    const expected = { ad_0: 10, di_0: 10, gym_s_0: 2 };
+    // 日帰りになるので、1日目の宿泊人数（ad_0）も消える
+    const expected = { di_0: 10, gym_s_0: 2 };
     assert.deepStrictEqual(dump.memory, expected, '内部データに範囲外の日が残っています');
     assert.deepStrictEqual(dump.saved, expected, 'localStorage に範囲外の日が残っています');
 });
