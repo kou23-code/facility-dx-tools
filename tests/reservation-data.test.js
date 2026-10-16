@@ -150,3 +150,13 @@ test('予約ロジックに会社名・住所・電話番号らしい表記が F
     });
     assert.ok(fs.readFileSync(path.join(ROOT_DIR, '.gitignore'), 'utf8').split(/\r?\n/).includes('facility-config.js'));
 });
+
+test('buildIssuerLines は予約申込控えの発行元欄の3行を作り、resolveFacilityInfo で施設名を上書きできる', () => {
+    const { FACILITY_INFO, resolveFacilityInfo, buildIssuerLines } = require(RESERVATION_LOGIC_PATH);
+    assert.deepStrictEqual(buildIssuerLines(FACILITY_INFO), [
+        '株式会社サンプルリゾート あおぞらセミナーハウス', '〒100-0001 東京都千代田区千代田1-1-1', 'TEL 03-0000-0000'
+    ]);
+    const custom = resolveFacilityInfo(FACILITY_INFO, { facilityName: 'みどり研修センター', tel: 1 });
+    assert.strictEqual(buildIssuerLines(custom)[0], '株式会社サンプルリゾート みどり研修センター');
+    assert.strictEqual(buildIssuerLines(custom)[2], 'TEL 03-0000-0000', '文字列以外は無視する');
+});

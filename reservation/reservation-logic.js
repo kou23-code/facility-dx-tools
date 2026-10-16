@@ -20,6 +20,8 @@ const FACILITY_INFO = Object.freeze({
 const resolveFacilityInfo = (defaults, custom) => Object.freeze(Object.fromEntries(
     Object.entries(defaults).map(([key, value]) => [key, typeof custom?.[key] === 'string' ? custom[key] : value])
 ));
+// 予約申込控えの発行元欄に出す3行
+const buildIssuerLines = (info) => [`${info.organization} ${info.facilityName}`, `〒${info.postalCode} ${info.address}`, `TEL ${info.tel}`];
 // FACILITY_INFO:end
 
 // ---------- 共通の設定 ----------
@@ -443,7 +445,7 @@ const createSampleReservations = (baseDate, catalog) => SAMPLE_SPECS.map((spec, 
 // Node.js（テスト）から読み込んだときだけ、関数をまとめて渡す（ブラウザでは何もしない）
 if (typeof module !== 'undefined') {
     module.exports = {
-        FACILITY_INFO, resolveFacilityInfo, RESERVATION_STORAGE_KEY, RESERVATION_CODE_TYPE, RESERVATION_CODE_VERSION, SAMPLE_ID_PREFIX,
+        FACILITY_INFO, resolveFacilityInfo, buildIssuerLines, RESERVATION_STORAGE_KEY, RESERVATION_CODE_TYPE, RESERVATION_CODE_VERSION, SAMPLE_ID_PREFIX,
         RESERVATION_CONFIG, resolveReservationConfig, RESERVATION_CATALOG,
         parseDateString, isValidDateString, addDaysToDateString, countDaysBetween, formatDateLabel, formatDateJapanese,
         toLocalDateString, toLocalDateTimeString, listUsageDates, listStayNights, formatScheduleLabel,
