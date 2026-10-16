@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web予約システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 印刷するのは「予約申込控え」だけ */
+        @media print {
+            @page { size: A4; margin: 12mm; }
+            body { background-color: white; padding: 0 !important; font-size: 12px !important; }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            #receipt { max-width: none !important; box-shadow: none !important; border: none !important; padding: 0 !important; margin: 0 !important; }
+            #receipt table th, #receipt table td { border: 1px solid black !important; }
+            tr { page-break-inside: avoid; }
+        }
+        .print-only { display: none; }
+        .step-badge { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 9999px; background: #1d4ed8; color: #fff; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+        .field-label { display: block; font-weight: 700; margin-bottom: .25rem; }
+        .field-input { width: 100%; padding: .5rem; border: 1px solid #d1d5db; border-radius: .25rem; background: #fff; }
+        .required::after { content: '必須'; margin-left: .4rem; padding: 0 .35rem; border-radius: .2rem; background: #dc2626; color: #fff; font-size: .65rem; vertical-align: middle; }
+        /* 数字入力の上下ボタンを隠す（誤操作防止） */
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+        /* 表 */
+        .grid-table { border-collapse: collapse; }
+        .grid-table th, .grid-table td { border: 1px solid #e5e7eb; padding: 3px 2px; text-align: center; white-space: nowrap; }
+        .grid-table thead th { background: #1f2937; color: #fff; font-size: 11px; }
+        .grid-table tbody th { background: #f9fafb; font-size: 12px; }
+        .fee-table th, .fee-table td { border: 1px solid #d1d5db; padding: 4px 8px; }
+        .fee-table thead th { background: #f3f4f6; }
+        .receipt-table th { width: 8.5rem; background: #f3f4f6; text-align: left; border: 1px solid #9ca3af; padding: 4px 8px; }
+        .receipt-table td { border: 1px solid #9ca3af; padding: 4px 8px; }
+        /* 施設コマのボタン（中のチェックボックスは隠し、ラベル全体を押せるようにする） */
+        .slot { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 1.85rem; padding: 2px 3px; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; font-size: 11px; cursor: pointer; user-select: none; }
+        .slot input { position: absolute; opacity: 0; pointer-events: none; }
+        .slot:hover { border-color: #1d4ed8; }
+        .slot:has(input:checked) { background: #1d4ed8; border-color: #1d4ed8; color: #fff; font-weight: 700; }
+        .slot:has(input:focus-visible) { outline: 2px solid #3b82f6; outline-offset: 1px; }
+        .slot.slot-booked { background: #f3f4f6; border-color: #e5e7eb; color: #9ca3af; cursor: not-allowed; }
+        .slot.slot-conflict, .slot.slot-conflict:has(input:checked) { background: #dc2626; border-color: #991b1b; color: #fff; }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 md:p-6 font-sans">
+    <div class="max-w-[1500px] mx-auto">
+        <!-- ===================== 見出しとデモ用ボタン ===================== -->
+        <header class="no-print flex flex-wrap justify-between items-end gap-3 mb-4">
+            <div>
+                <a href="../" class="text-sm text-blue-700 hover:underline">← ツール一覧へ戻る</a>
+                <h1 id="pageHeading" class="text-2xl font-bold mt-1">Web予約システム</h1>
+                <p class="text-sm text-gray-600">空き状況を見ながら、宿泊・施設・食事の予約を申し込めます。</p>
+            </div>
+            <div class="bg-white border border-dashed border-gray-400 rounded p-3 text-sm">
+                <div class="font-bold text-gray-700 mb-1">デモ確認用</div>
+                <div class="flex gap-2 flex-wrap">
+                    <button type="button" id="sampleButton" onclick="insertSampleReservations()" class="px-3 py-1.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">サンプル予約を投入</button>
+                    <button type="button" id="resetButton" onclick="resetReservations()" class="px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50">予約データをリセット</button>
+                </div>
+                <div id="storageStatus" class="text-xs text-gray-500 mt-1"></div>
+            </div>
+        </header>
+
+        <!-- ===================== 申込画面 ===================== -->
+        <div id="formView">
+            <div class="print-only">予約申込控えは、予約を確定したあとの画面から印刷できます。</div>
+            <div class="no-print flex flex-col xl:flex-row gap-6">
+                <!-- 左側：入力パネル -->
+                <form id="reservationForm" class="w-full xl:w-[58%] bg-white rounded-lg shadow-md h-fit border-t-4 border-blue-600" onsubmit="return false" novalidate>
+                    <div class="p-5 space-y-4 text-sm">
+                        <div class="bg-blue-50 border border-blue-200 rounded p-4 leading-relaxed">
+                            <div class="font-bold text-blue-900 mb-2">かんたん4ステップ</div>
+                            <ol class="list-decimal pl-5 space-y-1 text-gray-800">
+                                <li><b>申込者</b>：団体名・代表者名・連絡先・利用目的を入力します。</li>
+                                <li><b>日程・人数</b>：利用開始日・泊数・人数を入力すると、右側に<b>空き状況（◎/△/×）</b>が表示されます。</li>
+                                <li><b>施設コマ</b>：使いたい施設の時間帯（AM・PM・夜）を押して選びます。灰色のコマは予約済みです。</li>
+                                <li><b>食事・確定</b>：食事数を入れ、概算料金を確認して「予約を確定する」を押します。</li>
+                            </ol>
+                            <div class="mt-2 text-xs text-gray-600">※定員超過や予約済みのコマがあるときは、赤い警告が出て確定できません。</div>
+                        </div>
+
+                        <!-- STEP1 申込者 -->
+                        <section class="bg-gray-50 p-3 rounded border">
+                            <div class="flex items-center gap-2 mb-3"><span class="step-badge">1</span><span class="font-bold text-base">申込者の情報</span></div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div class="md:col-span-2">
+                                    <label class="field-label required" for="in_group">団体名</label>
+                                    <input type="text" id="in_group" class="field-input text-lg font-bold" placeholder="例：サンプル高校 陸上部" oninput="refreshSummary()">
+                                </div>
+                                <div>
+                                    <label class="field-label required" for="in_representative">代表者名</label>
+                                    <input type="text" id="in_representative" class="field-input" placeholder="例：山田 太郎" oninput="refreshSummary()">
+                                </div>
+                                <div>
+                                    <label class="field-label required" for="in_purpose">利用目的</label>
+                                    <select id="in_purpose" class="field-input" onchange="refreshSummary()"></select>
+                                </div>
+                                <div>
+                                    <label class="field-label required" for="in_phone">電話番号</label>
+                                    <input type="tel" id="in_phone" class="field-input" placeholder="例：000-0000-0000" oninput="refreshSummary()">
+                                </div>
+                                <div>
+                                    <label class="field-label required" for="in_email">メールアドレス</label>
+                                    <input type="email" id="in_email" class="field-input" placeholder="例：sample@example.com" oninput="refreshSummary()">
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- STEP2 日程・人数 -->
+                        <section class="bg-gray-50 p-3 rounded border">
+                            <div class="flex items-center gap-2 mb-3"><span class="step-badge">2</span><span class="font-bold text-base">日程・人数</span></div>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div>
+                                    <label class="field-label required" for="in_start">利用開始日</label>
+                                    <input type="date" id="in_start" class="field-input font-bold text-blue-700" onchange="refreshAll()">
+                                </div>
+                                <div>
+                                    <label class="field-label required" for="in_nights">泊数</label>
+                                    <select id="in_nights" class="field-input font-bold text-blue-700" onchange="refreshAll()"></select>
+                                </div>
+                                <div>
+                                    <label class="field-label required" for="in_price_type">料金区分</label>
+                                    <select id="in_price_type" class="field-input" onchange="refreshSummary()"></select>
+                                </div>
+                                <div>
+                                    <label class="field-label required" for="in_people">人数</label>
+                                    <input type="number" id="in_people" inputmode="numeric" min="1" class="field-input text-right font-bold" placeholder="0" oninput="refreshSummary()">
+                                </div>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-2">※1泊以上のときは、人数全員が毎晩泊まるものとして宿泊の空きを確認します。</div>
+                        </section>
+
+                        <!-- STEP3 施設コマ -->
+                        <section class="bg-gray-50 p-3 rounded border">
+                            <div class="flex items-center gap-2 mb-1"><span class="step-badge">3</span><span class="font-bold text-base">希望する施設コマ</span></div>
+                            <p class="text-xs text-gray-500 mb-2 ml-8">AM (8:30~12:30) ／ PM (12:30~17:00) ／ 夜 (17:00~21:00)。押すと青くなり選ばれます。灰色の「×」は予約済みで選べません。</p>
+                            <div id="slotGrid" class="overflow-x-auto"></div>
+                        </section>
+
+                        <!-- STEP4 食事 -->
+                        <section class="bg-gray-50 p-3 rounded border">
+                            <div class="flex items-center gap-2 mb-1"><span class="step-badge">4</span><span class="font-bold text-base">食事数（全日程の合計）</span></div>
+                            <p class="text-xs text-gray-500 mb-2 ml-8">例：20人で2泊3日、朝食を2回なら 40 と入力します（空欄は0食）。</p>
+                            <div id="mealInputs" class="grid grid-cols-3 gap-3"></div>
+                        </section>
+                    </div>
+
+                    <!-- 合計と確定ボタン（画面下に固定） -->
+                    <div class="sticky bottom-0 z-40 bg-white border-t-2 border-blue-600 p-4 rounded-b-lg shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
+                        <div class="flex items-center justify-between gap-3 flex-wrap">
+                            <div>
+                                <div class="text-xs text-gray-500">概算料金（税込）</div>
+                                <div class="text-2xl font-bold text-blue-800">¥<span id="panel_total">0</span></div>
+                            </div>
+                            <button type="button" id="confirmButton" onclick="confirmReservation()" disabled class="bg-blue-700 text-white font-bold py-3 px-8 rounded shadow-lg hover:bg-blue-800 transition text-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-700">予約を確定する</button>
+                        </div>
+                        <div id="confirmReady" class="hidden text-xs text-green-700 mt-1 text-right">入力内容に問題はありません。確定できます。</div>
+                        <ul id="confirmBlockers" class="text-xs text-red-600 mt-1 list-disc pl-5 max-h-24 overflow-y-auto"></ul>
+                    </div>
+                </form>
+
+                <!-- 右側：空き状況・概算料金 -->
+                <div class="w-full xl:w-[42%] space-y-4">
+                    <div id="warningBox" class="space-y-2"></div>
+                    <section class="bg-white rounded-lg shadow-md p-4">
+                        <h2 class="font-bold text-lg mb-1">選択中の日程の空き状況</h2>
+                        <p class="text-xs text-gray-600 mb-2">
+                            <span class="font-bold text-green-700">◎</span> 空きあり ／
+                            <span class="font-bold text-amber-600">△</span> 残りわずか・一部の時間帯が予約済み ／
+                            <span class="font-bold text-red-600">×</span> 満室・すべて予約済み・休館日
+                        </p>
+                        <div id="availabilityTable" class="overflow-x-auto text-sm"></div>
+                        <p class="text-[11px] text-gray-500 mt-1">宿泊はその日の夜の空き（最終日の夜は泊まらないため「—」）。</p>
+                    </section>
+                    <section class="bg-white rounded-lg shadow-md p-4">
+                        <h2 class="font-bold text-lg mb-2">概算料金</h2>
+                        <div id="feeTable"></div>
+                        <div class="text-right mt-3">
+                            <span class="text-sm">合計（税込）</span>
+                            <span class="text-2xl font-bold text-blue-800 ml-2">¥<span id="fee_total">0</span></span>
+                            <div id="fee_tax" class="text-xs text-gray-600"></div>
+                            <div id="fee_type" class="text-xs text-gray-600"></div>
+                        </div>
+                        <p class="text-[11px] text-gray-500 mt-2">※概算です。実際のご利用数に基づき精算します。照明・冷暖房は当日の利用に応じて別途精算します。</p>
+                    </section>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== 完了画面 ===================== -->
+        <div id="completeView" class="hidden">
+            <div class="no-print bg-white rounded-lg shadow-md border-t-4 border-green-600 p-5 mb-6 max-w-[210mm] mx-auto">
+                <h2 class="text-xl font-bold text-green-800">予約の申込を受け付けました（予約番号 <span id="complete_id"></span>）</h2>
+                <p class="text-sm text-gray-700 mt-1">下の「予約申込控え」を印刷・PDF保存し、施設の職員へメールで連絡してください。</p>
+                <div class="flex flex-wrap gap-2 mt-4">
+                    <button type="button" id="printButton" onclick="printReceipt()" class="bg-blue-700 text-white font-bold py-2 px-4 rounded hover:bg-blue-800">予約申込控えを印刷・PDF保存</button>
+                    <a id="mailButton" href="#" class="bg-green-700 text-white font-bold py-2 px-4 rounded hover:bg-green-800">施設の職員へメールを作成</a>
+                    <button type="button" id="copyButton" onclick="copyReservationCode()" class="bg-gray-800 text-white font-bold py-2 px-4 rounded hover:bg-gray-900">職員取込用1行コードをコピー</button>
+                </div>
+                <label class="block text-xs font-bold text-gray-600 mt-4" for="out_code">職員取込用1行コード</label>
+                <textarea id="out_code" readonly rows="3" class="w-full p-2 border rounded font-mono text-[11px] bg-gray-50" onfocus="this.select()"></textarea>
+                <div class="text-right mt-2">
+                    <button type="button" onclick="startNewReservation()" class="text-sm px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50">新しい予約を申し込む</button>
+                </div>
+            </div>
+            <!-- 予約申込控え（A4印刷エリア） -->
+            <div id="receipt" class="bg-white p-8 rounded-lg shadow-md text-sm text-gray-900 max-w-[210mm] mx-auto"></div>
+        </div>
+    </div>
+
+    <!-- お知らせ表示 -->
+    <div id="toast" class="no-print hidden fixed top-6 left-1/2 -translate-x-1/2 z-50 max-w-[90vw] bg-gray-900 text-white rounded-lg shadow-xl px-6 py-3 text-center cursor-pointer" onclick="this.classList.add('hidden')"></div>
+
+    <!-- ローカル専用の実名・受付ルールの設定（Git管理外）。ファイルがなければダミー表記と既定のルールで動く -->
+    <script src="facility-config.js"></script>
+    <!-- 計算・判定の純粋関数（テストからも読み込む） -->
+    <script src="reservation-logic.js"></script>
+    <script>
+        // ======================================================
+        //  画面の処理（DOM・localStorage を扱う部分）
+        //  計算と判定は reservation-logic.js の純粋関数に任せ、ここでは読み取りと表示だけを行う
+        // ======================================================
+        const ACTIVE_FACILITY_INFO = resolveFacilityInfo(FACILITY_INFO, window.CUSTOM_FACILITY_INFO);
+        const ACTIVE_CONFIG = resolveReservationConfig(RESERVATION_CONFIG, window.CUSTOM_RESERVATION_CONFIG);
+        const CATALOG = RESERVATION_CATALOG;
+        const DEFAULT_START_OFFSET_DAYS = 3; // 利用開始日の初期値（今日から何日後か）
+        const DEFAULT_NIGHTS = 2;            // 泊数の初期値
+        const SYMBOL_CLASSES = Object.freeze({ '◎': 'text-green-700', '△': 'text-amber-600', '×': 'text-red-600' });
+
+        const byId = (id) => document.getElementById(id);
+        const getToday = () => toLocalDateString(new Date());
+        const formatNumber = (value) => value.toLocaleString('ja-JP');
+
+        // ---------- 予約データの読み書き（localStorage） ----------
+        const loadReservations = () => {
+            try { return parseStoredReservations(localStorage.getItem(RESERVATION_STORAGE_KEY)); } catch (error) { return []; }
+        };
+        const saveReservations = (reservations) => {
+            try { localStorage.setItem(RESERVATION_STORAGE_KEY, serializeReservations(reservations)); return true; } catch (error) { return false; }
+        };
+        const removeReservations = () => {
+            try { localStorage.removeItem(RESERVATION_STORAGE_KEY); } catch (error) { /* 保存できないブラウザでは消すものもない */ }
+        };
+
+        // ---------- 選択肢・入力欄の HTML ----------
+        const buildOptionsHtml = (options, selectedValue) => options
+            .map(({ value, label }) => `<option value="${escapeHtml(value)}"${value === selectedValue ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('');
+        const buildNightOptions = (maxNights) => Array.from({ length: maxNights + 1 },
+            (_, nights) => ({ value: String(nights), label: nights === 0 ? '日帰り' : `${nights}泊${nights + 1}日` }));
+        const buildPurposeOptions = (purposes) => [{ value: '', label: '選んでください' }, ...purposes.map((purpose) => ({ value: purpose, label: purpose }))];
+        const buildPriceTypeOptions = (priceTypes) => priceTypes.map((type) => ({ value: type.key, label: type.name }));
+        const buildMealInputsHtml = (catalog) => catalog.meals.map((meal) => `<div>
+                <label class="field-label" for="in_meal_${meal.key}">${escapeHtml(meal.name)}<span class="font-normal text-xs text-gray-500 ml-1">${formatNumber(meal.price)}円</span></label>
+                <input type="number" id="in_meal_${meal.key}" inputmode="numeric" min="0" class="field-input text-right" placeholder="0" oninput="refreshSummary()">
+            </div>`).join('');
+
+        const renderFormParts = (config, catalog) => {
+            byId('in_nights').innerHTML = buildOptionsHtml(buildNightOptions(config.maxNights), String(DEFAULT_NIGHTS));
+            byId('in_purpose').innerHTML = buildOptionsHtml(buildPurposeOptions(catalog.purposes), '');
+            byId('in_price_type').innerHTML = buildOptionsHtml(buildPriceTypeOptions(catalog.priceTypes), 'ad');
+            byId('mealInputs').innerHTML = buildMealInputsHtml(catalog);
+        };
+        // 利用開始日の初期値と、選べる範囲（受付期間）
+        const setDefaultSchedule = (today, config) => {
+            const startInput = byId('in_start');
+            startInput.min = addDaysToDateString(today, config.minLeadDays);
+            startInput.max = addDaysToDateString(today, config.maxAdvanceDays);
+            startInput.value = addDaysToDateString(today, Math.max(DEFAULT_START_OFFSET_DAYS, config.minLeadDays));
+        };
+        const renderFacilityInfo = (info) => {
+            document.title = `${info.facilityName} Web予約システム`;
+            byId('pageHeading').textContent = document.title;
+        };
+
+        // ---------- 入力値の読み取り ----------
+        const readFormValues = () => ({
+            groupName: byId('in_group').value, representative: byId('in_representative').value, phone: byId('in_phone').value,
+            email: byId('in_email').value, purpose: byId('in_purpose').value, startDate: byId('in_start').value,
+            nights: byId('in_nights').value, priceType: byId('in_price_type').value, people: byId('in_people').value,
+            meals: Object.fromEntries(CATALOG.meals.map((meal) => [meal.key, byId(`in_meal_${meal.key}`).value]))
+        });
+        const readSelectedSlots = () => Array.from(document.querySelectorAll('input.slot-check:checked'),
+            (box) => ({ date: box.dataset.date, facilityKey: box.dataset.facility, periodKey: box.dataset.period }));
+        const readRequest = () => buildRequest(readFormValues(), readSelectedSlots(), CATALOG);
+        const buildContext = () => ({ reservations: loadReservations(), config: ACTIVE_CONFIG, catalog: CATALOG, today: getToday() });
+
+        // ---------- 施設コマの表 ----------
+        // 予約済みで選んでいないコマは押せない。予約済みなのに選んでいるコマ（あとから埋まった）は赤くして外せるようにする
+        const buildSlotState = (slot, row, selectedSlots, reservations) => ({
+            isClosed: row.isClosed,
+            isBooked: isSlotBooked(reservations, slot),
+            isChecked: !row.isClosed && selectedSlots.some((selected) => isSameSlot(selected, slot))
+        });
+        const buildSlotToggleHtml = (slot, period, state, catalog) => {
+            const stateClass = state.isBooked ? (state.isChecked ? 'slot-conflict' : 'slot-booked') : '';
+            const isDisabled = state.isClosed || (state.isBooked && !state.isChecked);
+            const title = state.isClosed ? '休館日' : `${period.name} ${period.time}${state.isBooked ? '（予約済み）' : ''}`;
+            return `<label class="slot ${stateClass}" title="${title}"><input type="checkbox" class="slot-check" data-date="${slot.date}" data-facility="${slot.facilityKey}" data-period="${slot.periodKey}"`
+                + `${state.isChecked ? ' checked' : ''}${isDisabled ? ' disabled' : ''} aria-label="${formatDateLabel(slot.date)} ${escapeHtml(formatSlotName(slot, catalog))}" onchange="refreshAll()">`
+                + `${period.name}${isDisabled ? '×' : ''}</label>`;
+        };
+        const buildSlotCellHtml = (row, facility, selectedSlots, context) => {
+            const toggles = context.catalog.periods.map((period) => {
+                const slot = { date: row.date, facilityKey: facility.key, periodKey: period.key };
+                return buildSlotToggleHtml(slot, period, buildSlotState(slot, row, selectedSlots, context.reservations), context.catalog);
+            });
+            return `<td><div class="flex gap-0.5 justify-center">${toggles.join('')}</div></td>`;
+        };
+        const buildDateHeaderHtml = (row) => `<th>${formatDateLabel(row.date)}${row.isClosed ? '<div class="text-[10px] text-red-600">休館日</div>' : ''}</th>`;
+        const buildFacilityHeadHtml = (catalog, extraHeads) => `<thead><tr><th>日付</th>${extraHeads}${catalog.facilities
+            .map((facility) => `<th>${escapeHtml(facility.name)}</th>`).join('')}</tr></thead>`;
+        const buildSlotGridHtml = (rows, selectedSlots, context) => `<table class="grid-table w-full text-xs">${buildFacilityHeadHtml(context.catalog, '')}<tbody>${rows
+            .map((row) => `<tr>${buildDateHeaderHtml(row)}${context.catalog.facilities.map((facility) => buildSlotCellHtml(row, facility, selectedSlots, context)).join('')}</tr>`)
+            .join('')}</tbody></table>`;
+        const SCHEDULE_PLACEHOLDER_HTML = '<p class="text-gray-500 text-center py-4">利用開始日と泊数を選ぶと表示されます。</p>';
+
+        const renderSlotGrid = (request, context) => {
+            if (!canCheckSchedule(request, context.config)) { byId('slotGrid').innerHTML = SCHEDULE_PLACEHOLDER_HTML; return; }
+            const rows = buildAvailabilityRows(context.reservations, request.startDate, request.nights, context);
+            byId('slotGrid').innerHTML = buildSlotGridHtml(rows, request.slots, context);
+        };
+
+        // ---------- 空き状況の表（◎/△/×） ----------
+        const buildSymbolHtml = (symbol) => `<span class="font-bold text-base ${SYMBOL_CLASSES[symbol]}">${symbol}</span>`;
+        // 宿泊の欄（希望の人数が残りより多いときは「残り」を赤くする）
+        const buildStayCellHtml = (stay, people) => {
+            if (!stay) return '<td class="text-gray-400">—</td>';
+            const remainingClass = people > stay.remaining ? 'text-red-600 font-bold' : 'text-gray-500';
+            return `<td data-stay-symbol="${stay.symbol}">${buildSymbolHtml(stay.symbol)}<div class="text-[10px] ${remainingClass}">残り${stay.remaining}人</div></td>`;
+        };
+        const buildAvailabilityRowHtml = (row, people) => `<tr>${buildDateHeaderHtml(row)}${buildStayCellHtml(row.stay, people)}${row.facilities
+            .map((status) => `<td data-facility="${status.facilityKey}">${buildSymbolHtml(status.symbol)}</td>`).join('')}</tr>`;
+        const renderAvailability = (request, context) => {
+            if (!canCheckSchedule(request, context.config)) { byId('availabilityTable').innerHTML = SCHEDULE_PLACEHOLDER_HTML; return; }
+            const rows = buildAvailabilityRows(context.reservations, request.startDate, request.nights, context);
+            const bodyHtml = rows.map((row) => buildAvailabilityRowHtml(row, toSafeCount(request.people))).join('');
+            byId('availabilityTable').innerHTML = `<table class="grid-table w-full">${buildFacilityHeadHtml(context.catalog, '<th>宿泊</th>')}<tbody>${bodyHtml}</tbody></table>`;
+        };
+
+        // ---------- 概算料金 ----------
+        const buildFeeRowHtml = (line) => `<tr><td class="text-left">${escapeHtml(line.label)}</td><td class="text-right">${formatNumber(line.unitPrice)}</td>`
+            + `<td class="text-right whitespace-nowrap">${line.quantity}${line.unit}</td><td class="text-right font-bold">${formatNumber(line.amount)}</td></tr>`;
+        const buildFeeTableHtml = (fee) => (fee.lines.length === 0
+            ? '<p class="text-gray-400 text-center py-6">人数・施設コマ・食事数を入力すると、ここに概算料金が表示されます</p>'
+            : `<table class="fee-table w-full text-sm"><thead><tr><th>項目</th><th>単価(円)</th><th>数量</th><th>金額(円)</th></tr></thead><tbody>${fee.lines.map(buildFeeRowHtml).join('')}</tbody></table>`);
+        const buildTaxText = (fee, catalog) => `（うち消費税${Math.round(catalog.taxRate * 100)}% ${formatYen(fee.tax)}）`;
+        const buildPriceTypeText = (fee) => `施設は「${fee.isStay ? '宿泊利用料金' : '日帰り専有料金'}」で計算しています`;
+        const renderFee = (fee, catalog) => {
+            byId('feeTable').innerHTML = buildFeeTableHtml(fee);
+            byId('fee_total').textContent = formatNumber(fee.total);
+            byId('panel_total').textContent = formatNumber(fee.total);
+            byId('fee_tax').textContent = buildTaxText(fee, catalog);
+            byId('fee_type').textContent = buildPriceTypeText(fee);
+        };
+
+        // ---------- 予約確定ボタンのガード ----------
+        const buildWarningHtml = (message) => `<div class="flex gap-2 items-start bg-red-50 border-2 border-l-8 border-red-500 text-red-900 rounded px-4 py-3 text-sm">
+                <span class="text-xl leading-none">⚠</span><div><div class="font-bold">予約できません（変更が必要です）</div><div>${escapeHtml(message)}</div></div></div>`;
+        const renderGuard = (request, context) => {
+            const blockers = findReservationBlockers(request, context);
+            byId('warningBox').innerHTML = findAvailabilityConflicts(request, context).map(buildWarningHtml).join('');
+            byId('confirmButton').disabled = blockers.length > 0;
+            byId('confirmBlockers').innerHTML = blockers.map((message) => `<li>${escapeHtml(message)}</li>`).join('');
+            byId('confirmReady').classList.toggle('hidden', blockers.length > 0);
+        };
+        const renderStorageStatus = (reservations) => {
+            const sampleCount = reservations.filter(isSampleReservation).length;
+            byId('storageStatus').textContent = `このブラウザの予約データ：${reservations.length}件（うちサンプル ${sampleCount}件）`;
+        };
+
+        // ---------- 画面の更新 ----------
+        const refreshSummaryWith = (request, context) => {
+            renderAvailability(request, context);
+            renderFee(calculateReservationFee(request, context.catalog), context.catalog);
+            renderGuard(request, context);
+            renderStorageStatus(context.reservations);
+        };
+        // 申込者・人数・食事が変わったとき
+        const refreshSummary = () => refreshSummaryWith(readRequest(), buildContext());
+        // 日程・施設コマ・予約データが変わったとき（施設コマの表も作り直す。日程の外になったコマは外れる）
+        const refreshAll = () => {
+            const context = buildContext();
+            renderSlotGrid(readRequest(), context);
+            refreshSummaryWith(readRequest(), context);
+        };
+
+        // ---------- 予約の確定 ----------
+        const confirmReservation = () => {
+            const context = buildContext();
+            const request = readRequest();
+            if (findReservationBlockers(request, context).length > 0) { refreshAll(); showToast('予約できない内容があります。画面の案内を確認してください。'); return; }
+            const reservation = createReservation(request, context.reservations, toLocalDateTimeString(new Date()), context.catalog);
+            const savedReservations = appendReservation(context.reservations, reservation);
+            if (!saveReservations(savedReservations)) { showToast('このブラウザでは予約を保存できませんでした。'); return; }
+            renderStorageStatus(savedReservations);
+            showCompleteView(reservation);
+        };
+
+        // ---------- 完了画面・予約申込控え ----------
+        const RECEIPT_NOTES_HTML = `<div class="mt-6 text-xs text-gray-600 space-y-1">
+                <div>※この控えは、Web予約の申込を受け付けた内容の控えです。施設の職員から確認の連絡をいたします。</div>
+                <div>※料金は概算です。食事代・施設使用料等は実際のご利用数に基づき精算します。照明・冷暖房は当日の利用に応じて別途精算します。</div>
+                <div>※区分・・・AM (8:30~12:30) PM (12:30~17:00) 夜(17:00~21:00)</div></div>`;
+        const buildSummaryRowsHtml = (summary) => summary
+            .map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join('');
+        const buildIssuerHtml = (info) => `<div class="text-right text-xs leading-relaxed">${buildIssuerLines(info)
+            .map((line, index) => `<div class="${index === 0 ? 'font-bold text-sm' : ''}">${escapeHtml(line)}</div>`).join('')}</div>`;
+        const buildReceiptHtml = (reservation, facilityInfo, catalog) => {
+            const fee = calculateReservationFee(reservation, catalog);
+            return `<div class="flex justify-between items-start gap-4 mb-6"><div><div class="text-2xl font-bold tracking-widest mb-3">予約申込控え</div>
+                    <div class="text-lg"><span class="font-bold border-b border-black">${escapeHtml(reservation.groupName)}</span> 御中</div></div>${buildIssuerHtml(facilityInfo)}</div>
+                <table class="receipt-table w-full text-sm mb-6"><tbody>${buildSummaryRowsHtml(buildReservationSummary(reservation, catalog))}</tbody></table>
+                <div class="font-bold mb-1">概算料金</div>${buildFeeTableHtml(fee)}
+                <div class="text-right mt-2 text-lg font-bold">合計（税込） <span id="receipt_total">${formatYen(fee.total)}</span></div>
+                <div class="text-right text-xs">${buildTaxText(fee, catalog)}</div>${RECEIPT_NOTES_HTML}`;
+        };
+        const switchView = (isComplete) => {
+            byId('formView').classList.toggle('hidden', isComplete);
+            byId('completeView').classList.toggle('hidden', !isComplete);
+            window.scrollTo(0, 0);
+        };
+        const showCompleteView = (reservation) => {
+            byId('receipt').innerHTML = buildReceiptHtml(reservation, ACTIVE_FACILITY_INFO, CATALOG);
+            byId('receipt').dataset.reservationId = reservation.id;
+            byId('complete_id').textContent = reservation.id;
+            byId('out_code').value = buildReservationCode(reservation);
+            byId('mailButton').href = buildStaffMailUrl(ACTIVE_CONFIG.staffEmail, buildMailSubject(reservation), buildMailBody(reservation, CATALOG));
+            switchView(true);
+        };
+        // 印刷のあいだだけ、ページのタイトルを PDF のファイル名にする
+        const printReceipt = () => {
+            const originalTitle = document.title;
+            document.title = `予約申込控え_${byId('receipt').dataset.reservationId}`;
+            window.print();
+            setTimeout(() => { document.title = originalTitle; }, 1000);
+        };
+        const COPIED_MESSAGE = '職員取込用1行コードをコピーしました';
+        // クリップボードが使えないブラウザでは、コードを選んでコピーする
+        const copyBySelection = () => {
+            byId('out_code').select();
+            const isCopied = document.execCommand('copy');
+            showToast(isCopied ? COPIED_MESSAGE : 'コピーできませんでした。枠の中のコードを選んでコピーしてください');
+        };
+        const copyReservationCode = () => {
+            if (!navigator.clipboard) { copyBySelection(); return; }
+            navigator.clipboard.writeText(byId('out_code').value).then(() => showToast(COPIED_MESSAGE)).catch(copyBySelection);
+        };
+        const startNewReservation = () => {
+            byId('slotGrid').innerHTML = '';
+            byId('reservationForm').reset();
+            setDefaultSchedule(getToday(), ACTIVE_CONFIG);
+            switchView(false);
+            refreshAll();
+        };
+
+        // ---------- デモ確認用 ----------
+        const insertSampleReservations = () => {
+            if (!confirm('動作確認用のサンプル予約（4件）を入れますか？\n前に入れたサンプルは入れ直し、申し込んだ予約はそのまま残します。')) return;
+            const merged = mergeSampleReservations(loadReservations(), createSampleReservations(getToday(), CATALOG));
+            showToast(saveReservations(merged) ? 'サンプル予約を入れました。空き状況の◎・△・×を確認できます' : 'このブラウザでは保存できませんでした');
+            refreshAll();
+        };
+        const resetReservations = () => {
+            if (!confirm('このブラウザに保存されている予約データ（サンプルを含むすべて）を消しますか？\n（この操作は元に戻せません）')) return;
+            removeReservations();
+            refreshAll();
+            showToast('予約データをリセットしました');
+        };
+
+        // ---------- お知らせ表示 ----------
+        const showToast = (message) => {
+            const toast = byId('toast');
+            toast.textContent = message;
+            toast.classList.remove('hidden');
+            clearTimeout(Number(toast.dataset.timerId));
+            toast.dataset.timerId = String(setTimeout(() => toast.classList.add('hidden'), 3500));
+        };
+
+        // ---------- 起動 ----------
+        const initApp = () => {
+            renderFacilityInfo(ACTIVE_FACILITY_INFO);
+            renderFormParts(ACTIVE_CONFIG, CATALOG);
+            setDefaultSchedule(getToday(), ACTIVE_CONFIG);
+            refreshAll();
+            // マウスホイールで数字が勝手に変わるのを防ぐ
+            document.addEventListener('wheel', (event) => {
+                if (event.target.type === 'number' && document.activeElement === event.target) event.target.blur();
+            }, { passive: true });
+        };
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>

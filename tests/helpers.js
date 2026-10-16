@@ -8,6 +8,9 @@ const { pathToFileURL } = require('node:url');
 const ROOT_DIR = path.join(__dirname, '..');
 const HTML_PATH = path.join(ROOT_DIR, 'estimate', 'index.html');
 const PORTAL_PATH = path.join(ROOT_DIR, 'index.html');
+const RESERVATION_DIR = path.join(ROOT_DIR, 'reservation');
+const RESERVATION_HTML_PATH = path.join(RESERVATION_DIR, 'index.html');
+const RESERVATION_LOGIC_PATH = path.join(RESERVATION_DIR, 'reservation-logic.js');
 const BROWSER_CANDIDATES = [
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
@@ -35,4 +38,7 @@ const findById = (dom, id) => {
     return match ? match[1] : null;
 };
 
-module.exports = { ROOT_DIR, HTML_PATH, PORTAL_PATH, BROWSER_CANDIDATES, readHtml, findBrowser, renderDom, findById };
+module.exports = {
+    ROOT_DIR, HTML_PATH, PORTAL_PATH, RESERVATION_DIR, RESERVATION_HTML_PATH, RESERVATION_LOGIC_PATH,
+    BROWSER_CANDIDATES, readHtml, findBrowser, renderDom, findById
+};
