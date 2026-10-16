@@ -335,6 +335,110 @@ const findReservationBlockers = (request, context) => [
     ...findAvailabilityConflicts(request, context)
 ];
 
+// ---------- 予約データ（localStorage に保存する配列） ----------
+const isValidSlot = (slot) => typeof slot === 'object' && slot !== null && isValidDateString(slot.date)
+    && typeof slot.facilityKey === 'string' && typeof slot.periodKey === 'string';
+// 予約1件として使える形か（空き状況の計算に使う項目を確認する）
+const isValidReservation = (value) => typeof value === 'object' && value !== null
+    && typeof value.id === 'string' && value.id !== '' && typeof value.groupName === 'string'
+    && isValidDateString(value.startDate) && isNonNegativeInteger(value.nights) && isNonNegativeInteger(value.people)
+    && Array.isArray(value.slots) && value.slots.every(isValidSlot);
+const safeParseJson = (text) => {
+    try { return JSON.parse(text); } catch (error) { return null; }
+};
+// 保存データの文字列から予約の一覧を作る（壊れたデータは空、形の違う予約は除く）
+const parseStoredReservations = (rawText) => {
+    const parsed = safeParseJson(rawText);
+    return Array.isArray(parsed) ? parsed.filter(isValidReservation) : [];
+};
+const serializeReservations = (reservations) => JSON.stringify(reservations);
+const appendReservation = (reservations, reservation) => [...reservations, reservation];
+const isSampleReservation = (reservation) => reservation.id.startsWith(SAMPLE_ID_PREFIX);
+// サンプル予約を入れ直した、新しい一覧（前に入れたサンプルは消し、利用者の予約は残す）
+const mergeSampleReservations = (reservations, samples) => [...reservations.filter((reservation) => !isSampleReservation(reservation)), ...samples];
+
+// 予約番号 "R20261017-001"（申込日ごとの通し番号。使われている一番大きい番号の次）
+const createReservationId = (createdAt, reservations) => {
+    const prefix = `R${createdAt.slice(0, 10).replace(/-/g, '')}-`;
+    const usedNumbers = reservations.filter((reservation) => reservation.id.startsWith(prefix))
+        .map((reservation) => Number(reservation.id.slice(prefix.length))).filter(Number.isInteger);
+    return `${prefix}${String(Math.max(0, ...usedNumbers) + 1).padStart(3, '0')}`;
+};
+// 申込の内容から予約1件を作る（createdAt：申込日時 "YYYY-MM-DDTHH:mm"）
+const createReservation = (request, reservations, createdAt, catalog) => ({
+    id: createReservationId(createdAt, reservations), createdAt, ...request,
+    estimatedTotal: calculateReservationFee(request, catalog).total
+});
+
+// ---------- 職員取込用の1行コード ----------
+// 改行を含まない1行の JSON（文字列の中の改行も \n に置き換わる）
+const buildReservationCode = (reservation) => JSON.stringify({ type: RESERVATION_CODE_TYPE, version: RESERVATION_CODE_VERSION, reservation });
+// 1行コードを読み取る（{ ok: true, reservation } または { ok: false, error }）
+const parseReservationCode = (codeText) => {
+    const parsed = safeParseJson(trimText(codeText));
+    if (parsed?.type !== RESERVATION_CODE_TYPE) return { ok: false, error: '予約の取込用コードではありません' };
+    if (parsed.version !== RESERVATION_CODE_VERSION) return { ok: false, error: `対応していない版のコードです（version ${parsed.version}）` };
+    if (!isValidReservation(parsed.reservation)) return { ok: false, error: '予約の内容が正しくありません' };
+    return { ok: true, reservation: parsed.reservation };
+};
+// 1行コードの予約を一覧に加える（同じ予約番号があれば加えない）
+const importReservationCode = (reservations, codeText) => {
+    const result = parseReservationCode(codeText);
+    if (!result.ok) return result;
+    if (reservations.some((reservation) => reservation.id === result.reservation.id)) return { ok: false, error: `予約番号 ${result.reservation.id} はすでに取り込まれています` };
+    return { ok: true, reservations: appendReservation(reservations, result.reservation) };
+};
+
+// ---------- 予約申込控え・職員宛てメール ----------
+const formatSlotList = (slots, catalog) => [...new Set(slots.map((slot) => slot.date))]
+    .map((date) => `${formatDateLabel(date)} ${slots.filter((slot) => slot.date === date).map((slot) => formatSlotName(slot, catalog)).join('・')}`)
+    .join(' ／ ');
+const formatMealCounts = (meals, catalog) => catalog.meals.map((meal) => `${meal.name} ${toSafeCount(meals?.[meal.key])}食`).join('・');
+// 控えとメールに載せる [見出し, 内容] の一覧
+const buildReservationSummary = (reservation, catalog) => [
+    ['予約番号', reservation.id], ['申込日時', reservation.createdAt.replace('T', ' ')],
+    ['団体名', reservation.groupName], ['代表者名', reservation.representative],
+    ['電話番号', reservation.phone], ['メールアドレス', reservation.email], ['利用目的', reservation.purpose],
+    ['日程', formatScheduleLabel(reservation.startDate, reservation.nights)],
+    ['人数', `${reservation.people}人（${findByKey(catalog.priceTypes, reservation.priceType)?.name ?? ''}）`],
+    ['施設コマ', formatSlotList(reservation.slots, catalog) || 'なし'], ['食事数', formatMealCounts(reservation.meals, catalog)]
+];
+const buildMailSubject = (reservation) => `【Web予約申込】${reservation.groupName} ${formatDateLabel(reservation.startDate)}〜（予約番号 ${reservation.id}）`;
+const buildMailBody = (reservation, catalog) => [
+    'Web予約システムから予約の申込がありました。内容を確認してください。', '',
+    ...buildReservationSummary(reservation, catalog).map(([label, value]) => `${label}：${value}`),
+    `概算料金：${formatYen(calculateReservationFee(reservation, catalog).total)}（税込）`, '',
+    '▼職員取込用1行コード（1行すべてをコピーして取り込んでください）', buildReservationCode(reservation)
+].join('\n');
+// メールソフトを開く mailto: の URL（件名・本文は URL 用に変換する）
+const buildStaffMailUrl = (address, subject, body) => `mailto:${address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+// HTML に文字として埋め込むための変換
+const escapeHtml = (text) => String(text).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+
+// ---------- デモ用のサンプル予約（baseDate：今日の "YYYY-MM-DD"。offset は今日から何日後か） ----------
+// 既定の日程（3日後から2泊）を開くと、宿泊の△・大体育館の×・施設の△がすぐ確認できる並びにしている
+const SAMPLE_SPECS = deepFreeze([
+    { offset: 3, nights: 2, people: 40, priceType: 'hs', groupName: 'サンプル高校 陸上部', representative: '佐藤 花子', purpose: 'スポーツ合宿',
+        meals: { bf: 80, lu: 80, di: 80 }, slots: [[0, 'field', 'am'], [0, 'field', 'pm'], [1, 'field', 'am'], [1, 'field', 'pm']] },
+    { offset: 3, nights: 1, people: 45, priceType: 'ad', groupName: 'みどりスポーツクラブ', representative: '鈴木 一郎', purpose: 'サークル・クラブ活動',
+        meals: { bf: 45, lu: 0, di: 45 }, slots: [[0, 'kL', 'ev'], [1, 'gym', 'am'], [1, 'gym', 'pm'], [1, 'gym', 'ev']] },
+    { offset: 5, nights: 0, people: 30, priceType: 'es', groupName: 'やまびこスポーツ少年団', representative: '高橋 次郎', purpose: '大会・試合',
+        meals: { bf: 0, lu: 30, di: 0 }, slots: [[0, 'gym_s', 'am'], [0, 'gym_s', 'pm'], [0, 'mr', 'pm']] },
+    { offset: 10, nights: 3, people: 100, priceType: 'ad', groupName: 'あおぞら大学 バレーボール部', representative: '田中 三郎', purpose: 'スポーツ合宿',
+        meals: { bf: 300, lu: 300, di: 300 }, slots: [[1, 'gym', 'am'], [1, 'gym', 'pm'], [2, 'gym', 'am'], [2, 'gym', 'pm']] }
+]);
+const buildSampleRequest = (spec, startDate, index) => ({
+    groupName: spec.groupName, representative: spec.representative, phone: `000000000${index + 1}`,
+    email: `sample${index + 1}@example.com`, purpose: spec.purpose, startDate, nights: spec.nights, priceType: spec.priceType,
+    people: spec.people, meals: { ...spec.meals },
+    slots: spec.slots.map(([day, facilityKey, periodKey]) => ({ date: addDaysToDateString(startDate, day), facilityKey, periodKey }))
+});
+// 動作確認用のサンプル予約（同じ baseDate なら毎回同じ内容）
+const createSampleReservations = (baseDate, catalog) => SAMPLE_SPECS.map((spec, index) => ({
+    ...createReservation(buildSampleRequest(spec, addDaysToDateString(baseDate, spec.offset), index), [], `${baseDate}T09:00`, catalog),
+    id: `${SAMPLE_ID_PREFIX}${String(index + 1).padStart(3, '0')}`
+}));
+
 // RESERVATION_EXPORTS:start
 // Node.js（テスト）から読み込んだときだけ、関数をまとめて渡す（ブラウザでは何もしない）
 if (typeof module !== 'undefined') {
@@ -347,7 +451,10 @@ if (typeof module !== 'undefined') {
         isStayRequest, pickFacilityPrice, calculateIncludedTax, calculateReservationFee, formatYen,
         isClosedDate, countStayGuests, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,
         findSlotConflicts, findDuplicateSlots, findCapacityOverflows, formatSlotName, findAvailabilityConflicts,
-        isPhoneNumber, findInputMessages, findScheduleMessages, findReservationBlockers
+        isPhoneNumber, findInputMessages, findScheduleMessages, findReservationBlockers,
+        isValidReservation, parseStoredReservations, serializeReservations, appendReservation, isSampleReservation, mergeSampleReservations,
+        createReservationId, createReservation, buildReservationCode, parseReservationCode, importReservationCode,
+        buildReservationSummary, buildMailSubject, buildMailBody, buildStaffMailUrl, escapeHtml, createSampleReservations
     };
 }
 // RESERVATION_EXPORTS:end
