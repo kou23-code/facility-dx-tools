@@ -383,8 +383,33 @@
         }
         // DAY_RANGE:end
 
+        // STAY_LOCK:start
+        // マスのID（例："gym_s_2"）から、日のインデックスを除いた項目キー（例："gym_s"）を取り出す
+        function extractItemKey(cellId) {
+            return cellId.replace(/_\d+$/, '');
+        }
+        // 宿泊人数を入力できない日か（日帰りは1日目、2日以上は最終日。最終日の夜は泊まらないため）
+        function isStayLockedDay(dayIndex, days) {
+            return dayIndex >= days - 1;
+        }
+        // 入力できない日の宿泊人数のマスか
+        function isLockedStayCell(cellId, days, stayKeys) {
+            const dayIndex = extractDayIndex(cellId);
+            return dayIndex !== null && stayKeys.includes(extractItemKey(cellId)) && isStayLockedDay(dayIndex, days);
+        }
+        // 入力できない日の宿泊人数を除いた、新しい数量データを返す（元のデータは書き換えない）
+        function removeLockedStayData(quantityByCell, days, stayKeys) {
+            const isAllowed = ([cellId]) => !isLockedStayCell(cellId, days, stayKeys);
+            return Object.fromEntries(Object.entries(quantityByCell).filter(isAllowed));
+        }
+        // STAY_LOCK:end
+
         function getStartDate() { return parseDate(document.getElementById('in_start').value) || new Date(); }
         function getDays() { return parseInt(document.getElementById('in_days').value) || 1; }
+        // 範囲外の日と、入力できない日の宿泊人数を除いた数量データを返す
+        function cleanQuantityData(quantityByCell, days, stayKeys) {
+            return removeLockedStayData(removeOutOfRangeDays(quantityByCell, days), days, stayKeys);
+        }
 
         // ---------- 起動 ----------
         function initApp() {
@@ -451,10 +476,12 @@
                     for (let i = 0; i < days; i++) {
                         const id = `${item.key}_${i}`;
                         const val = inputData[id] || '';
+                        const isLocked = isLockedStayCell(id, days, STAY_KEYS);
                         html += `<td class="p-0.5">
                                     <input type="number" inputmode="numeric" id="in_${id}" value="${val}" min="0" ${item.max ? `max="${item.max}"` : ''}
+                                           ${isLocked ? `disabled title="${days === 1 ? '日帰りのため宿泊人数は入力できません' : '最終日の夜は泊まらないため入力できません'}"` : ''}
                                            data-c="${i}" data-r="${row}" aria-label="${item.name} ${i + 1}日目"
-                                           class="w-full p-1 text-right text-sm input-cell bg-transparent ${val ? 'has-value' : ''}"
+                                           class="w-full p-1 text-right text-sm input-cell bg-transparent disabled:bg-gray-200 disabled:cursor-not-allowed ${val ? 'has-value' : ''}"
                                            onfocus="this.select()" onkeydown="onCellKey(event)"
                                            oninput="updateData('${id}', this, ${item.max || 'null'})">
                                  </td>`;
@@ -529,9 +556,12 @@
 
         function onBasicChange() { calculateEstimate(); saveData(); }
         function onGridChange() {
-            inputData = removeOutOfRangeDays(inputData, getDays());
+            const cleanedData = cleanQuantityData(inputData, getDays(), STAY_KEYS);
+            const removedCount = Object.keys(inputData).length - Object.keys(cleanedData).length;
+            inputData = cleanedData;
             initGrid();
             saveData();
+            if (removedCount > 0) showToast(`入力できなくなった日の数量（${removedCount}マス）を消しました`);
         }
 
         // ---------- 計算 ----------
@@ -644,18 +674,13 @@
             document.getElementById('panel_total').textContent = grandTotal.toLocaleString();
             lastGrandTotal = grandTotal;
 
-            renderWarnings(startDate, days);
+            renderWarnings();
         }
 
         // 入力ミスの可能性をお知らせ
-        function renderWarnings(startDate, days) {
+        // （日帰りの宿泊人数・最終日の宿泊人数は入力できないようにしたので、ここでは確認しない）
+        function renderWarnings() {
             const warnings = [];
-            const lastStay = STAY_KEYS.reduce((s, k) => s + (inputData[`${k}_${days - 1}`] || 0), 0);
-            if (days === 1 && lastStay > 0) {
-                warnings.push('利用日数が「1日（日帰り）」ですが、宿泊人数が入力されています。泊まる場合は利用日数を2日以上にしてください。');
-            } else if (days > 1 && lastStay > 0) {
-                warnings.push(`最終日（${fmtMDW(addDays(startDate, days - 1))}）に宿泊人数が入っています。宿泊は「泊まる夜の日付」に入力します。最終日に泊まらない場合は消してください。`);
-            }
             if (!document.getElementById('in_customer').value.trim()) {
                 warnings.push('宛名（団体名）が未入力です。');
             }
@@ -705,7 +730,7 @@
                 if (s.days) document.getElementById('in_days').value = s.days;
                 if (s.dayType) document.getElementById('in_day_type').value = s.dayType;
                 if (s.issue) document.getElementById('in_issue').value = s.issue;
-                inputData = removeOutOfRangeDays(s.inputData || {}, getDays());
+                inputData = cleanQuantityData(s.inputData || {}, getDays(), STAY_KEYS);
                 collapsed = s.collapsed || collapsed;
                 document.getElementById('saveStatus').textContent = '前回の入力内容を読み込みました';
                 return true;
