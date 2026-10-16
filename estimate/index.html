@@ -406,6 +406,21 @@
             const isAllowed = ([cellId]) => !isLockedStayCell(cellId, days, stayKeys);
             return Object.fromEntries(Object.entries(quantityByCell).filter(isAllowed));
         }
+        // 入力できない日帰り参加料のマスか（日帰りは宿泊している団体がいないので、日帰り参加料は発生しない）
+        function isLockedJoinCell(cellId, days, joinKeys) {
+            return days === 1 && extractDayIndex(cellId) !== null && joinKeys.includes(extractItemKey(cellId));
+        }
+        // 入力できない日帰り参加料を除いた、新しい数量データを返す（元のデータは書き換えない）
+        function removeLockedJoinData(quantityByCell, days, joinKeys) {
+            const isAllowed = ([cellId]) => !isLockedJoinCell(cellId, days, joinKeys);
+            return Object.fromEntries(Object.entries(quantityByCell).filter(isAllowed));
+        }
+        // 入力できないマスの理由（入力できるマスなら空文字）
+        function findLockReason(cellId, days, stayKeys, joinKeys) {
+            if (isLockedJoinCell(cellId, days, joinKeys)) return '日帰りのため日帰り参加料は発生しません';
+            if (!isLockedStayCell(cellId, days, stayKeys)) return '';
+            return days === 1 ? '日帰りのため宿泊人数は入力できません' : '最終日の夜は泊まらないため入力できません';
+        }
         // STAY_LOCK:end
 
         // INPUT_CHECK:start
@@ -434,9 +449,10 @@
 
         function getStartDate() { return parseDate(document.getElementById('in_start').value) || new Date(); }
         function getDays() { return parseInt(document.getElementById('in_days').value) || 1; }
-        // 範囲外の日と、入力できない日の宿泊人数を除いた数量データを返す
-        function cleanQuantityData(quantityByCell, days, stayKeys) {
-            return removeLockedStayData(removeOutOfRangeDays(quantityByCell, days), days, stayKeys);
+        // 範囲外の日と、入力できない日の宿泊人数・日帰り参加料を除いた数量データを返す
+        function cleanQuantityData(quantityByCell, days, stayKeys, joinKeys) {
+            const withoutLockedStay = removeLockedStayData(removeOutOfRangeDays(quantityByCell, days), days, stayKeys);
+            return removeLockedJoinData(withoutLockedStay, days, joinKeys);
         }
 
         // ---------- 起動 ----------
@@ -504,10 +520,10 @@
                     for (let i = 0; i < days; i++) {
                         const id = `${item.key}_${i}`;
                         const val = inputData[id] || '';
-                        const isLocked = isLockedStayCell(id, days, STAY_KEYS);
+                        const lockReason = findLockReason(id, days, STAY_KEYS, JOIN_KEYS);
                         html += `<td class="p-0.5">
                                     <input type="number" inputmode="numeric" id="in_${id}" value="${val}" min="0" ${item.max ? `max="${item.max}"` : ''}
-                                           ${isLocked ? `disabled title="${days === 1 ? '日帰りのため宿泊人数は入力できません' : '最終日の夜は泊まらないため入力できません'}"` : ''}
+                                           ${lockReason ? `disabled title="${lockReason}"` : ''}
                                            data-c="${i}" data-r="${row}" aria-label="${item.name} ${i + 1}日目"
                                            class="w-full p-1 text-right text-sm input-cell bg-transparent disabled:bg-gray-200 disabled:cursor-not-allowed ${val ? 'has-value' : ''}"
                                            onfocus="this.select()" onkeydown="onCellKey(event)"
@@ -584,7 +600,7 @@
 
         function onBasicChange() { calculateEstimate(); saveData(); }
         function onGridChange() {
-            const cleanedData = cleanQuantityData(inputData, getDays(), STAY_KEYS);
+            const cleanedData = cleanQuantityData(inputData, getDays(), STAY_KEYS, JOIN_KEYS);
             const removedCount = Object.keys(inputData).length - Object.keys(cleanedData).length;
             inputData = cleanedData;
             initGrid();
@@ -768,7 +784,7 @@
                 if (s.days) document.getElementById('in_days').value = s.days;
                 if (s.dayType) document.getElementById('in_day_type').value = s.dayType;
                 if (s.issue) document.getElementById('in_issue').value = s.issue;
-                inputData = cleanQuantityData(s.inputData || {}, getDays(), STAY_KEYS);
+                inputData = cleanQuantityData(s.inputData || {}, getDays(), STAY_KEYS, JOIN_KEYS);
                 collapsed = s.collapsed || collapsed;
                 document.getElementById('saveStatus').textContent = '前回の入力内容を読み込みました';
                 return true;

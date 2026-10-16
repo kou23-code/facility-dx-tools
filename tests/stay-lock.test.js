@@ -10,14 +10,19 @@ const { HTML_PATH, BROWSER_CANDIDATES, readHtml, findBrowser, renderDom, findByI
 
 const BROWSER = findBrowser(BROWSER_CANDIDATES);
 const STAY_KEYS = ['es', 'hs', 'ad'];
+const JOIN_KEYS = ['jg_es_hs', 'jg_ad', 'js_es_hs', 'js_ad', 'jf_es_hs', 'jf_ad'];
 
 const extractBlock = (html, name) => new RegExp(`// ${name}:start([\\s\\S]*?)// ${name}:end`).exec(html)[1];
 
 const loadStayLockBlock = (html) => vm.runInNewContext(
-    `${extractBlock(html, 'DAY_RANGE')}\n${extractBlock(html, 'STAY_LOCK')}\n({ extractItemKey, isStayLockedDay, isLockedStayCell, removeLockedStayData })`
+    `${extractBlock(html, 'DAY_RANGE')}\n${extractBlock(html, 'STAY_LOCK')}
+    ({ extractItemKey, isStayLockedDay, isLockedStayCell, removeLockedStayData, isLockedJoinCell, removeLockedJoinData, findLockReason })`
 );
 
-const { extractItemKey, isStayLockedDay, isLockedStayCell, removeLockedStayData } = loadStayLockBlock(readHtml());
+const {
+    extractItemKey, isStayLockedDay, isLockedStayCell, removeLockedStayData,
+    isLockedJoinCell, removeLockedJoinData, findLockReason
+} = loadStayLockBlock(readHtml());
 
 const toPlain = (obj) => JSON.parse(JSON.stringify(obj));
 
@@ -62,6 +67,31 @@ test('removeLockedStayData は空のデータに空のデータを返し、元�
     assert.deepStrictEqual(quantities, { ad_0: 1 });
 });
 
+test('isLockedJoinCell は日帰りのときだけ、日帰り参加料のマスを入力不可にする', () => {
+    assert.deepStrictEqual(JOIN_KEYS.map((itemKey) => isLockedJoinCell(`${itemKey}_0`, 1, JOIN_KEYS)), JOIN_KEYS.map(() => true));
+    assert.strictEqual(isLockedJoinCell('jg_ad_0', 2, JOIN_KEYS), false, '2日以上なら入力できる');
+    assert.strictEqual(isLockedJoinCell('jg_ad_1', 2, JOIN_KEYS), false, '2日以上なら最終日も入力できる');
+    assert.strictEqual(isLockedJoinCell('gym_0', 1, JOIN_KEYS), false, '施設は日帰りでも入力できる');
+    assert.strictEqual(isLockedJoinCell('jg_ad', 1, JOIN_KEYS), false, '日のインデックスがないIDは対象外');
+});
+
+test('removeLockedJoinData は日帰りなら日帰り参加料をすべて消し、2日以上なら何も消さない', () => {
+    const quantities = { jg_ad_0: 5, jf_es_hs_0: 3, gym_0: 2, lu_0: 30 };
+    assert.deepStrictEqual(toPlain(removeLockedJoinData(quantities, 1, JOIN_KEYS)), { gym_0: 2, lu_0: 30 });
+    assert.deepStrictEqual(toPlain(removeLockedJoinData(quantities, 2, JOIN_KEYS)), quantities);
+    assert.deepStrictEqual(toPlain(removeLockedJoinData({}, 1, JOIN_KEYS)), {});
+    assert.deepStrictEqual(quantities, { jg_ad_0: 5, jf_es_hs_0: 3, gym_0: 2, lu_0: 30 }, '元のデータを書き換えない');
+});
+
+test('findLockReason は入力できない理由を返し、入力できるマスには空文字を返す', () => {
+    assert.strictEqual(findLockReason('jg_ad_0', 1, STAY_KEYS, JOIN_KEYS), '日帰りのため日帰り参加料は発生しません');
+    assert.strictEqual(findLockReason('ad_0', 1, STAY_KEYS, JOIN_KEYS), '日帰りのため宿泊人数は入力できません');
+    assert.strictEqual(findLockReason('ad_2', 3, STAY_KEYS, JOIN_KEYS), '最終日の夜は泊まらないため入力できません');
+    assert.strictEqual(findLockReason('ad_1', 3, STAY_KEYS, JOIN_KEYS), '');
+    assert.strictEqual(findLockReason('jg_ad_2', 3, STAY_KEYS, JOIN_KEYS), '');
+    assert.strictEqual(findLockReason('gym_0', 1, STAY_KEYS, JOIN_KEYS), '');
+});
+
 // 起動後に数量を入れて日数を変え、保存データをページに書き出すスクリプト
 const buildScript = (quantities, days) => `<script>
 window.addEventListener('load', () => {
@@ -94,9 +124,16 @@ test('画面で3日にすると、最終日の宿泊人数の欄だけが入力�
     assert.deepStrictEqual(readSavedQuantities(dom), { ad_0: 10, ad_1: 10, bf_2: 10 });
 });
 
-test('画面で日帰りにすると、宿泊人数の欄がすべて入力不可になり、データも消える', { skip: !BROWSER }, () => {
-    const dom = renderDom(BROWSER, preparePage(buildScript({ es_0: 3, ad_0: 10, gym_0: 2 }, 1)));
+test('画面で日帰りにすると、宿泊人数と日帰り参加料の欄がすべて入力不可になり、データも消える', { skip: !BROWSER }, () => {
+    const dom = renderDom(BROWSER, preparePage(buildScript({ es_0: 3, ad_0: 10, jg_ad_0: 5, jf_es_hs_0: 2, gym_0: 2 }, 1)));
     assert.deepStrictEqual(['es_0', 'hs_0', 'ad_0'].map((cellId) => isDisabledInput(dom, cellId)), [true, true, true]);
+    assert.deepStrictEqual(JOIN_KEYS.map((itemKey) => isDisabledInput(dom, `${itemKey}_0`)), JOIN_KEYS.map(() => true));
     assert.strictEqual(isDisabledInput(dom, 'gym_0'), false);
     assert.deepStrictEqual(readSavedQuantities(dom), { gym_0: 2 });
+});
+
+test('画面で2日以上にすると、日帰り参加料の欄は入力できる', { skip: !BROWSER }, () => {
+    const dom = renderDom(BROWSER, preparePage(buildScript({ ad_0: 10, jg_ad_0: 5, jg_ad_1: 5 }, 2)));
+    assert.deepStrictEqual(['jg_ad_0', 'jg_ad_1'].map((cellId) => isDisabledInput(dom, cellId)), [false, false]);
+    assert.deepStrictEqual(readSavedQuantities(dom), { ad_0: 10, jg_ad_0: 5, jg_ad_1: 5 });
 });
