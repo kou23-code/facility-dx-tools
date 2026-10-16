@@ -31,6 +31,7 @@
         .input-cell.has-value:focus { background-color: #e0f2fe; }
         /* 入力ミスのあったマス */
         @keyframes cellErrorBlink { 0%, 50% { background-color: #fca5a5; } 25%, 75% { background-color: #fee2e2; } 100% { background-color: #fecaca; } }
+        .input-cell.over-limit { outline: 3px solid #dc2626; outline-offset: -3px; background-color: #fecaca; }
         .input-cell.cell-error { outline: 3px solid #dc2626; outline-offset: -3px; animation: cellErrorBlink 1s ease-in-out; background-color: #fecaca; }
         /* 数字入力の上下ボタンを隠す（誤操作防止） */
         input[type=number]::-webkit-inner-spin-button,
@@ -340,6 +341,10 @@
 
         const STAY_KEYS = ['es', 'hs', 'ad'];
         const JOIN_KEYS = categories.find(cat => cat.id === 'join').items.map(item => item.key);
+        // 1日の上限がある項目（体育館・競技場の区分数）
+        const LIMIT_BY_ITEM = Object.fromEntries(categories.flatMap(cat => cat.items).filter(item => item.max)
+            .map(item => [item.key, { name: item.name, unit: item.unit, max: item.max }]));
+        const CHECK_RULES = { stayKeys: STAY_KEYS, joinKeys: JOIN_KEYS, limitByItem: LIMIT_BY_ITEM };
         const TYPE_NAMES = { es: '小・中学生', hs: '高校生', ad: '大学・一般' };
         const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
         const STORAGE_KEY = 'reservation_estimate_v1';
@@ -431,18 +436,35 @@
                 .filter(([cellId]) => itemKeys.includes(extractItemKey(cellId)))
                 .reduce((total, [, quantity]) => total + quantity, 0);
         }
-        // 入力の矛盾（印刷を止めるエラー）の文言の一覧を返す
-        function findInputConflicts(quantityByCell, stayKeys, joinKeys) {
-            const hasStay = sumQuantities(quantityByCell, stayKeys) > 0;
-            const hasJoin = sumQuantities(quantityByCell, joinKeys) > 0;
-            return !hasStay && hasJoin ? [JOIN_WITHOUT_STAY_MESSAGE] : [];
+        // 1日の上限（limitByItem：項目キー → { name, unit, max }）を超えたマスか
+        function isOverLimitCell(cellId, quantity, limitByItem) {
+            const limit = limitByItem[extractItemKey(cellId)];
+            return Boolean(limit) && quantity > limit.max;
+        }
+        // 上限を超えたマス1つ分のエラーの文言
+        function buildOverLimitMessage(cellId, quantity, limit) {
+            const dayLabel = `${extractDayIndex(cellId) + 1}日目`;
+            return `「${limit.name}」の${dayLabel}が${quantity}${limit.unit}になっています。1日最大${limit.max}${limit.unit}（AM 8:30~12:30 ／ PM 12:30~17:00 ／ 夜 17:00~21:00）までにしてください。`;
+        }
+        // 上限を超えたマスごとのエラーの文言の一覧を返す
+        function findOverLimitMessages(quantityByCell, limitByItem) {
+            return Object.entries(quantityByCell)
+                .filter(([cellId, quantity]) => isOverLimitCell(cellId, quantity, limitByItem))
+                .map(([cellId, quantity]) => buildOverLimitMessage(cellId, quantity, limitByItem[extractItemKey(cellId)]));
+        }
+        // 入力エラー（印刷を止めるエラー）の文言の一覧を返す（checkRules：{ stayKeys, joinKeys, limitByItem }）
+        function findInputConflicts(quantityByCell, checkRules) {
+            const hasStay = sumQuantities(quantityByCell, checkRules.stayKeys) > 0;
+            const hasJoin = sumQuantities(quantityByCell, checkRules.joinKeys) > 0;
+            const joinMessages = !hasStay && hasJoin ? [JOIN_WITHOUT_STAY_MESSAGE] : [];
+            return [...joinMessages, ...findOverLimitMessages(quantityByCell, checkRules.limitByItem)];
         }
         // 印刷できない理由の一覧を返す（空なら印刷できる）
         function findPrintBlockers(customerName, grandTotal, conflictCount) {
             return [
                 customerName.trim() === '' && '宛名が未入力です',
                 grandTotal === 0 && '見積合計が0円です',
-                conflictCount > 0 && '入力内容に矛盾があります（赤い表示を確認してください）'
+                conflictCount > 0 && '入力エラーがあります（赤い表示を確認してください）'
             ].filter(Boolean);
         }
         // INPUT_CHECK:end
@@ -525,9 +547,9 @@
                                     <input type="number" inputmode="numeric" id="in_${id}" value="${val}" min="0" ${item.max ? `max="${item.max}"` : ''}
                                            ${lockReason ? `disabled title="${lockReason}"` : ''}
                                            data-c="${i}" data-r="${row}" aria-label="${item.name} ${i + 1}日目"
-                                           class="w-full p-1 text-right text-sm input-cell bg-transparent disabled:bg-gray-200 disabled:cursor-not-allowed ${val ? 'has-value' : ''}"
+                                           class="w-full p-1 text-right text-sm input-cell bg-transparent disabled:bg-gray-200 disabled:cursor-not-allowed ${val ? 'has-value' : ''} ${isOverLimitCell(id, val, LIMIT_BY_ITEM) ? 'over-limit' : ''}"
                                            onfocus="this.select()" onkeydown="onCellKey(event)"
-                                           oninput="updateData('${id}', this, ${item.max || 'null'})">
+                                           oninput="updateData('${id}', this)">
                                  </td>`;
                     }
                     html += `<td id="rowtotal_${item.key}" class="p-1.5 text-right text-xs whitespace-nowrap bg-gray-50"></td></tr>`;
@@ -563,7 +585,8 @@
         }
 
         // ---------- 入力値の処理 ----------
-        function updateData(id, el, maxVal) {
+        // 上限を超えた数は直さずにそのまま残し、警告ボックスの入力エラーで知らせる（印刷もできなくなる）
+        function updateData(id, el) {
             const raw = el.value.trim();
             let num = raw === '' ? NaN : Math.floor(Number(raw));
             if (!isNaN(num) && num < 0) {
@@ -572,15 +595,10 @@
                 el.value = '';
                 num = NaN;
             }
-            if (maxVal !== null && num > maxVal) {
-                showToast(`この項目は1日最大「${maxVal}区分」までです。\n（AM 8:30~12:30 ／ PM 12:30~17:00 ／ 夜 17:00~21:00）\n入力された数を「${maxVal}」に直しました。`, 'error');
-                markCellError(el);
-                num = maxVal;
-                el.value = num;
-            }
             if (isNaN(num) || num === 0) delete inputData[id];
             else inputData[id] = num;
             el.classList.toggle('has-value', num > 0);
+            el.classList.toggle('over-limit', isOverLimitCell(id, num, LIMIT_BY_ITEM));
             calculateEstimate();
             saveData();
         }
@@ -717,7 +735,7 @@
             document.getElementById('out_grand_total').textContent = grandTotal.toLocaleString();
             document.getElementById('panel_total').textContent = grandTotal.toLocaleString();
 
-            const conflicts = findInputConflicts(inputData, STAY_KEYS, JOIN_KEYS);
+            const conflicts = findInputConflicts(inputData, CHECK_RULES);
             renderWarnings(conflicts, customer);
             renderPrintGuard(findPrintBlockers(customer, grandTotal, conflicts.length));
         }
@@ -727,7 +745,7 @@
             const style = isError ? 'bg-red-50 border-red-500 text-red-900' : 'bg-amber-50 border-amber-400 text-amber-900';
             return `<div class="flex gap-2 items-start text-sm ${style} border-2 border-l-8 rounded px-4 py-3">
                         <span class="text-xl leading-none">⚠</span>
-                        <div><div class="font-bold">${isError ? '入力が矛盾しています（印刷できません）' : '確認してください'}</div><div>${message}</div></div>
+                        <div><div class="font-bold">${isError ? '入力エラー（直すまで印刷できません）' : '確認してください'}</div><div>${message}</div></div>
                     </div>`;
         }
 
