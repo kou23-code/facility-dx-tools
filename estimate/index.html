@@ -367,6 +367,22 @@
         }
         // EXPIRATION:end
 
+        // DAY_RANGE:start
+        // マスのID（例："gym_s_2"）の末尾から、何日目か（0始まり）を取り出す。末尾が数字でなければ null
+        function extractDayIndex(cellId) {
+            const match = /_(\d+)$/.exec(cellId);
+            return match ? Number(match[1]) : null;
+        }
+        // 利用日数より後の日のマスを除いた、新しい数量データを返す（元のデータは書き換えない）
+        function removeOutOfRangeDays(quantityByCell, days) {
+            const isInRange = ([cellId]) => {
+                const dayIndex = extractDayIndex(cellId);
+                return dayIndex === null || dayIndex < days;
+            };
+            return Object.fromEntries(Object.entries(quantityByCell).filter(isInRange));
+        }
+        // DAY_RANGE:end
+
         function getStartDate() { return parseDate(document.getElementById('in_start').value) || new Date(); }
         function getDays() { return parseInt(document.getElementById('in_days').value) || 1; }
 
@@ -512,7 +528,11 @@
         }
 
         function onBasicChange() { calculateEstimate(); saveData(); }
-        function onGridChange() { initGrid(); saveData(); }
+        function onGridChange() {
+            inputData = removeOutOfRangeDays(inputData, getDays());
+            initGrid();
+            saveData();
+        }
 
         // ---------- 計算 ----------
         function getPrice(item, isStay, type) {
@@ -685,7 +705,7 @@
                 if (s.days) document.getElementById('in_days').value = s.days;
                 if (s.dayType) document.getElementById('in_day_type').value = s.dayType;
                 if (s.issue) document.getElementById('in_issue').value = s.issue;
-                inputData = s.inputData || {};
+                inputData = removeOutOfRangeDays(s.inputData || {}, getDays());
                 collapsed = s.collapsed || collapsed;
                 document.getElementById('saveStatus').textContent = '前回の入力内容を読み込みました';
                 return true;
