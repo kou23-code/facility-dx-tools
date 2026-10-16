@@ -71,6 +71,14 @@ const resolveReservationConfig = (defaults, custom) => deepFreeze(Object.fromEnt
 ));
 
 // ---------- 料金表・施設（税込・円。概算見積もりシステムの料金表と同じ金額） ----------
+// 1時間単位のコマのキー（9時 → "h09"）
+const toHourKey = (hour) => `h${String(hour).padStart(2, '0')}`;
+// startHour 時から endHour 時までの1時間単位のコマ（9, 21 なら 9:00~10:00 〜 20:00~21:00 の12コマ）
+const buildHourSlots = (startHour, endHour) => Array.from({ length: Math.max(endHour - startHour, 0) }, (_, index) => {
+    const hour = startHour + index;
+    return { key: toHourKey(hour), name: String(hour), label: `${hour}:00~${hour + 1}:00`, startHour: hour };
+});
+
 const RESERVATION_CATALOG = deepFreeze({
     priceTypes: [{ key: 'es', name: '小・中学生' }, { key: 'hs', name: '高校生' }, { key: 'ad', name: '大学・一般' }],
     stayPrices: { es: 2200, hs: 2500, ad: 3300 }, // 宿泊料（1人1泊）
@@ -87,17 +95,20 @@ const RESERVATION_CATALOG = deepFreeze({
         { key: 'on', name: '塩おにぎり(2個)', price: 200, unit: '食', group: 'お茶・おにぎり', perPerson: false, reducedTax: true }
     ],
     maxDailyItemCount: 999, // perPerson でない品目の1日あたりの上限
+    // 体育館・競技場の区分（コマ）
     periods: [
-        { key: 'am', name: 'AM', time: '8:30~12:30', hours: 4 },
-        { key: 'pm', name: 'PM', time: '12:30~17:00', hours: 4.5 },
-        { key: 'ev', name: '夜', time: '17:00~21:00', hours: 4 }
+        { key: 'am', name: 'AM', label: 'AM', time: '8:30~12:30' },
+        { key: 'pm', name: 'PM', label: 'PM', time: '12:30~17:00' },
+        { key: 'ev', name: '夜', label: '夜', time: '17:00~21:00' }
     ],
-    // billing：'slot' は1区分ごと、'hour' は1時間ごとの料金（区分の時間数で計算する）
+    // 研修室・ミーティングルームの1時間単位のコマ（9時〜21時）
+    hourSlots: buildHourSlots(9, 21),
+    // billing：'period' は区分（periods）ごと、'hour' は1時間（hourSlots）ごとの料金
     // prices：stay = 宿泊利用料金、day = 日帰り専有料金 ／ Adult = 大学・一般、Youth = 小中高
     facilities: [
-        { key: 'gym', name: '大体育館', billing: 'slot', prices: { stayAdult: 8050, stayYouth: 5370, dayAdult: 10060, dayYouth: 6710 } },
-        { key: 'gym_s', name: '小体育館', billing: 'slot', prices: { stayAdult: 4030, stayYouth: 2690, dayAdult: 5030, dayYouth: 3360 } },
-        { key: 'field', name: '陸上/球技場', billing: 'slot', prices: { stayAdult: 5280, stayYouth: 3520, dayAdult: 6600, dayYouth: 4400 } },
+        { key: 'gym', name: '大体育館', billing: 'period', prices: { stayAdult: 8050, stayYouth: 5370, dayAdult: 10060, dayYouth: 6710 } },
+        { key: 'gym_s', name: '小体育館', billing: 'period', prices: { stayAdult: 4030, stayYouth: 2690, dayAdult: 5030, dayYouth: 3360 } },
+        { key: 'field', name: '陸上/球技場', billing: 'period', prices: { stayAdult: 5280, stayYouth: 3520, dayAdult: 6600, dayYouth: 4400 } },
         { key: 'kL', name: '大研修室(1･3研)', billing: 'hour', prices: { stayAdult: 950, stayYouth: 950, dayAdult: 1890, dayYouth: 1890 } },
         { key: 'kS', name: '小研修室(2研)', billing: 'hour', prices: { stayAdult: 630, stayYouth: 630, dayAdult: 1260, dayYouth: 1260 } },
         { key: 'mr', name: 'ミーティングルーム', billing: 'hour', prices: { stayAdult: 330, stayYouth: 330, dayAdult: 660, dayYouth: 660 } }
@@ -161,18 +172,23 @@ const parseCount = (value) => {
 };
 const toSafeCount = (value) => (isNonNegativeInteger(value) ? value : 0);
 
-// ---------- 施設コマ ----------
+// ---------- 施設コマ（{ date, facilityKey, timeKey }。timeKey は区分 "am" か1時間 "h09"） ----------
 const isSameSlot = (slot, otherSlot) => slot.date === otherSlot.date
-    && slot.facilityKey === otherSlot.facilityKey && slot.periodKey === otherSlot.periodKey;
+    && slot.facilityKey === otherSlot.facilityKey && slot.timeKey === otherSlot.timeKey;
+const findByKey = (list, key) => list.find((entry) => entry.key === key);
 const findIndexByKey = (list, key) => list.findIndex((entry) => entry.key === key);
-// 日付 → 施設の並び順 → 時間帯の並び順 で比べる
+// 施設で選べるコマの一覧（区分の施設は AM・PM・夜、1時間の施設は 9時〜20時台）
+const listTimeUnits = (facility, catalog) => (facility?.billing === 'hour' ? catalog.hourSlots : catalog.periods);
+const findTimeUnit = (slot, catalog) => findByKey(listTimeUnits(findByKey(catalog.facilities, slot.facilityKey), catalog), slot.timeKey);
+const findTimeIndex = (slot, catalog) => findIndexByKey(listTimeUnits(findByKey(catalog.facilities, slot.facilityKey), catalog), slot.timeKey);
+// 日付 → 施設の並び順 → 時間の並び順 で比べる
 const compareSlots = (catalog) => (slot, otherSlot) => slot.date.localeCompare(otherSlot.date)
     || findIndexByKey(catalog.facilities, slot.facilityKey) - findIndexByKey(catalog.facilities, otherSlot.facilityKey)
-    || findIndexByKey(catalog.periods, slot.periodKey) - findIndexByKey(catalog.periods, otherSlot.periodKey);
+    || findTimeIndex(slot, catalog) - findTimeIndex(otherSlot, catalog);
 // 重なりを除いて並べた、新しい施設コマの一覧を返す
 const sortUniqueSlots = (slots, catalog) => slots
     .filter((slot, index) => slots.findIndex((otherSlot) => isSameSlot(otherSlot, slot)) === index)
-    .map((slot) => ({ date: slot.date, facilityKey: slot.facilityKey, periodKey: slot.periodKey }))
+    .map((slot) => ({ date: slot.date, facilityKey: slot.facilityKey, timeKey: slot.timeKey }))
     .sort(compareSlots(catalog));
 
 // ---------- 予約申込の内容（画面の入力値から作る） ----------
@@ -200,13 +216,11 @@ const buildRequest = (formValues, slots, catalog) => ({
 });
 
 // ---------- 概算料金 ----------
-const findByKey = (list, key) => list.find((entry) => entry.key === key);
 // 日ごとの数の合計（正しくない数は0として数える）
 const sumCounts = (counts) => (Array.isArray(counts) ? counts : []).reduce((total, count) => total + toSafeCount(count), 0);
 // 宿泊者がいるか（いれば施設は「宿泊利用料金」、いなければ「日帰り専有料金」）
 const isStayRequest = (request) => sumCounts(request.stays) > 0;
 const pickFacilityPrice = (facility, isStay, priceType) => facility.prices[`${isStay ? 'stay' : 'day'}${priceType === 'ad' ? 'Adult' : 'Youth'}`];
-const sumSlotHours = (slots, periods) => slots.reduce((total, slot) => total + (findByKey(periods, slot.periodKey)?.hours ?? 0), 0);
 // 明細1行（isReducedTax：軽減税率の対象か）
 const buildLine = (label, unitPrice, quantity, unit, isReducedTax) => ({ label, unitPrice, quantity, unit, isReducedTax, amount: Math.round(unitPrice * quantity) });
 // 何日目（何泊目）かの表示。日付が正しければ "10/20(火)"、正しくなければ "1日目"
@@ -222,12 +236,11 @@ const buildStayFeeLines = (request, catalog) => {
 };
 const buildMealFeeLines = (request, catalog) => catalog.meals
     .map((meal) => buildLine(meal.name, meal.price, sumCounts(request.meals?.[meal.key]), meal.unit, meal.reducedTax));
-const buildFacilityFeeLine = (facility, request, catalog) => {
-    const ownSlots = request.slots.filter((slot) => slot.facilityKey === facility.key);
-    const isHourly = facility.billing === 'hour';
-    const quantity = isHourly ? sumSlotHours(ownSlots, catalog.periods) : ownSlots.length;
+// 施設は「1区分の料金 × 区分の数」か「1時間の料金 × 時間の数」
+const buildFacilityFeeLine = (facility, request) => {
+    const quantity = request.slots.filter((slot) => slot.facilityKey === facility.key).length;
     const unitPrice = pickFacilityPrice(facility, isStayRequest(request), request.priceType);
-    return buildLine(facility.name, unitPrice, quantity, isHourly ? '時間' : '区分', false);
+    return buildLine(facility.name, unitPrice, quantity, facility.billing === 'hour' ? '時間' : '区分', false);
 };
 // 税込金額から内消費税を出す（1円未満は切り捨て。小数の誤差が出ないよう税率を1万分率の整数にする）
 const calculateIncludedTax = (taxIncludedAmount, rate) => {
@@ -247,7 +260,7 @@ const calculateTaxBreakdown = (lines, catalog) => ({
 // 概算料金（数量が1以上の明細行、税込合計、税率ごとの内訳、うち消費税の合計、宿泊利用料金かどうか）
 const calculateReservationFee = (request, catalog) => {
     const lines = [...buildStayFeeLines(request, catalog), ...buildMealFeeLines(request, catalog),
-        ...catalog.facilities.map((facility) => buildFacilityFeeLine(facility, request, catalog))].filter((line) => line.quantity > 0);
+        ...catalog.facilities.map((facility) => buildFacilityFeeLine(facility, request))].filter((line) => line.quantity > 0);
     const taxBreakdown = calculateTaxBreakdown(lines, catalog);
     const tax = taxBreakdown.standard.tax + taxBreakdown.reduced.tax;
     return { lines, total: sumLineAmounts(lines), taxBreakdown, tax, isStay: isStayRequest(request) };
@@ -271,28 +284,29 @@ const judgeStayAvailability = (bookedGuests, capacity, fewRatio) => {
     return remaining < capacity * fewRatio ? '△' : '◎';
 };
 const isSlotBooked = (reservations, slot) => reservations.some((reservation) => reservation.slots.some((booked) => isSameSlot(booked, slot)));
-// 予約済みの時間帯のキーの一覧
-const listBookedPeriodKeys = (reservations, date, facilityKey, periods) => periods
-    .filter((period) => isSlotBooked(reservations, { date, facilityKey, periodKey: period.key }))
-    .map((period) => period.key);
-const judgeFacilityAvailability = (bookedCount, periodCount) => {
+// 予約済みのコマのキーの一覧
+const listBookedTimeKeys = (reservations, date, facilityKey, timeUnits) => timeUnits
+    .filter((unit) => isSlotBooked(reservations, { date, facilityKey, timeKey: unit.key }))
+    .map((unit) => unit.key);
+const judgeFacilityAvailability = (bookedCount, unitCount) => {
     if (bookedCount === 0) return '◎';
-    return bookedCount >= periodCount ? '×' : '△';
+    return bookedCount >= unitCount ? '×' : '△';
 };
 const buildStayStatus = (reservations, date, config) => {
     const booked = countStayGuests(reservations, date);
     const symbol = judgeStayAvailability(booked, config.stayCapacity, config.fewRatio);
     return { booked, remaining: Math.max(config.stayCapacity - booked, 0), symbol };
 };
-const buildFacilityStatus = (reservations, date, facility, periods) => {
-    const bookedPeriodKeys = listBookedPeriodKeys(reservations, date, facility.key, periods);
-    return { facilityKey: facility.key, bookedPeriodKeys, symbol: judgeFacilityAvailability(bookedPeriodKeys.length, periods.length) };
+const buildFacilityStatus = (reservations, date, facility, catalog) => {
+    const timeUnits = listTimeUnits(facility, catalog);
+    const bookedTimeKeys = listBookedTimeKeys(reservations, date, facility.key, timeUnits);
+    return { facilityKey: facility.key, bookedTimeKeys, symbol: judgeFacilityAvailability(bookedTimeKeys.length, timeUnits.length) };
 };
 // 日程の日ごとの空き状況（stay はその夜の宿泊。チェックアウト日・日帰りの日は null。休館日は施設もすべて×）
 const buildAvailabilityRows = (reservations, startDate, nights, context) => listUsageDates(startDate, nights).map((date, index) => {
     const isClosed = isClosedDate(date, context.config.closedDates);
     const stay = index < nights ? buildStayStatus(reservations, date, context.config) : null;
-    const facilities = context.catalog.facilities.map((facility) => buildFacilityStatus(reservations, date, facility, context.catalog.periods));
+    const facilities = context.catalog.facilities.map((facility) => buildFacilityStatus(reservations, date, facility, context.catalog));
     const closedFacilities = facilities.map((status) => ({ ...status, symbol: '×' }));
     return { date, isClosed, stay: stay && isClosed ? { ...stay, symbol: '×' } : stay, facilities: isClosed ? closedFacilities : facilities };
 });
@@ -307,10 +321,11 @@ const findCapacityOverflows = (reservations, request, capacity) => listStayNight
     .map((date, nightIndex) => ({ date, booked: countStayGuests(reservations, date), requested: toSafeCount(request.stays?.[nightIndex]) }))
     .filter(({ booked, requested }) => requested > 0 && booked + requested > capacity)
     .map((overflow) => ({ ...overflow, remaining: Math.max(capacity - overflow.booked, 0) }));
-// 日程の外の日、または知らない施設・時間帯の施設コマ
+// 日程の外の日、または知らない施設・その施設で選べない時間の施設コマ
 const findInvalidSlots = (request, catalog) => request.slots.filter((slot) => !listUsageDates(request.startDate, request.nights).includes(slot.date)
-    || !findByKey(catalog.facilities, slot.facilityKey) || !findByKey(catalog.periods, slot.periodKey));
-const formatSlotName = (slot, catalog) => `${findByKey(catalog.facilities, slot.facilityKey)?.name ?? slot.facilityKey} ${findByKey(catalog.periods, slot.periodKey)?.name ?? slot.periodKey}`;
+    || !findByKey(catalog.facilities, slot.facilityKey) || !findTimeUnit(slot, catalog));
+// "大体育館 AM" ／ "大研修室(1･3研) 9:00~10:00"（知らないキーはそのまま出す）
+const formatSlotName = (slot, catalog) => `${findByKey(catalog.facilities, slot.facilityKey)?.name ?? slot.facilityKey} ${findTimeUnit(slot, catalog)?.label ?? slot.timeKey}`;
 const buildCapacityMessage = (overflow) => `${formatDateLabel(overflow.date)}の夜は宿泊定員を超えます（ご希望 ${overflow.requested}人 ／ 残り ${overflow.remaining}人）。人数か日程を変更してください。`;
 const buildSlotConflictMessage = (slot, catalog) => `${formatDateLabel(slot.date)}の「${formatSlotName(slot, catalog)}」はすでに予約が入っています。別の時間帯か日程を選んでください。`;
 const buildClosedMessage = (date) => `${formatDateLabel(date)}は休館日のため予約できません。日程を変更してください。`;
@@ -388,7 +403,7 @@ const findReservationBlockers = (request, context) => [
 
 // ---------- 予約データ（localStorage に保存する配列） ----------
 const isValidSlot = (slot) => typeof slot === 'object' && slot !== null && isValidDateString(slot.date)
-    && typeof slot.facilityKey === 'string' && typeof slot.periodKey === 'string';
+    && typeof slot.facilityKey === 'string' && typeof slot.timeKey === 'string';
 // 決まった日数分の、0以上の整数の配列か
 const isCountList = (value, length) => Array.isArray(value) && value.length === length && value.every(isNonNegativeInteger);
 const isValidMeals = (meals, dayCount) => typeof meals === 'object' && meals !== null && !Array.isArray(meals)
@@ -446,9 +461,26 @@ const importReservationCode = (reservations, codeText) => {
 };
 
 // ---------- 予約申込控え・職員宛てメール ----------
+// 続いている時間をまとめる（[9, 10, 13] → [[9, 11], [13, 14]]。終わりの時刻は含まない）
+const mergeHourRanges = (hours) => [...hours].sort((hour, otherHour) => hour - otherHour).reduce((ranges, hour) => {
+    const lastRange = ranges[ranges.length - 1];
+    return lastRange && lastRange[1] === hour ? [...ranges.slice(0, -1), [lastRange[0], hour + 1]] : [...ranges, [hour, hour + 1]];
+}, []);
+const formatHourRanges = (ranges) => ranges.map(([startHour, endHour]) => `${startHour}:00~${endHour}:00`).join('・');
+// 1つの施設の、1日分のコマ（"大体育館 AM・PM" ／ "大研修室(1･3研) 9:00~11:00・13:00~14:00"）
+const formatFacilitySlots = (facilityKey, slots, catalog) => {
+    const facility = findByKey(catalog.facilities, facilityKey);
+    if (facility?.billing !== 'hour') return `${facility?.name ?? facilityKey} ${slots.map((slot) => findTimeUnit(slot, catalog)?.label ?? slot.timeKey).join('・')}`;
+    const hours = slots.map((slot) => findTimeUnit(slot, catalog)?.startHour).filter(Number.isInteger);
+    return `${facility.name} ${formatHourRanges(mergeHourRanges(hours))}`;
+};
+const formatSlotsOfDate = (date, slots, catalog) => {
+    const daySlots = slots.filter((slot) => slot.date === date);
+    const facilityKeys = [...new Set(daySlots.map((slot) => slot.facilityKey))];
+    return `${formatDateLabel(date)} ${facilityKeys.map((key) => formatFacilitySlots(key, daySlots.filter((slot) => slot.facilityKey === key), catalog)).join('、')}`;
+};
 const formatSlotList = (slots, catalog) => [...new Set(slots.map((slot) => slot.date))]
-    .map((date) => `${formatDateLabel(date)} ${slots.filter((slot) => slot.date === date).map((slot) => formatSlotName(slot, catalog)).join('・')}`)
-    .join(' ／ ');
+    .map((date) => formatSlotsOfDate(date, slots, catalog)).join(' ／ ');
 // "10/20(火) 40人・10/21(水) 38人"（日帰りは「なし（日帰り）」、全員0人は「なし」）
 const formatStayCounts = (reservation) => {
     if (reservation.nights === 0) return 'なし（日帰り）';
@@ -487,16 +519,19 @@ const escapeHtml = (text) => String(text).replace(/[&<>"']/g, (char) => ({ '&': 
 
 // ---------- デモ用のサンプル予約（baseDate：今日の "YYYY-MM-DD"。offset は今日から何日後か） ----------
 // 既定の日程（3日後から2泊）を開くと、宿泊の△・大体育館の×・施設の△がすぐ確認できる並びにしている
-// stays は泊まる夜ごと、meals は利用日ごとの数（書いていない品目は毎日0）
+// サンプルの1時間単位のコマ（day 日目の startHour 時から endHour 時まで）
+const buildSampleHours = (day, facilityKey, startHour, endHour) => Array.from({ length: endHour - startHour },
+    (_, index) => [day, facilityKey, toHourKey(startHour + index)]);
+// stays は泊まる夜ごと、meals は利用日ごとの数（書いていない品目は毎日0）。slots は [何日目(0始まり), 施設, コマ]
 const SAMPLE_SPECS = deepFreeze([
     { offset: 3, nights: 2, people: 40, priceType: 'hs', groupName: 'サンプル高校 陸上部', representative: '佐藤 花子', purpose: 'スポーツ合宿',
         stays: [40, 38], meals: { bf: [0, 40, 38], lu: [40, 40, 38], di: [40, 38, 0] },
         slots: [[0, 'field', 'am'], [0, 'field', 'pm'], [1, 'field', 'am'], [1, 'field', 'pm']] },
     { offset: 3, nights: 1, people: 45, priceType: 'ad', groupName: 'みどりスポーツクラブ', representative: '鈴木 一郎', purpose: 'サークル・クラブ活動',
         stays: [45], meals: { bf: [0, 45], di: [45, 0], te: [45, 0] },
-        slots: [[0, 'kL', 'ev'], [1, 'gym', 'am'], [1, 'gym', 'pm'], [1, 'gym', 'ev']] },
+        slots: [...buildSampleHours(0, 'kL', 17, 21), [1, 'gym', 'am'], [1, 'gym', 'pm'], [1, 'gym', 'ev']] },
     { offset: 5, nights: 0, people: 30, priceType: 'es', groupName: 'やまびこスポーツ少年団', representative: '高橋 次郎', purpose: '大会・試合',
-        stays: [], meals: { be_oni: [30], te: [30] }, slots: [[0, 'gym_s', 'am'], [0, 'gym_s', 'pm'], [0, 'mr', 'pm']] },
+        stays: [], meals: { be_oni: [30], te: [30] }, slots: [[0, 'gym_s', 'am'], [0, 'gym_s', 'pm'], ...buildSampleHours(0, 'mr', 13, 17)] },
     { offset: 10, nights: 3, people: 100, priceType: 'ad', groupName: 'あおぞら大学 バレーボール部', representative: '田中 三郎', purpose: 'スポーツ合宿',
         stays: [100, 100, 100], meals: { bf: [0, 100, 100, 100], lu: [100, 100, 100, 0], di: [100, 100, 100, 0] },
         slots: [[1, 'gym', 'am'], [1, 'gym', 'pm'], [2, 'gym', 'am'], [2, 'gym', 'pm']] }
@@ -508,7 +543,7 @@ const buildSampleRequest = (spec, startDate, index, catalog) => ({
     groupName: spec.groupName, representative: spec.representative, phone: `000000000${index + 1}`,
     email: `sample${index + 1}@example.com`, purpose: spec.purpose, startDate, nights: spec.nights, priceType: spec.priceType,
     people: spec.people, stays: [...spec.stays], meals: buildSampleMeals(spec.meals, spec.nights + 1, catalog),
-    slots: spec.slots.map(([day, facilityKey, periodKey]) => ({ date: addDaysToDateString(startDate, day), facilityKey, periodKey }))
+    slots: spec.slots.map(([day, facilityKey, timeKey]) => ({ date: addDaysToDateString(startDate, day), facilityKey, timeKey }))
 });
 // 動作確認用のサンプル予約（同じ baseDate なら毎回同じ内容）
 const createSampleReservations = (baseDate, catalog) => SAMPLE_SPECS.map((spec, index) => ({
@@ -524,6 +559,7 @@ if (typeof module !== 'undefined') {
         RESERVATION_CONFIG, resolveReservationConfig, RESERVATION_CATALOG,
         parseDateString, isValidDateString, addDaysToDateString, countDaysBetween, formatDateLabel, formatDateJapanese,
         toLocalDateString, toLocalDateTimeString, listUsageDates, listStayNights, formatScheduleLabel,
+        toHourKey, buildHourSlots, listTimeUnits, mergeHourRanges, formatSlotList,
         toHalfWidthDigits, parseCount, isSameSlot, sortUniqueSlots, buildRequest,
         sumCounts, isStayRequest, pickFacilityPrice, calculateIncludedTax, calculateTaxBreakdown, calculateReservationFee, formatYen,
         isClosedDate, getStayCountOnDate, countStayGuests, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,

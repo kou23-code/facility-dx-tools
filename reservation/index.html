@@ -147,7 +147,7 @@
                         <!-- STEP4 施設コマ -->
                         <section class="bg-gray-50 p-3 rounded border">
                             <div class="flex items-center gap-2 mb-1"><span class="step-badge">4</span><span class="font-bold text-base">希望する施設コマ</span></div>
-                            <p class="text-xs text-gray-500 mb-2 ml-8">AM (8:30~12:30) ／ PM (12:30~17:00) ／ 夜 (17:00~21:00)。押すと青くなり選ばれます。灰色の「×」は予約済みで選べません。</p>
+                            <p class="text-xs text-gray-500 mb-2 ml-8">体育館・競技場は区分（AM 8:30~12:30 ／ PM 12:30~17:00 ／ 夜 17:00~21:00）、研修室・ミーティングルームは9時〜21時の1時間単位で選びます。押すと青くなり選ばれます。灰色の「×」は予約済みで選べません。</p>
                             <div id="slotGrid" class="overflow-x-auto"></div>
                         </section>
                     </div>
@@ -329,7 +329,7 @@
         // 日ごとの表の1行分の入力値（1日目から順に）
         const readRowValues = (rowKey) => Array.from(document.querySelectorAll(`input[data-row="${rowKey}"]`), (input) => input.value);
         const readSelectedSlots = () => Array.from(document.querySelectorAll('input.slot-check:checked'),
-            (box) => ({ date: box.dataset.date, facilityKey: box.dataset.facility, periodKey: box.dataset.period }));
+            (box) => ({ date: box.dataset.date, facilityKey: box.dataset.facility, timeKey: box.dataset.time }));
         const readRequest = () => buildRequest(readFormValues(), readSelectedSlots(), CATALOG);
         const buildContext = () => ({ reservations: loadReservations(), config: ACTIVE_CONFIG, catalog: CATALOG, today: getToday() });
 
@@ -340,33 +340,44 @@
             isBooked: isSlotBooked(reservations, slot),
             isChecked: !row.isClosed && selectedSlots.some((selected) => isSameSlot(selected, slot))
         });
-        const buildSlotToggleHtml = (slot, period, state, catalog) => {
+        // コマ1つ分のボタン（unit：区分 { name: 'AM', time } か1時間 { name: '9', label: '9:00~10:00' }）
+        const buildSlotToggleHtml = (slot, unit, state, catalog) => {
             const stateClass = state.isBooked ? (state.isChecked ? 'slot-conflict' : 'slot-booked') : '';
             const isDisabled = state.isClosed || (state.isBooked && !state.isChecked);
-            const title = state.isClosed ? '休館日' : `${period.name} ${period.time}${state.isBooked ? '（予約済み）' : ''}`;
-            return `<label class="slot ${stateClass}" title="${title}"><input type="checkbox" class="slot-check" data-date="${slot.date}" data-facility="${slot.facilityKey}" data-period="${slot.periodKey}"`
+            const title = state.isClosed ? '休館日' : `${unit.time ?? unit.label}${state.isBooked ? '（予約済み）' : ''}`;
+            return `<label class="slot ${stateClass}" title="${title}"><input type="checkbox" class="slot-check" data-date="${slot.date}" data-facility="${slot.facilityKey}" data-time="${slot.timeKey}"`
                 + `${state.isChecked ? ' checked' : ''}${isDisabled ? ' disabled' : ''} aria-label="${formatDateLabel(slot.date)} ${escapeHtml(formatSlotName(slot, catalog))}" onchange="refreshSlots()">`
-                + `${period.name}${isDisabled ? '×' : ''}</label>`;
+                + `${unit.name}${isDisabled ? '×' : ''}</label>`;
         };
-        const buildSlotCellHtml = (row, facility, selectedSlots, context) => {
-            const toggles = context.catalog.periods.map((period) => {
-                const slot = { date: row.date, facilityKey: facility.key, periodKey: period.key };
-                return buildSlotToggleHtml(slot, period, buildSlotState(slot, row, selectedSlots, context.reservations), context.catalog);
-            });
-            return `<td><div class="flex gap-0.5 justify-center">${toggles.join('')}</div></td>`;
-        };
-        const buildDateHeaderHtml = (row) => `<th>${formatDateLabel(row.date)}${row.isClosed ? '<div class="text-[10px] text-red-600">休館日</div>' : ''}</th>`;
-        const buildFacilityHeadHtml = (catalog, extraHeads) => `<thead><tr><th>日付</th>${extraHeads}${catalog.facilities
+        // その日・その施設のコマのボタンの一覧
+        const buildFacilityTogglesHtml = (row, facility, selectedSlots, context) => listTimeUnits(facility, context.catalog).map((unit) => {
+            const slot = { date: row.date, facilityKey: facility.key, timeKey: unit.key };
+            return buildSlotToggleHtml(slot, unit, buildSlotState(slot, row, selectedSlots, context.reservations), context.catalog);
+        });
+        const buildDateHeaderHtml = (row, rowSpan = 1) => `<th rowspan="${rowSpan}">${formatDateLabel(row.date)}${row.isClosed ? '<div class="text-[10px] text-red-600">休館日</div>' : ''}</th>`;
+        const buildFacilityHeadHtml = (facilities, extraHeads) => `<thead><tr><th>日付</th>${extraHeads}${facilities
             .map((facility) => `<th>${escapeHtml(facility.name)}</th>`).join('')}</tr></thead>`;
-        const buildSlotGridHtml = (rows, selectedSlots, context) => `<table class="grid-table w-full text-xs">${buildFacilityHeadHtml(context.catalog, '')}<tbody>${rows
-            .map((row) => `<tr>${buildDateHeaderHtml(row)}${context.catalog.facilities.map((facility) => buildSlotCellHtml(row, facility, selectedSlots, context)).join('')}</tr>`)
-            .join('')}</tbody></table>`;
+        // 体育館・競技場の表（行：日付、列：施設。1マスに AM・PM・夜 のボタン）
+        const buildPeriodGridHtml = (rows, selectedSlots, context, facilities) => `<table class="grid-table w-full text-xs">${buildFacilityHeadHtml(facilities, '')}<tbody>${rows
+            .map((row) => `<tr>${buildDateHeaderHtml(row)}${facilities.map((facility) => `<td><div class="flex gap-0.5 justify-center">${
+                buildFacilityTogglesHtml(row, facility, selectedSlots, context).join('')}</div></td>`).join('')}</tr>`).join('')}</tbody></table>`;
+        // 研修室・ミーティングルームの表（行：日付×部屋、列：9時〜20時台の1時間ずつ）
+        const buildHourHeadHtml = (catalog) => `<thead><tr><th>日付</th><th>部屋</th>${catalog.hourSlots
+            .map((unit) => `<th title="${unit.label}">${unit.name}時</th>`).join('')}</tr></thead>`;
+        const buildHourRowHtml = (row, facility, index, facilities, selectedSlots, context) => `<tr>${index === 0 ? buildDateHeaderHtml(row, facilities.length) : ''}`
+            + `<th class="text-left">${escapeHtml(facility.name)}</th>${buildFacilityTogglesHtml(row, facility, selectedSlots, context).map((toggle) => `<td>${toggle}</td>`).join('')}</tr>`;
+        const buildHourGridHtml = (rows, selectedSlots, context, facilities) => `<table class="grid-table w-full text-xs">${buildHourHeadHtml(context.catalog)}<tbody>${rows
+            .flatMap((row) => facilities.map((facility, index) => buildHourRowHtml(row, facility, index, facilities, selectedSlots, context))).join('')}</tbody></table>`;
         const SCHEDULE_PLACEHOLDER_HTML = '<p class="text-gray-500 text-center py-4">利用開始日と利用日数を選ぶと表示されます。</p>';
+        const filterFacilities = (catalog, billing) => catalog.facilities.filter((facility) => facility.billing === billing);
 
         const renderSlotGrid = (request, context) => {
             if (!canCheckSchedule(request, context.config)) { byId('slotGrid').innerHTML = SCHEDULE_PLACEHOLDER_HTML; return; }
             const rows = buildAvailabilityRows(context.reservations, request.startDate, request.nights, context);
-            byId('slotGrid').innerHTML = buildSlotGridHtml(rows, request.slots, context);
+            byId('slotGrid').innerHTML = `<div class="font-bold text-gray-700 mb-1">体育館・競技場（区分：AM・PM・夜）</div>`
+                + buildPeriodGridHtml(rows, request.slots, context, filterFacilities(context.catalog, 'period'))
+                + `<div class="font-bold text-gray-700 mt-3 mb-1">研修室・ミーティングルーム（9時〜21時の1時間単位）</div>`
+                + buildHourGridHtml(rows, request.slots, context, filterFacilities(context.catalog, 'hour'));
         };
 
         // ---------- 空き状況の表（◎/△/×） ----------
@@ -383,7 +394,7 @@
             if (!canCheckSchedule(request, context.config)) { byId('availabilityTable').innerHTML = SCHEDULE_PLACEHOLDER_HTML; return; }
             const rows = buildAvailabilityRows(context.reservations, request.startDate, request.nights, context);
             const bodyHtml = rows.map((row, dayIndex) => buildAvailabilityRowHtml(row, toSafeCount(request.stays[dayIndex]))).join('');
-            byId('availabilityTable').innerHTML = `<table class="grid-table w-full">${buildFacilityHeadHtml(context.catalog, '<th>宿泊</th>')}<tbody>${bodyHtml}</tbody></table>`;
+            byId('availabilityTable').innerHTML = `<table class="grid-table w-full">${buildFacilityHeadHtml(context.catalog.facilities, '<th>宿泊</th>')}<tbody>${bodyHtml}</tbody></table>`;
         };
 
         // ---------- 概算料金 ----------

@@ -19,7 +19,7 @@ const REQUEST = Object.freeze({
     groupName: 'サンプル高校 陸上部', representative: '山田 太郎', phone: '000-0000-0000', email: 'sample@example.com',
     purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 1, priceType: 'hs', people: 20, stays: [20],
     meals: Object.fromEntries(CATALOG.meals.map((meal) => [meal.key, ({ bf: [0, 20], di: [20, 0], te: [20, 0] })[meal.key] ?? [0, 0]])),
-    slots: [{ date: '2026-11-02', facilityKey: 'gym', periodKey: 'pm' }, { date: '2026-11-03', facilityKey: 'gym', periodKey: 'am' }]
+    slots: [{ date: '2026-11-02', facilityKey: 'gym', timeKey: 'pm' }, { date: '2026-11-03', facilityKey: 'gym', timeKey: 'am' }]
 });
 const RESERVATION = createReservation(REQUEST, [], '2026-10-17T14:05', CATALOG);
 
@@ -44,7 +44,7 @@ test('createReservation は申込の内容に予約番号・申込日時・概�
 test('isValidReservation は空き状況の計算に使う項目がそろった予約だけを認める', () => {
     assert.strictEqual(isValidReservation(RESERVATION), true);
     [null, 'text', [], {}, { ...RESERVATION, id: '' }, { ...RESERVATION, startDate: '2026-02-30' }, { ...RESERVATION, nights: -1 },
-        { ...RESERVATION, people: 1.5 }, { ...RESERVATION, slots: 'gym' }, { ...RESERVATION, slots: [{ date: 'x', facilityKey: 'gym', periodKey: 'am' }] },
+        { ...RESERVATION, people: 1.5 }, { ...RESERVATION, slots: 'gym' }, { ...RESERVATION, slots: [{ date: 'x', facilityKey: 'gym', timeKey: 'am' }] },
         { ...RESERVATION, groupName: undefined }, { ...RESERVATION, stays: undefined }, { ...RESERVATION, stays: [20, 20] },
         { ...RESERVATION, stays: [-1] }, { ...RESERVATION, meals: { bf: [1] } }, { ...RESERVATION, meals: { bf: 20 } }, { ...RESERVATION, meals: [] }
     ].forEach((value, index) => assert.strictEqual(isValidReservation(value), false, `${index}番目`));
@@ -166,4 +166,33 @@ test('buildIssuerLines は予約申込控えの発行元欄の3行を作り、re
     const custom = resolveFacilityInfo(FACILITY_INFO, { facilityName: 'みどり研修センター', tel: 1 });
     assert.strictEqual(buildIssuerLines(custom)[0], '株式会社サンプルリゾート みどり研修センター');
     assert.strictEqual(buildIssuerLines(custom)[2], 'TEL 03-0000-0000', '文字列以外は無視する');
+});
+
+test('mergeHourRanges は続いている時間を1つにまとめる', () => {
+    const { mergeHourRanges } = require(RESERVATION_LOGIC_PATH);
+    assert.deepStrictEqual(toPlain(mergeHourRanges([13, 9, 10])), [[9, 11], [13, 14]]);
+    assert.deepStrictEqual(toPlain(mergeHourRanges([9, 10, 11, 12])), [[9, 13]]);
+    assert.deepStrictEqual(toPlain(mergeHourRanges([20])), [[20, 21]]);
+    assert.deepStrictEqual(toPlain(mergeHourRanges([])), []);
+});
+
+test('formatSlotList は日付ごと・施設ごとにまとめ、研修室の続いた時間は「9:00~11:00」の形にする', () => {
+    const { formatSlotList } = require(RESERVATION_LOGIC_PATH);
+    const slots = [
+        { date: '2026-11-02', facilityKey: 'gym', timeKey: 'am' }, { date: '2026-11-02', facilityKey: 'gym', timeKey: 'pm' },
+        { date: '2026-11-02', facilityKey: 'kL', timeKey: 'h09' }, { date: '2026-11-02', facilityKey: 'kL', timeKey: 'h10' },
+        { date: '2026-11-02', facilityKey: 'kL', timeKey: 'h13' }, { date: '2026-11-03', facilityKey: 'mr', timeKey: 'h20' }
+    ];
+    assert.strictEqual(formatSlotList(slots, CATALOG),
+        '11/2(月) 大体育館 AM・PM、大研修室(1･3研) 9:00~11:00・13:00~14:00 ／ 11/3(火) ミーティングルーム 20:00~21:00');
+    assert.strictEqual(formatSlotList([{ date: '2026-11-02', facilityKey: 'pool', timeKey: 'x' }], CATALOG), '11/2(月) pool x', '知らないキーはそのまま');
+    assert.strictEqual(formatSlotList([], CATALOG), '');
+});
+
+test('サンプル予約の研修室・ミーティングルームは1時間単位で、既定の日程で△になる', () => {
+    const samples = createSampleReservations('2026-10-17', CATALOG);
+    const rows = buildAvailabilityRows(samples, '2026-10-20', 2, { config: CONFIG, catalog: CATALOG });
+    const symbolOf = (row, key) => row.facilities.find((status) => status.facilityKey === key).symbol;
+    assert.deepStrictEqual([symbolOf(rows[0], 'kL'), symbolOf(rows[2], 'mr'), symbolOf(rows[0], 'kS')], ['△', '△', '◎']);
+    assert.deepStrictEqual(samples[1].slots.filter((slot) => slot.facilityKey === 'kL').map((slot) => slot.timeKey), ['h17', 'h18', 'h19', 'h20']);
 });

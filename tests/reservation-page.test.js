@@ -95,6 +95,7 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
         states.push(capture());
         fillApplicant();
         document.querySelector('input.slot-check[data-facility="gym"]:not(:disabled)').checked = true;
+        ['h09', 'h10'].forEach((hourKey) => { document.querySelector('input.slot-check[data-facility="kL"][data-time="' + hourKey + '"]').checked = true; });
         refreshSlots();
         states.push(capture());
         setValue('in_people', '20');
@@ -125,14 +126,14 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
 
     assert.deepStrictEqual(withSamples.staySymbols, ['△', '◎'], '1泊目は85人で残りわずか');
     assert.deepStrictEqual(withSamples.gymSymbols, ['◎', '×', '◎'], '2日目の大体育館はすべて予約済み');
-    assert.strictEqual(withSamples.disabledSlots, 11, '予約済みのコマは押せない');
+    assert.strictEqual(withSamples.disabledSlots, 17, '予約済みのコマは押せない（区分9コマ＋1時間8コマ）');
     assert.strictEqual(JSON.parse(withSamples.storage).length, 4);
     assert.strictEqual(withSamples.storageStatus, 'このブラウザの予約データ：4件（うちサンプル 4件）');
 
     assert.deepStrictEqual(ready.blockers, []);
     assert.strictEqual(ready.buttonDisabled, false);
-    assert.strictEqual(ready.total, '94,250', '宿泊 3,300円×(10＋10)人＋大体育館 8,050円＋朝食 660円×20食＋幕の内弁当 700円×10食');
-    assert.strictEqual(ready.feeTax, '（うち消費税 10%：7,931円 ／ 8%：518円）', '弁当は軽減税率');
+    assert.strictEqual(ready.total, '96,150', '宿泊 3,300円×(10＋10)人＋大体育館 8,050円＋大研修室 950円×2時間＋朝食 660円×20食＋幕の内弁当 700円×10食');
+    assert.strictEqual(ready.feeTax, '（うち消費税 10%：8,104円 ／ 8%：518円）', '弁当は軽減税率');
 
     assert.strictEqual(overCapacity.buttonDisabled, true, '定員超過では確定できない');
     assert.strictEqual(overCapacity.warnings.length, 1);
@@ -147,16 +148,18 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.strictEqual(parsed.ok, true);
     assert.deepStrictEqual(parsed.reservation, stored[4], '1行コードは保存した予約と同じ内容');
     assert.match(parsed.reservation.id, /^R\d{8}-001$/);
-    assert.strictEqual(parsed.reservation.estimatedTotal, 94250);
+    assert.strictEqual(parsed.reservation.estimatedTotal, 96150);
     assert.deepStrictEqual(parsed.reservation.stays, [10, 10]);
     assert.deepStrictEqual([parsed.reservation.meals.bf, parsed.reservation.meals.be_maku], [[0, 10, 10], [10, 0, 0]]);
-    assert.deepStrictEqual(parsed.reservation.slots, [{ date: addDaysToDateString(today, 3), facilityKey: 'gym', periodKey: 'am' }]);
+    const firstDay = addDaysToDateString(today, 3);
+    assert.deepStrictEqual(parsed.reservation.slots, [{ date: firstDay, facilityKey: 'gym', timeKey: 'am' },
+        { date: firstDay, facilityKey: 'kL', timeKey: 'h09' }, { date: firstDay, facilityKey: 'kL', timeKey: 'h10' }]);
     assert.ok(completed.mailHref.startsWith('mailto:reservation@example.com?subject='));
     assert.ok(decodeURIComponent(completed.mailHref).endsWith(completed.code), 'メール本文の最後に1行コード');
     assert.ok(completed.receiptText.includes('予約申込控え') && completed.receiptText.includes('テスト団体'));
-    assert.ok(completed.receiptText.includes('合計（税込） 94,250円'));
+    assert.ok(completed.receiptText.includes('合計（税込） 96,150円'));
     assert.ok(completed.receiptText.includes('朝食 20食（'));
-    assert.ok(completed.receiptText.includes(`${CATALOG.facilities[0].name} AM`));
+    assert.ok(completed.receiptText.includes(`${CATALOG.facilities[0].name} AM、大研修室(1･3研) 9:00~11:00`));
 });
 
 test('画面：予約済みのコマを選んでいると赤くなって確定できず、リセットで予約データが消える', { skip: !BROWSER }, () => {
