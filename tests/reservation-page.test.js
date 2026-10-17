@@ -41,6 +41,9 @@ const CAPTURE_SOURCE = `const capture = () => ({
     receiptText: document.getElementById('receipt').textContent.replace(/\\s+/g, ' '),
     dailyHead: Array.from(document.querySelectorAll('#dailyTable thead th'), (cell) => cell.textContent),
     stayInputs: document.querySelectorAll('#dailyTable input[data-row^="stay_"]').length,
+    dayGuestInputs: document.querySelectorAll('#dailyTable input[data-row^="day_"]').length,
+    dayGuestTotals: ['es', 'hs', 'ad'].map((key) => (document.getElementById('total_day_' + key) || {}).textContent),
+    feeLabels: Array.from(document.querySelectorAll('#feeTable tbody tr'), (row) => row.cells[0].textContent),
     stayNightTotals: Array.from(document.querySelectorAll('#dailyTable td[id^="total_stay_night_"]'), (cell) => cell.textContent),
     stayPlanNote: document.getElementById('stayPlanNote').textContent,
     stayGroupRow: document.querySelector('#dailyTable .group-row td').textContent,
@@ -135,10 +138,11 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
         '17-18時', '18-19時', '19-20時', '20-21時'], '研修室・ミーティングルームの見出しは1時間の枠がわかる表記');
     assert.deepStrictEqual(initial.dailyHead.slice(1, 4).map((text) => text.slice(0, 3)), ['1日目', '2日目', '3日目']);
     assert.strictEqual(initial.stayInputs, 12, '宿泊人数は区分×男女の6行で、泊まる夜（2泊）だけ入力できる');
+    assert.strictEqual(initial.dayGuestInputs, 9, '日帰り参加人数は区分の3行（男女別なし）で、最終日を含む利用日（3日）に入力できる');
     assert.strictEqual(initial.stayPlanNote, '※現時点での予定人数で構いません（後日変更可能です）');
     assert.ok(initial.stayGroupRow.includes('※現時点での予定人数で構いません（後日変更可能です）'), '表の宿泊の見出しにも注記');
     assert.deepStrictEqual(initial.dailyRows, ['小学生・中学生 男性', '小学生・中学生 女性', '高校生 男性', '高校生 女性',
-        '大学生・一般 男性', '大学生・一般 女性', '宿泊人数 合計', '朝食', '昼食', '夕食', '竜田揚げ弁当', '幕の内弁当', 'からマヨ丼', 'おにぎり弁当', 'お茶', '塩おにぎり(2個)']);
+        '大学生・一般 男性', '大学生・一般 女性', '宿泊人数 合計', '日帰り 小学生・中学生', '日帰り 高校生', '日帰り 大学生・一般', '朝食', '昼食', '夕食', '竜田揚げ弁当', '幕の内弁当', 'からマヨ丼', 'おにぎり弁当', 'お茶', '塩おにぎり(2個)']);
 
     assert.deepStrictEqual(withSamples.staySymbols, ['△', '◎'], '1泊目は85人で残りわずか');
     assert.deepStrictEqual(withSamples.gymSymbols, ['◎', '×', '◎'], '2日目の大体育館はすべて予約済み');
@@ -184,6 +188,33 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.ok(completed.receiptText.includes('※体育館の照明代金、研修室の冷暖房代、および宿泊を伴わない日帰り参加者の施設利用料などは別途料金がかかります'), '控えにも別途料金の案内');
     assert.ok(completed.receiptText.includes('10（人／泊）'));
     assert.ok(completed.receiptText.includes(`${CATALOG.facilities[0].name} AM、大研修室(1･3研) 9:00~11:00`));
+});
+
+test('画面：日帰り参加人数を区分ごとに入れると、日帰り参加料が概算料金に加わり、確定した予約と控えにも載る', { skip: !BROWSER }, () => {
+    const [entered, completed] = renderStates(`
+        fillApplicant();
+        document.querySelector('input.slot-check[data-facility="gym"]:not(:disabled)').checked = true;
+        ['h09', 'h10'].forEach((hourKey) => { document.querySelector('input.slot-check[data-facility="kL"][data-time="' + hourKey + '"]').checked = true; });
+        refreshSlots();
+        setValue('in_day_hs_0', '5');
+        setValue('in_day_ad_0', '2');
+        setValue('in_day_es_2', '4');
+        refreshSummary();
+        states.push(capture());
+        confirmReservation();
+        states.push(capture());
+    `);
+    assert.deepStrictEqual(entered.blockers, []);
+    assert.deepStrictEqual(entered.dayGuestTotals, ['4人', '5人', '2人']);
+    assert.deepStrictEqual(entered.feeLabels.slice(-2), ['日帰り参加料（大体育館・小中高）', '日帰り参加料（大体育館・大学・一般）'],
+        '大体育館を使う1日目の分だけ。3日目は体育館・競技場を使わないので加えない');
+    assert.deepStrictEqual(entered.feeQuantities.slice(-2), ['5（人）', '2（人）']);
+    assert.strictEqual(entered.total, '97,890', '96,150円＋高校生 220円×5人＋大学生・一般 320円×2人');
+    const stored = JSON.parse(completed.storage)[0];
+    assert.deepStrictEqual(stored.dayGuests, { es: [0, 0, 4], hs: [5, 0, 0], ad: [2, 0, 0] });
+    assert.strictEqual(stored.estimatedTotal, 97890);
+    assert.ok(completed.receiptText.includes('日帰り参加人数'), '控えに日帰り参加人数の行');
+    assert.ok(completed.receiptText.includes('7人（高校生 5、大学生・一般 2）'));
 });
 
 test('画面：完了画面は送信がまだであることを強調し、1行コードは画面に出さずメールの本文にだけ入れる', { skip: !BROWSER }, () => {
@@ -258,6 +289,7 @@ test('画面：「全日」で1日目の数をコピーでき、利用日数を�
     assert.deepStrictEqual(copied.lunchValues, ['7', '7', '7']);
     assert.deepStrictEqual([twoDays.lunchValues, twoDays.stayInputs, twoDays.stayValue], [['7', '7'], 6, '5']);
     assert.deepStrictEqual([dayTrip.lunchValues, dayTrip.stayInputs], [['7'], 0], '日帰りは宿泊人数を入力できない');
+    assert.strictEqual(dayTrip.dayGuestInputs, 0, '日帰りは合流する宿泊団体がいないので、日帰り参加人数も入力できない');
     assert.deepStrictEqual(dayTrip.staySymbols, [], '日帰りは宿泊の空きを出さない');
 });
 
