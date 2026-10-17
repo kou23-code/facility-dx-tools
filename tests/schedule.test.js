@@ -14,7 +14,8 @@ const ScheduleLogic = require(SCHEDULE_LOGIC_PATH);
 const {
     SCHEDULE_CODE_TYPE, SCHEDULE_CODE_VERSION, STAY_THRESHOLDS, STAY_LIMITS, MEAL_SUMMARY_ITEMS, findNightIndex, findDayIndex, countStayOnDate,
     countStayGuests, countStayGroups, summarizeDailyReservations, judgeStaySymbol, mapFacilitySchedule,
-    isImportableReservation, parseScheduleCode, applyReservationCode, buildDeleteCode
+    isImportableReservation, parseScheduleCode, applyReservationCode, buildDeleteCode,
+    buildPublicSchedule
 } = ScheduleLogic;
 
 // キーごとの日ごとの数の表を、keyedList のすべてのキー・日数分にそろえる（書いていないキーは毎日0）
@@ -288,4 +289,36 @@ test('applyReservationCode は形の正しくない予約をエラーにする',
         { ...HIGH_SCHOOL, slots: [{ date: '2026-11-05', facilityKey: 'gym', timeKey: 'am' }] }
     ].forEach((reservation, index) => assert.deepStrictEqual(applyReservationCode([], buildReservationCode(reservation), IMPORT_CONTEXT),
         { ok: false, errors: ['予約の内容が正しくありません'] }, `${index}番目`));
+});
+
+// ---------- 公開用データ ----------
+test('buildPublicSchedule は日別の宿泊人数・団体数と、埋まっている施設コマだけを日付の順に返す', () => {
+    assert.deepStrictEqual(buildPublicSchedule([DAY_TRIP, UNIVERSITY, HIGH_SCHOOL], CATALOG), { days: [
+        { date: '2026-11-02', stayGuests: 38, stayGroups: 1, bookedSlots: [{ facilityKey: 'gym', timeKey: 'pm' }] },
+        { date: '2026-11-03', stayGuests: 77, stayGroups: 2, bookedSlots: [{ facilityKey: 'gym', timeKey: 'am' },
+            { facilityKey: 'gym_s', timeKey: 'ev' }, { facilityKey: 'kL', timeKey: 'h09' }, { facilityKey: 'mr', timeKey: 'h20' }] }
+    ] });
+});
+
+test('buildPublicSchedule は宿泊も施設コマもない日（チェックアウト日・食事だけの日）を入れない', () => {
+    const mealOnly = buildReservation({ id: 'R20261001-070', startDate: '2026-12-01', nights: 0, meals: { te: [5] } });
+    assert.deepStrictEqual(buildPublicSchedule([mealOnly], CATALOG), { days: [] });
+    assert.deepStrictEqual(buildPublicSchedule([], CATALOG), { days: [] });
+});
+
+test('buildPublicSchedule の結果には、団体名・代表者名・電話番号・メールアドレス・予約番号などの個人情報が含まれない', () => {
+    const samples = createSampleReservations('2026-10-18', CATALOG);
+    const publicText = JSON.stringify(buildPublicSchedule([...RESERVATION_LIST, ...samples], CATALOG));
+    const privateValues = [...RESERVATION_LIST, ...samples].flatMap((reservation) => [
+        reservation.id, reservation.groupName, reservation.representative, reservation.phone, reservation.email, reservation.createdAt]);
+    privateValues.forEach((privateValue) => assert.strictEqual(publicText.includes(privateValue), false, privateValue));
+    ['groupName', 'representative', 'phone', 'email', 'purpose', 'id', 'createdAt', 'meals', 'stays', 'estimatedTotal']
+        .forEach((privateKey) => assert.strictEqual(publicText.includes(`"${privateKey}"`), false, privateKey));
+});
+
+test('buildPublicSchedule の1日分は date・stayGuests・stayGroups・bookedSlots の項目だけを持つ', () => {
+    const { days } = buildPublicSchedule(createSampleReservations('2026-10-18', CATALOG), CATALOG);
+    assert.ok(days.length > 0);
+    days.forEach((day) => assert.deepStrictEqual(Object.keys(day), ['date', 'stayGuests', 'stayGroups', 'bookedSlots']));
+    days.flatMap((day) => day.bookedSlots).forEach((slot) => assert.deepStrictEqual(Object.keys(slot), ['facilityKey', 'timeKey']));
 });

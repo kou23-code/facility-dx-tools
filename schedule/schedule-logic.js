@@ -222,6 +222,27 @@
     // 予約を削除する1行コード
     const buildDeleteCode = (id) => JSON.stringify({ type: SCHEDULE_CODE_TYPE, version: SCHEDULE_CODE_VERSION, action: 'delete', id });
 
+    // ---------- 公開用データ（団体名・代表者名・電話番号・メールアドレス・予約番号などの個人情報は入れない） ----------
+    // 予約1件の、宿泊人数が1人以上の夜と、施設コマのある日
+    const listOccupiedDates = (reservation) => [
+        ...listStayNightDates(reservation).filter((date) => countStayOnDate(reservation, date) > 0),
+        ...reservation.slots.map((slot) => slot.date)
+    ];
+    // 宿泊か施設コマのある日の一覧（重なりを除いて日付の順）
+    const listScheduleDates = (reservationList) => [...new Set(reservationList.flatMap(listOccupiedDates))].sort();
+    // その日の埋まっている施設コマ（施設・コマのキーだけ。catalog の施設・コマの順）
+    const listBookedSlots = (reservationList, date, catalog) => mapFacilitySchedule(reservationList, date, catalog)
+        .flatMap((facilitySchedule) => facilitySchedule.units.filter((unit) => unit.symbol === '×')
+            .map((unit) => ({ facilityKey: facilitySchedule.facilityKey, timeKey: unit.timeKey })));
+    const buildPublicDay = (reservationList, date, catalog) => ({
+        date, stayGuests: countStayGuests(reservationList, date), stayGroups: countStayGroups(reservationList, date),
+        bookedSlots: listBookedSlots(reservationList, date, catalog)
+    });
+    // 公開用データ（{ days: [{ date, stayGuests, stayGroups, bookedSlots: [{ facilityKey, timeKey }] }] }）
+    const buildPublicSchedule = (reservationList, catalog) => ({
+        days: listScheduleDates(reservationList).map((date) => buildPublicDay(reservationList, date, catalog))
+    });
+
     // SCHEDULE_EXPORTS:start
     // ブラウザでは window.ScheduleLogic、Node.js（テスト）では module.exports から使う
     const ScheduleLogic = Object.freeze({
@@ -229,7 +250,8 @@
         isValidDateString, addDaysToDateString, countDaysBetween, findNightIndex, findDayIndex, countStayOnDate,
         countStayGuests, countStayGroups, buildStayBreakdown, buildMealTotals, summarizeDailyReservations, judgeStaySymbol,
         listTimeUnits, isSameSlot, mapFacilitySchedule,
-        isImportableReservation, upsertReservation, parseScheduleCode, applyReservationCode, buildDeleteCode
+        isImportableReservation, upsertReservation, parseScheduleCode, applyReservationCode, buildDeleteCode,
+        buildPublicSchedule
     });
     if (typeof module !== 'undefined') module.exports = ScheduleLogic;
     if (typeof window !== 'undefined') window.ScheduleLogic = ScheduleLogic;
