@@ -215,13 +215,15 @@ const buildContactPart = (formValues) => ({
 });
 // 日ごとの数の一覧を、決まった日数分の整数にする（足りない日は0、余った日は捨てる）
 const fitCounts = (values, length) => Array.from({ length }, (_, index) => parseCount(Array.isArray(values) ? values[index] : undefined));
+// キーごとの日ごとの数の表を、keyedList のキーごとに決まった日数分の整数の配列にする
+const fitCountTable = (table, keyedList, length) => Object.fromEntries(keyedList.map((entry) => [entry.key, fitCounts(table?.[entry.key], length)]));
 const buildUsagePart = (formValues, catalog) => {
     const nights = parseCount(formValues.nights);
     const dayCount = toSafeCount(nights) + 1;
-    const stays = Object.fromEntries(catalog.stayGuestTypes.map((type) => [type.key, fitCounts(formValues.stays?.[type.key], dayCount - 1)]));
+    const stays = fitCountTable(formValues.stays, catalog.stayGuestTypes, dayCount - 1);
     return {
         startDate: trimText(formValues.startDate), nights, ...buildDerivedStayPart(nights, stays, catalog),
-        meals: Object.fromEntries(catalog.meals.map((meal) => [meal.key, fitCounts(formValues.meals?.[meal.key], dayCount)]))
+        meals: fitCountTable(formValues.meals, catalog.meals, dayCount)
     };
 };
 // 宿泊人数と、そこから自動で決める料金区分（priceType）・利用人数（people）。どちらも画面に入力欄はない
