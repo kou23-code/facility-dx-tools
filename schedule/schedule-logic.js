@@ -294,6 +294,68 @@
         symbol: judgeFacilityDaySymbol(facilitySchedule.units)
     }));
 
+    // ---------- 月間カレンダー（月は "YYYY-MM" の文字列で扱う） ----------
+    const toMonthKey = (year, month) => `${year}-${String(month).padStart(2, '0')}`;
+    // "YYYY-MM" を { year, month } にする（形が違う・1〜12月でなければ null）
+    const parseMonthKey = (monthKey) => {
+        const match = /^(\d{4})-(\d{2})$/.exec(typeof monthKey === 'string' ? monthKey : '');
+        const month = match ? Number(match[2]) : 0;
+        return month >= 1 && month <= 12 ? { year: Number(match[1]), month } : null;
+    };
+    // 日付の月（"2026-10-18" → "2026-10"）
+    const toMonthKeyOfDate = (dateString) => dateString.slice(0, 7);
+    // delta か月ずらした月（年をまたいでもよい）
+    const shiftMonthKey = (monthKey, delta) => {
+        const { year, month } = parseMonthKey(monthKey);
+        const monthIndex = year * 12 + (month - 1) + delta;
+        return toMonthKey(Math.floor(monthIndex / 12), (monthIndex % 12) + 1);
+    };
+    const formatMonthLabel = (monthKey) => {
+        const { year, month } = parseMonthKey(monthKey);
+        return `${year}年${month}月`;
+    };
+    const countDaysInMonth = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+    // 月の日付を週ごとに並べる（日曜始まり。月の外のマスは null で、どの週も7マス）
+    const buildCalendarWeeks = (monthKey) => {
+        const { year, month } = parseMonthKey(monthKey);
+        const leadingCount = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+        const dates = Array.from({ length: countDaysInMonth(year, month) }, (_, index) => `${monthKey}-${String(index + 1).padStart(2, '0')}`);
+        const cells = [...Array(leadingCount).fill(null), ...dates];
+        const paddedCells = [...cells, ...Array((7 - (cells.length % 7)) % 7).fill(null)];
+        return Array.from({ length: paddedCells.length / 7 }, (_, weekIndex) => paddedCells.slice(weekIndex * 7, weekIndex * 7 + 7));
+    };
+
+    // ---------- 表示モード（public：公開用（一般利用者向け） ／ staff：職員用（管理者向け）） ----------
+    // URL の検索部分（"?mode=staff"）から最初のモードを決める（指定がなければ公開用）
+    const resolveInitialMode = (search) => (new URLSearchParams(search ?? '').get('mode') === 'staff' ? 'staff' : 'public');
+    // モードに合わせた URL の検索部分（ほかのパラメータは残す。公開用は mode を消す）
+    const buildModeSearch = (search, mode) => {
+        const params = new URLSearchParams(search ?? '');
+        if (mode === 'staff') params.set('mode', 'staff'); else params.delete('mode');
+        const text = params.toString();
+        return text === '' ? '' : `?${text}`;
+    };
+
+    // ---------- 職員用の団体ごとの表示 ----------
+    // その日に利用する（チェックアウト日・日帰りを含む）予約の一覧
+    const listReservationsOnDate = (reservationList, date) => reservationList.filter((reservation) => findDayIndex(reservation, date) >= 0);
+    // カレンダーのマスに出す団体名のバッジ（isStay：その夜に泊まるか）
+    const listGroupBadges = (reservationList, date) => listReservationsOnDate(reservationList, date)
+        .map((reservation) => ({ id: reservation.id, groupName: reservation.groupName, isStay: countStayOnDate(reservation, date) > 0 }));
+    // 団体別の内訳一覧（その日の宿泊人数と食事の項目別の数。団体ごとに summarizeDailyReservations を使う）
+    const buildGroupDailyRows = (reservationList, date, catalog) => listReservationsOnDate(reservationList, date).map((reservation) => {
+        const summary = summarizeDailyReservations([reservation], date, catalog);
+        return { ...toStaffBooking(reservation), stayGuests: summary.stayGuests, meals: summary.meals };
+    });
+    // 予約している団体が同じ、となりあうコマをまとめる（職員用の表で1つのマスにする。空きのコマはまとめない）
+    const toBookingIdsText = (unit) => unit.bookings.map((booking) => booking.id).join(',');
+    const mergeBookedUnits = (units) => units.reduce((runs, unit) => {
+        const lastRun = runs[runs.length - 1];
+        const canMerge = Boolean(lastRun) && toBookingIdsText(unit) !== '' && toBookingIdsText(lastRun.units[0]) === toBookingIdsText(unit);
+        return canMerge ? [...runs.slice(0, -1), { ...lastRun, units: [...lastRun.units, unit] }]
+            : [...runs, { symbol: unit.symbol, bookings: unit.bookings, units: [unit] }];
+    }, []);
+
     // SCHEDULE_EXPORTS:start
     // ブラウザでは window.ScheduleLogic、Node.js（テスト）では module.exports から使う
     const ScheduleLogic = Object.freeze({
@@ -304,7 +366,9 @@
         isImportableReservation, upsertReservation, parseScheduleCode, applyReservationCode, buildDeleteCode,
         buildPublicSchedule,
         PUBLIC_SCHEDULE_TYPE, PUBLIC_SCHEDULE_VERSION, FACILITY_SHORT_NAMES, serializePublicSchedule, parsePublicSchedule,
-        findPublicDay, mapPublicFacilitySchedule, judgeFacilityDaySymbol, summarizeFacilitySymbols
+        findPublicDay, mapPublicFacilitySchedule, judgeFacilityDaySymbol, summarizeFacilitySymbols,
+        toMonthKey, parseMonthKey, toMonthKeyOfDate, shiftMonthKey, formatMonthLabel, buildCalendarWeeks,
+        resolveInitialMode, buildModeSearch, listReservationsOnDate, listGroupBadges, buildGroupDailyRows, mergeBookedUnits
     });
     if (typeof module !== 'undefined') module.exports = ScheduleLogic;
     if (typeof window !== 'undefined') window.ScheduleLogic = ScheduleLogic;

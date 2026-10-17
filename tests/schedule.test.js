@@ -17,7 +17,9 @@ const {
     isImportableReservation, parseScheduleCode, applyReservationCode, buildDeleteCode,
     buildPublicSchedule,
     PUBLIC_SCHEDULE_TYPE, serializePublicSchedule, parsePublicSchedule, findPublicDay, mapPublicFacilitySchedule,
-    judgeFacilityDaySymbol, summarizeFacilitySymbols
+    judgeFacilityDaySymbol, summarizeFacilitySymbols,
+    parseMonthKey, toMonthKeyOfDate, shiftMonthKey, formatMonthLabel, buildCalendarWeeks,
+    resolveInitialMode, buildModeSearch, listGroupBadges, buildGroupDailyRows, mergeBookedUnits
 } = ScheduleLogic;
 
 // キーごとの日ごとの数の表を、keyedList のすべてのキー・日数分にそろえる（書いていないキーは毎日0）
@@ -395,4 +397,78 @@ test('summarizeFacilitySymbols は施設ごとの略称と記号を、施設の�
         { facilityKey: 'field', shortName: '陸上', symbol: '◎' }, { facilityKey: 'kL', shortName: '大研', symbol: '△' },
         { facilityKey: 'kS', shortName: '小研', symbol: '◎' }, { facilityKey: 'mr', shortName: 'MR', symbol: '△' }
     ]);
+});
+
+// ---------- 月間カレンダー ----------
+test('parseMonthKey は "YYYY-MM" を年と月にし、1〜12月でなければ null', () => {
+    assert.deepStrictEqual(parseMonthKey('2026-10'), { year: 2026, month: 10 });
+    ['2026-00', '2026-13', '2026-1', '', undefined, '2026-10-01'].forEach((value) => assert.strictEqual(parseMonthKey(value), null, String(value)));
+    assert.strictEqual(toMonthKeyOfDate('2026-10-18'), '2026-10');
+});
+
+test('shiftMonthKey は前月・次月に動かし、年をまたぐ', () => {
+    assert.deepStrictEqual([-1, 1, 2, 3, -10, -11, 15].map((delta) => shiftMonthKey('2026-10', delta)),
+        ['2026-09', '2026-11', '2026-12', '2027-01', '2025-12', '2025-11', '2028-01']);
+    assert.strictEqual(shiftMonthKey('2026-01', -1), '2025-12');
+    assert.strictEqual(formatMonthLabel('2026-03'), '2026年3月');
+});
+
+test('buildCalendarWeeks は日曜始まりで、月の外のマスを null にした7マスの週を返す', () => {
+    const weeks = buildCalendarWeeks('2026-10');
+    assert.strictEqual(weeks.length, 5);
+    assert.deepStrictEqual(weeks[0], [null, null, null, null, '2026-10-01', '2026-10-02', '2026-10-03']);
+    assert.deepStrictEqual(weeks[4], ['2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31']);
+    weeks.forEach((week) => assert.strictEqual(week.length, 7));
+});
+
+test('buildCalendarWeeks はうるう年の2月・日曜始まりの月・6週になる月も正しく並べる', () => {
+    const countDates = (weeks) => weeks.flat().filter(Boolean).length;
+    assert.strictEqual(countDates(buildCalendarWeeks('2028-02')), 29);
+    assert.strictEqual(countDates(buildCalendarWeeks('2026-02')), 28);
+    assert.deepStrictEqual(buildCalendarWeeks('2026-02').length, 4);
+    assert.strictEqual(buildCalendarWeeks('2026-02')[0][0], '2026-02-01');
+    assert.strictEqual(buildCalendarWeeks('2026-08').length, 6);
+    assert.deepStrictEqual(buildCalendarWeeks('2026-08')[5], ['2026-08-30', '2026-08-31', null, null, null, null, null]);
+});
+
+// ---------- 表示モード ----------
+test('resolveInitialMode は ?mode=staff のときだけ職員用、それ以外は公開用', () => {
+    assert.deepStrictEqual(['?mode=staff', '?x=1&mode=staff', '', '?mode=public', '?mode=STAFF', undefined].map(resolveInitialMode),
+        ['staff', 'staff', 'public', 'public', 'public', 'public']);
+});
+
+test('buildModeSearch は職員用で mode=staff を付け、公開用で消し、ほかのパラメータは残す', () => {
+    assert.strictEqual(buildModeSearch('', 'staff'), '?mode=staff');
+    assert.strictEqual(buildModeSearch('?mode=staff', 'public'), '');
+    assert.strictEqual(buildModeSearch('?x=1&mode=staff', 'public'), '?x=1');
+    assert.strictEqual(buildModeSearch('?x=1', 'staff'), '?x=1&mode=staff');
+});
+
+// ---------- 職員用の団体ごとの表示 ----------
+test('listGroupBadges はその日に利用する団体（チェックアウト日・日帰りを含む）と、泊まるかどうかを返す', () => {
+    assert.deepStrictEqual(listGroupBadges(RESERVATION_LIST, '2026-11-03'), [
+        { id: HIGH_SCHOOL.id, groupName: HIGH_SCHOOL.groupName, isStay: true },
+        { id: UNIVERSITY.id, groupName: UNIVERSITY.groupName, isStay: true },
+        { id: DAY_TRIP.id, groupName: DAY_TRIP.groupName, isStay: false }
+    ]);
+    assert.deepStrictEqual(listGroupBadges(RESERVATION_LIST, '2026-11-04').map((badge) => badge.isStay), [false, false]);
+    assert.deepStrictEqual(listGroupBadges(RESERVATION_LIST, '2026-11-01'), []);
+});
+
+test('buildGroupDailyRows は団体ごとの連絡先・その夜の宿泊人数・食事の項目別の数を返し、合計は日別集計と一致する', () => {
+    const rows = buildGroupDailyRows(RESERVATION_LIST, '2026-11-03', CATALOG);
+    assert.deepStrictEqual(rows.map((row) => [row.id, row.representative, row.phone, row.stayGuests]),
+        [[HIGH_SCHOOL.id, '山田 太郎', '000-0000-0000', 37], [UNIVERSITY.id, '山田 太郎', '000-0000-0000', 40], [DAY_TRIP.id, '山田 太郎', '000-0000-0000', 0]]);
+    assert.deepStrictEqual(rows[2].meals, { breakfast: 0, lunch: 0, dinner: 0, bento: 12, tea: 12, onigiri: 0 });
+    const summary = summarizeDailyReservations(RESERVATION_LIST, '2026-11-03', CATALOG);
+    MEAL_SUMMARY_ITEMS.forEach((item) => assert.strictEqual(rows.reduce((total, row) => total + row.meals[item.key], 0), summary.meals[item.key], item.key));
+});
+
+test('mergeBookedUnits は同じ団体のとなりあうコマをまとめ、空きのコマ・別の団体のコマはまとめない', () => {
+    const booking = (id) => [{ id }];
+    const units = [[], booking('A'), booking('A'), booking('B'), [], [], booking('A')]
+        .map((bookings, index) => ({ timeKey: `h${index}`, symbol: bookings.length > 0 ? '×' : '○', bookings }));
+    assert.deepStrictEqual(mergeBookedUnits(units).map((run) => [run.symbol, run.units.length, run.bookings.map((entry) => entry.id).join('')]),
+        [['○', 1, ''], ['×', 2, 'A'], ['×', 1, 'B'], ['○', 1, ''], ['○', 1, ''], ['×', 1, 'A']]);
+    assert.deepStrictEqual(mergeBookedUnits([]), []);
 });
