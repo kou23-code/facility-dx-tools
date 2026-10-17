@@ -4,7 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { ROOT_DIR, HTML_PATH, PORTAL_PATH, RESERVATION_HTML_PATH } = require('./helpers');
+const { ROOT_DIR, HTML_PATH, PORTAL_PATH, RESERVATION_HTML_PATH, SCHEDULE_HTML_PATH } = require('./helpers');
 
 const PORTAL_TITLE = 'あおぞらセミナーハウス 業務DXツール集';
 const SKIP_DIRS = ['.git', 'node_modules'];
@@ -42,11 +42,11 @@ test('ポータルのタイトルと見出しが「あおぞらセミナーハ�
     assert.strictEqual(textOf(html, /<h1>([^<]*)<\/h1>/), PORTAL_TITLE);
 });
 
-test('ツールのカードが3枚、決められた順番と状態で並んでいる（見積もり・予約は公開中）', () => {
+test('ツールのカードが3枚、決められた順番と状態で並んでいる（見積もり・予約・スケジュール管理表は公開中）', () => {
     assert.deepStrictEqual(parseCards(readPortal()), [
         { title: '概算見積もりシステム', href: 'estimate/', isSoon: false },
         { title: 'Web予約システム', href: 'reservation/', isSoon: false },
-        { title: 'スケジュール管理表', href: null, isSoon: true }
+        { title: 'スケジュール管理表', href: 'schedule/', isSoon: false }
     ]);
 });
 
@@ -64,9 +64,10 @@ test('ポータルに会社名・住所・電話番号らしい表記が書か�
     });
 });
 
-test('見積もりツールは estimate/index.html、予約システムは reservation/index.html にあり、HTMLのファイル名・フォルダ名に日本語がない', () => {
+test('見積もりツールは estimate/index.html、予約システムは reservation/index.html、スケジュール管理表は schedule/index.html にあり、HTMLのファイル名・フォルダ名に日本語がない', () => {
     assert.ok(fs.existsSync(HTML_PATH), 'estimate/index.html がありません');
     assert.ok(fs.existsSync(RESERVATION_HTML_PATH), 'reservation/index.html がありません');
+    assert.ok(fs.existsSync(SCHEDULE_HTML_PATH), 'schedule/index.html がありません');
     const htmlFiles = listFiles(ROOT_DIR).filter((file) => file.endsWith('.html'));
     assert.deepStrictEqual(htmlFiles.filter((file) => !/^[\x21-\x7e]+$/.test(file.replace(/\\/g, '/'))), []);
 });

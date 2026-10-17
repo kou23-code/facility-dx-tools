@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スケジュール管理表</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 表示モードの切り替えボタン */
+        .mode-button { padding: .45rem .9rem; font-size: .85rem; font-weight: 700; background: #fff; color: #1d4ed8; }
+        .mode-button + .mode-button { border-left: 1px solid #1d4ed8; }
+        .mode-button[aria-pressed="true"] { background: #1d4ed8; color: #fff; }
+        .mode-button[data-mode-button="staff"][aria-pressed="true"] { background: #b45309; color: #fff; }
+        /* 月間カレンダー */
+        .calendar-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+        .calendar-table th { padding: 4px 0; font-size: 12px; background: #1f2937; color: #fff; }
+        .calendar-table th.is-sun { color: #fca5a5; }
+        .calendar-table th.is-sat { color: #93c5fd; }
+        .calendar-cell { height: 5.5rem; padding: 0; border: 1px solid #e5e7eb; vertical-align: top; background: #fff; }
+        .calendar-cell.is-outside { background: #f9fafb; }
+        .calendar-cell.is-closed { background: #f3f4f6; }
+        .calendar-cell.is-today .day-number { background: #1d4ed8; color: #fff; }
+        .calendar-cell.is-selected { outline: 3px solid #f59e0b; outline-offset: -3px; }
+        .calendar-day { display: block; width: 100%; height: 100%; min-height: 5.5rem; padding: 3px; text-align: left; cursor: pointer; }
+        .calendar-day:hover { background: #eff6ff; }
+        .calendar-day:focus-visible { outline: 2px solid #3b82f6; outline-offset: -2px; }
+        .day-number { display: inline-block; min-width: 1.4rem; padding: 0 3px; border-radius: 9999px; font-size: 12px; font-weight: 700; text-align: center; }
+        .day-number.is-sun { color: #dc2626; }
+        .day-number.is-sat { color: #2563eb; }
+        .facility-mini { display: flex; flex-wrap: wrap; gap: 0 4px; margin-top: 2px; font-size: 10px; line-height: 1.35; }
+        .facility-mini > span { white-space: nowrap; }
+        .group-badge { display: block; overflow: hidden; padding: 0 4px; border-radius: 3px; font-size: 10px; line-height: 1.5; white-space: nowrap; text-overflow: ellipsis; }
+        .group-badge.is-stay { background: #dbeafe; color: #1e3a8a; }
+        .group-badge.is-day { background: #f3f4f6; color: #374151; }
+        @media (max-width: 639px) {
+            .calendar-cell, .calendar-day { height: 4.2rem; min-height: 4.2rem; }
+        }
+        /* 職員用モードは表が横に広いので、カレンダーと日別の詳細を縦に並べる */
+        #app[data-mode="staff"] .main-columns { flex-direction: column; }
+        #app[data-mode="staff"] .main-columns > section { width: 100%; }
+        #app[data-mode="staff"] .back-to-calendar { display: inline; }
+        /* 日別のタイムテーブル・集計の表 */
+        .grid-table { border-collapse: collapse; }
+        .grid-table th, .grid-table td { border: 1px solid #e5e7eb; padding: 3px 4px; text-align: center; white-space: nowrap; }
+        .grid-table thead th { background: #1f2937; color: #fff; font-size: 11px; font-weight: 700; }
+        .grid-table tbody th { background: #f9fafb; font-size: 12px; text-align: left; }
+        .grid-table td.is-free { color: #15803d; font-weight: 700; }
+        .grid-table td.is-booked { background: #fef2f2; color: #b91c1c; font-weight: 700; }
+        .grid-table td.staff-booking { background: #fff7ed; color: #7c2d12; font-weight: 400; text-align: left; white-space: normal; min-width: 7rem; font-size: 11px; line-height: 1.35; }
+        .grid-table tfoot td, .grid-table tfoot th { background: #f3f4f6; font-weight: 700; }
+        .panel-textarea { width: 100%; min-height: 4.5rem; padding: .5rem; border: 1px solid #d1d5db; border-radius: .25rem; font-family: ui-monospace, monospace; font-size: 12px; }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 md:p-6 font-sans">
+    <div id="app" class="max-w-[1500px] mx-auto" data-mode="public" data-month="" data-selected-date="">
+        <!-- ===================== 見出しと表示モードの切り替え ===================== -->
+        <header class="flex flex-wrap justify-between items-end gap-3 mb-4">
+            <div>
+                <a href="../" class="text-sm text-blue-700 hover:underline">← ツール一覧へ戻る</a>
+                <h1 id="pageHeading" class="text-2xl font-bold mt-1">スケジュール管理表</h1>
+                <p class="text-sm text-gray-600">宿泊・施設の空き状況を月間カレンダーと日別のタイムテーブルで確認できます。</p>
+            </div>
+            <div role="group" aria-label="表示モード" class="inline-flex rounded-lg border border-blue-700 overflow-hidden shadow-sm">
+                <button type="button" id="publicModeButton" class="mode-button" data-mode-button="public" aria-pressed="true" onclick="switchMode('public')">公開用モード<span class="hidden sm:inline">（一般利用者向け）</span></button>
+                <button type="button" id="staffModeButton" class="mode-button" data-mode-button="staff" aria-pressed="false" onclick="switchMode('staff')">職員用モード<span class="hidden sm:inline">（管理者向け）</span></button>
+            </div>
+        </header>
+
+        <div id="modeNotice" class="mb-3"></div>
+        <!-- 予約データが空のときだけ表示する -->
+        <div id="emptyNotice" class="hidden mb-3 flex flex-wrap items-center gap-3 bg-white border border-dashed border-gray-400 rounded p-3 text-sm">
+            <span>このブラウザには予約データがありません。動作確認用のサンプル予約をワンクリックで投入できます。</span>
+            <button type="button" id="emptySampleButton" onclick="insertSampleReservations()" class="px-3 py-1.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">サンプル予約を投入</button>
+        </div>
+
+        <div class="main-columns flex flex-col xl:flex-row gap-6 items-start">
+            <!-- ===================== 月間カレンダー ===================== -->
+            <section id="calendarSection" class="min-w-0 w-full xl:w-[56%] bg-white rounded-lg shadow-md p-3 md:p-4 border-t-4 border-blue-600">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <button type="button" id="prevMonthButton" onclick="moveMonth(-1)" class="px-3 py-1.5 rounded border border-gray-300 text-sm hover:bg-gray-50">‹ 前月</button>
+                    <div class="text-center">
+                        <h2 id="monthLabel" class="text-xl font-bold"></h2>
+                        <button type="button" id="todayButton" onclick="moveToToday()" class="text-xs text-blue-700 hover:underline">今日の月へ</button>
+                    </div>
+                    <button type="button" id="nextMonthButton" onclick="moveMonth(1)" class="px-3 py-1.5 rounded border border-gray-300 text-sm hover:bg-gray-50">次月 ›</button>
+                </div>
+                <div id="calendar"></div>
+                <p id="calendarLegend" class="text-[11px] text-gray-600 mt-2 leading-relaxed"></p>
+            </section>
+
+            <!-- ===================== 日別タイムテーブル＆集計 ===================== -->
+            <section id="dayDetail" class="min-w-0 w-full xl:w-[44%] bg-white rounded-lg shadow-md p-3 md:p-4 border-t-4 border-blue-600 scroll-mt-4"></section>
+        </div>
+
+        <!-- ===================== 職員用データ管理パネル（職員用モードだけ表示） ===================== -->
+        <section id="staffPanel" class="staff-only hidden mt-6 bg-white rounded-lg shadow-md p-4 border-t-4 border-amber-600">
+            <h2 class="text-lg font-bold mb-1">職員用データ管理パネル</h2>
+            <p class="text-xs text-gray-600 mb-3">予約データはこのブラウザ（localStorage）に保存され、Web予約画面と共通です。<span id="storageStatus" class="font-bold"></span></p>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 text-sm">
+                <!-- ① 職員取込用1行コードの取込 -->
+                <div class="bg-gray-50 border rounded p-3">
+                    <div class="font-bold mb-1">① 職員取込用1行コードの取込</div>
+                    <p class="text-xs text-gray-600 mb-2">メールで届いた「施設の予約管理用データ」の1行を貼り付けて取り込みます。同じ予約番号は更新、削除用のコード（action: delete）は削除します。</p>
+                    <label for="importCodeInput" class="sr-only">職員取込用1行コード</label>
+                    <textarea id="importCodeInput" class="panel-textarea" placeholder='{"type":"facility_dx_reservation","version":3,"reservation":{...}}'></textarea>
+                    <button type="button" id="importButton" onclick="importCodeFromForm()" class="mt-2 px-4 py-1.5 rounded bg-amber-600 text-white font-bold hover:bg-amber-700">取り込む</button>
+                    <div id="importResult" class="mt-2 text-xs"></div>
+                </div>
+                <!-- ② 予約の追加・削除 -->
+                <div class="bg-gray-50 border rounded p-3">
+                    <div class="font-bold mb-1">② 予約の追加・削除</div>
+                    <p class="text-xs text-gray-600 mb-2">新しい予約は、Web予約画面から追加します（同じブラウザなら、確定した予約がこの画面にもすぐ反映されます）。</p>
+                    <a id="newReservationLink" href="../reservation/" class="inline-block px-4 py-1.5 rounded border border-blue-300 text-blue-700 font-bold hover:bg-blue-50">＋ 新しい予約を追加（Web予約画面へ）</a>
+                    <p class="text-xs text-gray-600 mt-3">予約の削除（キャンセル）は、カレンダーで日付を選び、日別の「団体別内訳一覧」の「削除」ボタンから行います。削除用のコードを①に貼り付けても削除できます。</p>
+                    <div class="mt-3 pt-3 border-t border-dashed">
+                        <div class="font-bold text-gray-700 mb-1">デモ確認用</div>
+                        <div class="flex gap-2 flex-wrap">
+                            <button type="button" id="sampleButton" onclick="insertSampleReservations()" class="px-3 py-1.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">サンプル予約を投入</button>
+                            <button type="button" id="resetButton" onclick="resetReservations()" class="px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50">予約データをリセット</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- ③ 公開用スケジュールデータ（JSON） -->
+                <div class="bg-gray-50 border rounded p-3">
+                    <div class="font-bold mb-1">③ 公開用スケジュールデータ（JSON）</div>
+                    <p class="text-xs text-gray-600 mb-2">団体名・代表者名・電話番号・メールアドレスなどの個人情報を除いた、日別の宿泊人数・団体数と埋まっている施設コマだけのデータです。</p>
+                    <div class="flex gap-2 flex-wrap">
+                        <button type="button" id="exportPublicButton" onclick="exportPublicSchedule()" class="px-3 py-1.5 rounded bg-blue-700 text-white font-bold hover:bg-blue-800">出力する</button>
+                        <button type="button" id="copyPublicButton" onclick="copyPublicSchedule()" class="px-3 py-1.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">コピー</button>
+                        <button type="button" id="downloadPublicButton" onclick="downloadPublicSchedule()" class="px-3 py-1.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">ファイルに保存</button>
+                    </div>
+                    <label for="publicJsonOutput" class="sr-only">出力した公開用データ</label>
+                    <textarea id="publicJsonOutput" class="panel-textarea mt-2" readonly placeholder="「出力する」を押すと、ここに公開用データが出ます"></textarea>
+                    <div class="font-bold text-gray-700 mt-3 mb-1">公開用データの読み込み</div>
+                    <label for="publicJsonInput" class="sr-only">読み込む公開用データ</label>
+                    <textarea id="publicJsonInput" class="panel-textarea" placeholder='{"type":"facility_dx_public_schedule","version":1,...}'></textarea>
+                    <div class="flex gap-2 flex-wrap mt-2">
+                        <button type="button" id="loadPublicButton" onclick="loadPublicScheduleFromForm()" class="px-3 py-1.5 rounded bg-blue-700 text-white font-bold hover:bg-blue-800">読み込む（公開用モードで表示）</button>
+                        <button type="button" id="clearPublicButton" onclick="clearImportedPublicSchedule()" class="px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50">読み込みを解除</button>
+                    </div>
+                    <div id="publicLoadResult" class="mt-2 text-xs"></div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- お知らせ表示 -->
+    <div id="toast" class="hidden fixed top-6 left-1/2 -translate-x-1/2 z-50 max-w-[90vw] bg-gray-900 text-white rounded-lg shadow-xl px-6 py-3 text-center cursor-pointer" onclick="this.classList.add('hidden')"></div>
+
+    <!-- ローカル専用の実名の設定（Git管理外）。ファイルがなければダミー表記で動く -->
+    <script src="../facility-config.js"></script>
+    <!-- 予約データの読み書き・施設や食事の一覧・サンプル予約（Web予約システムと共通の純粋関数） -->
+    <script src="../reservation/reservation-logic.js"></script>
+    <!-- スケジュール管理表の集計・判定の純粋関数（window.ScheduleLogic） -->
+    <script src="schedule-logic.js"></script>
+    <script>
+        // ======================================================
+        //  画面の処理（DOM・localStorage を扱う部分）
+        //  集計と判定は schedule-logic.js（window.ScheduleLogic）と reservation-logic.js の純粋関数に任せ、
+        //  ここでは読み取りと表示だけを行う。表示中のモード・月・日付は #app の data 属性に持つ
+        //  ※reservation-logic.js が同じ名前の関数を持つため、ScheduleLogic は Schedule.〇〇 の形で呼ぶ
+        // ======================================================
+        const Schedule = window.ScheduleLogic;
+        const ACTIVE_FACILITY_INFO = resolveFacilityInfo(FACILITY_INFO, window.CUSTOM_FACILITY_INFO);
+        const ACTIVE_CONFIG = resolveReservationConfig(RESERVATION_CONFIG, window.CUSTOM_RESERVATION_CONFIG);
+        const CATALOG = RESERVATION_CATALOG;
+        const PUBLIC_STORAGE_KEY = 'facility_dx_public_schedule'; // 読み込んだ公開用データを保存する localStorage のキー
+        const IMPORT_CONTEXT = Object.freeze({ catalog: CATALOG, limits: Schedule.STAY_LIMITS });
+        const SYMBOL_CLASSES = Object.freeze({ '◎': 'text-green-700', '○': 'text-green-700', '△': 'text-amber-600', '×': 'text-red-600' });
+        const STAY_SYMBOL_TEXTS = Object.freeze({ '◎': '空きあり', '△': '残りわずか', '×': '満室' });
+        const PERIOD_NAMES = Object.freeze({ am: '午前', pm: '午後', ev: '夜間' });
+        const WEEKDAY_HEADS = Object.freeze(['日', '月', '火', '水', '木', '金', '土']);
+        const MAX_CALENDAR_BADGES = 3; // カレンダーの1マスに出す団体名バッジの数（残りは「他◯団体」）
+
+        const byId = (id) => document.getElementById(id);
+        const getToday = () => toLocalDateString(new Date());
+        const getWeekday = (date) => new Date(`${date}T00:00:00Z`).getUTCDay();
+        const formatMealUnit = (itemKey) => (itemKey === 'tea' ? '本' : '食');
+
+        // ---------- データの読み書き（localStorage） ----------
+        const loadReservations = () => {
+            try { return parseStoredReservations(localStorage.getItem(RESERVATION_STORAGE_KEY)); } catch (error) { return []; }
+        };
+        const saveReservations = (reservations) => {
+            try { localStorage.setItem(RESERVATION_STORAGE_KEY, serializeReservations(reservations)); return true; } catch (error) { return false; }
+        };
+        const removeStoredItem = (key) => {
+            try { localStorage.removeItem(key); } catch (error) { /* 保存できないブラウザでは消すものもない */ }
+        };
+        // 読み込んだ公開用データ（なければ・壊れていれば null）
+        const loadImportedPublicSchedule = () => {
+            try {
+                const result = Schedule.parsePublicSchedule(localStorage.getItem(PUBLIC_STORAGE_KEY) ?? '', CATALOG);
+                return result.ok ? result.schedule : null;
+            } catch (error) { return null; }
+        };
+        const saveImportedPublicSchedule = (schedule) => {
+            const text = JSON.stringify({ type: Schedule.PUBLIC_SCHEDULE_TYPE, version: Schedule.PUBLIC_SCHEDULE_VERSION, ...schedule });
+            try { localStorage.setItem(PUBLIC_STORAGE_KEY, text); return true; } catch (error) { return false; }
+        };
+
+        // ---------- 表示中の状態（モード・月・選んだ日付） ----------
+        const readViewState = () => ({ mode: byId('app').dataset.mode, month: byId('app').dataset.month, selectedDate: byId('app').dataset.selectedDate });
+        const writeViewState = (partialState) => Object.entries(partialState).forEach(([key, value]) => { byId('app').dataset[key] = value; });
+        // 公開用モードで使うデータ（読み込んだ公開用データがあればそれ、なければこのブラウザの予約データから個人情報を除いて作る）
+        const resolvePublicSource = (reservations, importedSchedule) => (importedSchedule
+            ? { schedule: importedSchedule, isImported: true, label: `読み込んだ公開用データ${importedSchedule.generatedAt ? `（${importedSchedule.generatedAt.replace('T', ' ')} 作成）` : ''}` }
+            : { schedule: Schedule.buildPublicSchedule(reservations, CATALOG), isImported: false, label: 'このブラウザの予約データから作成（個人情報は除いています）' });
+        const buildViewContext = () => {
+            const reservations = loadReservations();
+            return { state: readViewState(), reservations, publicSource: resolvePublicSource(reservations, loadImportedPublicSchedule()), today: getToday() };
+        };
+
+        // ---------- 共通の部品 ----------
+        const buildSymbolHtml = (symbol, sizeClass = 'text-base') => `<span class="font-bold ${sizeClass} ${SYMBOL_CLASSES[symbol] ?? ''}">${symbol}</span>`;
+        const judgeStaySymbolOf = (stayGuests, stayGroups) => Schedule.judgeStaySymbol(stayGuests, stayGroups, Schedule.STAY_THRESHOLDS);
+        const buildStayLimitText = () => `上限 ${Schedule.STAY_LIMITS.stayCapacity}人・${Schedule.STAY_LIMITS.maxStayGroups}団体`;
+
+        // ---------- 表示モード ----------
+        const renderModeButtons = (mode) => document.querySelectorAll('[data-mode-button]').forEach((button) => {
+            button.setAttribute('aria-pressed', String(button.dataset.modeButton === mode));
+        });
+        const buildModeNoticeHtml = (context) => (context.state.mode === 'staff'
+            ? '<div class="bg-amber-50 border-l-8 border-amber-500 rounded px-4 py-2 text-sm text-amber-900"><b>職員用モード：</b>団体名・代表者名・電話番号を表示しています。この画面を利用者に見せないでください。</div>'
+            : `<div class="bg-blue-50 border-l-8 border-blue-500 rounded px-4 py-2 text-sm text-blue-900"><b>公開用モード：</b>空き状況だけを表示しています（団体名などの個人情報は表示しません）。`
+                + `<span class="block text-xs text-blue-800">表示中のデータ：<span id="publicSourceLabel">${escapeHtml(context.publicSource.label)}</span></span></div>`);
+        const renderModeView = (context) => {
+            renderModeButtons(context.state.mode);
+            byId('modeNotice').innerHTML = buildModeNoticeHtml(context);
+            document.querySelectorAll('.staff-only').forEach((element) => element.classList.toggle('hidden', context.state.mode !== 'staff'));
+            byId('emptyNotice').classList.toggle('hidden', context.reservations.length > 0 || context.publicSource.isImported);
+        };
+
+        // ---------- 月間カレンダー ----------
+        const buildWeekdayClass = (date) => ({ 0: 'is-sun', 6: 'is-sat' })[getWeekday(date)] ?? '';
+        const buildDayNumberHtml = (date, isClosed) => `<span class="day-number ${buildWeekdayClass(date)}">${Number(date.slice(8))}</span>`
+            + `${isClosed ? '<span class="ml-1 text-[10px] font-bold text-red-600">休館日</span>' : ''}`;
+        // 公開用：宿泊の◎/△/× と、施設ごとの略称と記号（スマートフォンでは記号だけ）
+        const buildFacilityMiniHtml = (facilitySymbols) => `<div class="facility-mini">${facilitySymbols.map((entry) => `<span data-facility="${entry.facilityKey}" title="${escapeHtml(entry.shortName)}">`
+            + `<span class="hidden sm:inline text-gray-600">${escapeHtml(entry.shortName)}</span>${buildSymbolHtml(entry.symbol, 'text-[10px]')}</span>`).join('')}</div>`;
+        const buildPublicCellBodyHtml = (date, context) => {
+            const publicDay = Schedule.findPublicDay(context.publicSource.schedule, date);
+            const staySymbol = judgeStaySymbolOf(publicDay.stayGuests, publicDay.stayGroups);
+            const facilitySymbols = Schedule.summarizeFacilitySymbols(Schedule.mapPublicFacilitySchedule(publicDay, CATALOG));
+            return `<div class="text-[11px] mt-0.5" data-stay-symbol="${staySymbol}"><span class="hidden sm:inline text-gray-600">宿泊</span>${buildSymbolHtml(staySymbol, 'text-sm')}</div>${buildFacilityMiniHtml(facilitySymbols)}`;
+        };
+        // 職員用：宿泊合計人数/団体数と、利用団体名のバッジ（青：その夜に宿泊 ／ 灰：日帰り・チェックアウト日）
+        const buildBadgeHtml = (badge) => `<span class="group-badge ${badge.isStay ? 'is-stay' : 'is-day'}" title="${escapeHtml(badge.groupName)}">${escapeHtml(badge.groupName)}</span>`;
+        const buildBadgesHtml = (badges) => (badges.length === 0 ? '' : `<div class="hidden sm:flex flex-col gap-px mt-0.5">${badges.slice(0, MAX_CALENDAR_BADGES).map(buildBadgeHtml).join('')}`
+            + `${badges.length > MAX_CALENDAR_BADGES ? `<span class="text-[10px] text-gray-500">他${badges.length - MAX_CALENDAR_BADGES}団体</span>` : ''}</div>`
+            + `<div class="sm:hidden text-[10px] text-gray-600">${badges.length}団体</div>`);
+        const buildStaffCellBodyHtml = (date, context) => {
+            const summary = Schedule.summarizeDailyReservations(context.reservations, date, CATALOG);
+            const badges = Schedule.listGroupBadges(context.reservations, date);
+            if (summary.stayGuests === 0 && badges.length === 0) return ''; // 利用する団体がいない日は何も出さない
+            const staySymbol = judgeStaySymbolOf(summary.stayGuests, summary.stayGroups);
+            return `<div class="stay-count text-[11px] font-bold whitespace-nowrap" data-stay-symbol="${staySymbol}">${buildSymbolHtml(staySymbol, 'text-xs')}${summary.stayGuests}人`
+                + `<span class="hidden sm:inline">/${summary.stayGroups}団体</span></div>${buildBadgesHtml(badges)}`;
+        };
+        const buildCalendarClasses = (date, isClosed, context) => ['calendar-cell', date === context.state.selectedDate && 'is-selected',
+            date === context.today && 'is-today', isClosed && 'is-closed'].filter(Boolean).join(' ');
+        const buildCalendarCellHtml = (date, context) => {
+            if (date === null) return '<td class="calendar-cell is-outside"></td>';
+            const isClosed = isClosedDate(date, ACTIVE_CONFIG.closedDates);
+            const bodyHtml = context.state.mode === 'staff' ? buildStaffCellBodyHtml(date, context) : (isClosed ? '' : buildPublicCellBodyHtml(date, context));
+            return `<td class="${buildCalendarClasses(date, isClosed, context)}" data-date="${date}"><button type="button" class="calendar-day" onclick="selectDate('${date}')"`
+                + ` aria-label="${formatDateJapanese(date)}の詳細を見る">${buildDayNumberHtml(date, isClosed)}${bodyHtml}</button></td>`;
+        };
+        const buildCalendarHtml = (context) => `<table class="calendar-table"><thead><tr>${WEEKDAY_HEADS.map((name, index) => `<th class="${({ 0: 'is-sun', 6: 'is-sat' })[index] ?? ''}">${name}</th>`).join('')}</tr></thead>`
+            + `<tbody>${Schedule.buildCalendarWeeks(context.state.month).map((week) => `<tr>${week.map((date) => buildCalendarCellHtml(date, context)).join('')}</tr>`).join('')}</tbody></table>`;
+        const PUBLIC_LEGEND = '宿泊：<b class="text-green-700">◎</b>空きあり ／ <b class="text-amber-600">△</b>残りわずか（200人以上か4団体以上） ／ <b class="text-red-600">×</b>満室（300人以上か6団体以上）。'
+            + '施設（大体：大体育館、小体：小体育館、陸上：陸上/球技場、大研：大研修室、小研：小研修室、MR：ミーティングルーム）：◎すべて空き ／ △一部予約済み ／ ×すべて予約済み。日付を押すと、その日の時間ごとの空きを確認できます。';
+        const buildStaffLegend = () => `宿泊合計人数/団体数（${buildStayLimitText()}）。団体名のバッジ：<span class="group-badge is-stay inline-block">青</span>その夜に宿泊`
+            + ` ／ <span class="group-badge is-day inline-block">灰</span>日帰り・チェックアウト日。日付を押すと、その日の詳細と団体別内訳を確認できます。`;
+        const renderCalendar = (context) => {
+            byId('monthLabel').textContent = Schedule.formatMonthLabel(context.state.month);
+            byId('calendar').innerHTML = buildCalendarHtml(context);
+            byId('calendarLegend').innerHTML = context.state.mode === 'staff' ? buildStaffLegend() : PUBLIC_LEGEND;
+        };
+
+        // ---------- 日別タイムテーブル（施設コマ表） ----------
+        const filterFacilitySchedules = (facilitySchedules, billing) => facilitySchedules
+            .filter((facilitySchedule) => findByKey(CATALOG.facilities, facilitySchedule.facilityKey).billing === billing);
+        const buildPeriodHeadHtml = () => `<thead><tr><th>施設</th>${CATALOG.periods.map((period) => `<th>${PERIOD_NAMES[period.key] ?? period.label}（${escapeHtml(period.label)}）`
+            + `<div class="font-normal text-gray-300">${escapeHtml(period.time)}</div></th>`).join('')}</tr></thead>`;
+        const buildHourHeadHtml = () => `<thead><tr><th>部屋</th>${CATALOG.hourSlots.map((unit) => `<th title="${unit.label}">${formatHourHeader(unit)}</th>`).join('')}</tr></thead>`;
+        // 公開用のマス：○（空き）か ×（予約済み）だけ
+        const buildPublicUnitCellsHtml = (facilitySchedule) => facilitySchedule.units.map((unit) => `<td class="${unit.symbol === '×' ? 'is-booked' : 'is-free'}"`
+            + ` data-facility="${facilitySchedule.facilityKey}" data-time="${unit.timeKey}" title="${unit.symbol === '×' ? '予約済み' : '空き'}">${unit.symbol}</td>`).join('');
+        // 職員用のマス：予約済みのコマに「団体名（代表者名・TEL）」。同じ団体のとなりあうコマは1つのマスにまとめる
+        const buildBookingTextHtml = (booking) => `<div><b>${escapeHtml(booking.groupName)}</b>（${escapeHtml(booking.representative)}・TEL ${escapeHtml(booking.phone)}）</div>`;
+        const buildStaffRunCellHtml = (run, facilityKey) => (run.symbol === '×'
+            ? `<td class="is-booked staff-booking" colspan="${run.units.length}" data-facility="${facilityKey}" data-time="${run.units[0].timeKey}">${run.bookings.map(buildBookingTextHtml).join('')}</td>`
+            : `<td class="is-free" data-facility="${facilityKey}" data-time="${run.units[0].timeKey}" title="空き">○</td>`);
+        const buildStaffUnitCellsHtml = (facilitySchedule) => Schedule.mergeBookedUnits(facilitySchedule.units)
+            .map((run) => buildStaffRunCellHtml(run, facilitySchedule.facilityKey)).join('');
+        const buildFacilityTableHtml = (facilitySchedules, headHtml, buildCellsHtml) => `<div class="overflow-x-auto"><table class="grid-table w-full text-xs">${headHtml}<tbody>${facilitySchedules
+            .map((facilitySchedule) => `<tr><th>${escapeHtml(facilitySchedule.name)}</th>${buildCellsHtml(facilitySchedule)}</tr>`).join('')}</tbody></table></div>`;
+        const buildTimetableHtml = (facilitySchedules, buildCellsHtml) => '<h3 class="font-bold mt-3 mb-1">体育館・競技場（午前・午後・夜間の3区分）</h3>'
+            + buildFacilityTableHtml(filterFacilitySchedules(facilitySchedules, 'period'), buildPeriodHeadHtml(), buildCellsHtml)
+            + '<h3 class="font-bold mt-3 mb-1">研修室・ミーティングルーム（9-10時〜20-21時の1時間単位）</h3>'
+            + buildFacilityTableHtml(filterFacilitySchedules(facilitySchedules, 'hour'), buildHourHeadHtml(), buildCellsHtml);
+
+        // ---------- 日別の詳細（公開用） ----------
+        const buildDetailHeadHtml = (date, staySymbol, extraHtml) => `<div class="flex flex-wrap items-center justify-between gap-2"><h2 id="detailHeading" class="text-lg font-bold">${formatDateJapanese(date)} の詳細</h2>`
+            + `<a href="#calendarSection" class="back-to-calendar xl:hidden text-xs text-blue-700 hover:underline">↑ カレンダーへ戻る</a></div>`
+            + `<div id="detailStay" class="mt-1 text-sm" data-stay-symbol="${staySymbol}">宿泊：${buildSymbolHtml(staySymbol, 'text-lg')} ${STAY_SYMBOL_TEXTS[staySymbol]}${extraHtml}</div>`;
+        const CLOSED_DETAIL_HTML = '<p class="mt-2 text-sm font-bold text-red-600">この日は休館日です。</p>';
+        const buildPublicDetailHtml = (date, context) => {
+            const publicDay = Schedule.findPublicDay(context.publicSource.schedule, date);
+            const isClosed = isClosedDate(date, ACTIVE_CONFIG.closedDates);
+            const staySymbol = isClosed ? '×' : judgeStaySymbolOf(publicDay.stayGuests, publicDay.stayGroups);
+            return buildDetailHeadHtml(date, staySymbol, '') + (isClosed ? CLOSED_DETAIL_HTML
+                : `${buildTimetableHtml(Schedule.mapPublicFacilitySchedule(publicDay, CATALOG), buildPublicUnitCellsHtml)}<p class="text-[11px] text-gray-500 mt-2">○：空き ／ ×：予約済み</p>`);
+        };
+
+        // ---------- 日別の詳細（職員用：タイムテーブル・宿泊人数内訳・食事の合計・団体別内訳） ----------
+        const buildStayBreakdownRowHtml = (priceType, breakdown) => {
+            const counts = CATALOG.genders.map((gender) => breakdown[`${priceType.key}_${gender.key}`] ?? 0);
+            return `<tr><th>${escapeHtml(priceType.name)}</th>${counts.map((count) => `<td class="text-right">${count}人</td>`).join('')}<td class="text-right font-bold">${counts.reduce((total, count) => total + count, 0)}人</td></tr>`;
+        };
+        const buildStayBreakdownHtml = (summary) => `<h3 class="font-bold mt-4 mb-1">宿泊人数の内訳（その夜に泊まる人数）</h3><table id="stayBreakdownTable" class="grid-table text-xs"><thead><tr><th>区分</th>`
+            + `${CATALOG.genders.map((gender) => `<th>${escapeHtml(gender.name)}</th>`).join('')}<th>計</th></tr></thead><tbody>${CATALOG.priceTypes.map((priceType) => buildStayBreakdownRowHtml(priceType, summary.stayBreakdown)).join('')}</tbody>`
+            + `<tfoot><tr><th>合計</th><td colspan="${CATALOG.genders.length}"></td><td class="text-right">${summary.stayGuests}人</td></tr></tfoot></table>`;
+        const buildMealCellsHtml = (meals) => Schedule.MEAL_SUMMARY_ITEMS.map((item) => `<td class="text-right">${meals[item.key]}${formatMealUnit(item.key)}</td>`).join('');
+        const buildMealHeadCellsHtml = () => Schedule.MEAL_SUMMARY_ITEMS.map((item) => `<th>${escapeHtml(item.name)}</th>`).join('');
+        const buildMealTotalsHtml = (summary) => `<h3 class="font-bold mt-4 mb-1">食事・弁当等の合計数</h3><div class="overflow-x-auto"><table id="mealTotalsTable" class="grid-table text-xs">`
+            + `<thead><tr>${buildMealHeadCellsHtml()}</tr></thead><tbody><tr>${buildMealCellsHtml(summary.meals)}</tr></tbody></table></div>`;
+        const buildGroupRowHtml = (row) => `<tr data-reservation-id="${escapeHtml(row.id)}"><th><div class="font-bold">${escapeHtml(row.groupName)}</div><div class="text-[10px] font-normal text-gray-600">`
+            + `${escapeHtml(row.representative)}・TEL ${escapeHtml(row.phone)}<br>${escapeHtml(row.id)}</div></th><td class="text-right">${row.stayGuests}人</td>${buildMealCellsHtml(row.meals)}`
+            + `<td><button type="button" class="delete-button px-2 py-0.5 rounded border border-red-300 text-red-600 hover:bg-red-50" data-reservation-id="${escapeHtml(row.id)}" onclick="deleteReservationById(this.dataset.reservationId)">削除</button></td></tr>`;
+        const buildGroupTableHtml = (rows, summary) => `<h3 class="font-bold mt-4 mb-1">団体別内訳一覧</h3>${rows.length === 0 ? '<p class="text-sm text-gray-500">この日の予約はありません。</p>'
+            : `<div class="overflow-x-auto"><table id="groupTable" class="grid-table w-full text-xs"><thead><tr><th>団体名（代表者名・TEL・予約番号）</th><th>宿泊</th>${buildMealHeadCellsHtml()}<th>操作</th></tr></thead>`
+                + `<tbody>${rows.map(buildGroupRowHtml).join('')}</tbody><tfoot><tr><th>合計</th><td class="text-right">${summary.stayGuests}人</td>${buildMealCellsHtml(summary.meals)}<td></td></tr></tfoot></table></div>`}`;
+        const buildStaffDetailHtml = (date, context) => {
+            const summary = Schedule.summarizeDailyReservations(context.reservations, date, CATALOG);
+            const staySymbol = judgeStaySymbolOf(summary.stayGuests, summary.stayGroups);
+            const stayText = `（<span id="detailStayCount">${summary.stayGuests}人 / ${summary.stayGroups}団体</span>　${buildStayLimitText()}）`;
+            return buildDetailHeadHtml(date, staySymbol, stayText) + (isClosedDate(date, ACTIVE_CONFIG.closedDates) ? CLOSED_DETAIL_HTML : '')
+                + buildTimetableHtml(Schedule.mapFacilitySchedule(context.reservations, date, CATALOG), buildStaffUnitCellsHtml)
+                + buildStayBreakdownHtml(summary) + buildMealTotalsHtml(summary) + buildGroupTableHtml(Schedule.buildGroupDailyRows(context.reservations, date, CATALOG), summary);
+        };
+        const renderDayDetail = (context) => {
+            const date = context.state.selectedDate;
+            byId('dayDetail').innerHTML = context.state.mode === 'staff' ? buildStaffDetailHtml(date, context) : buildPublicDetailHtml(date, context);
+        };
+
+        // ---------- 職員用データ管理パネル ----------
+        const renderStaffPanel = (context) => {
+            const sampleCount = context.reservations.filter(isSampleReservation).length;
+            byId('storageStatus').textContent = `このブラウザの予約データ：${context.reservations.length}件（うちサンプル ${sampleCount}件）`;
+        };
+        const IMPORT_OPERATION_TEXTS = Object.freeze({ added: '追加しました', updated: '更新しました', deleted: '削除しました' });
+        const buildResultHtml = (result, successText, failureTitle = '取り込めませんでした') => (result.ok
+            ? `<div class="text-green-700 font-bold">${escapeHtml(successText)}</div>`
+            : `<div class="text-red-600 font-bold">${escapeHtml(failureTitle)}</div><ul class="list-disc pl-5 text-red-600">${result.errors.map((error) => `<li>${escapeHtml(error)}</li>`).join('')}</ul>`);
+        const buildImportSuccessText = (result) => `予約番号 ${result.id} を${IMPORT_OPERATION_TEXTS[result.operation]}`;
+        // 1行コードを予約データに反映する（保存できなければエラーにする）
+        const applyCodeAndSave = (codeText) => {
+            const result = Schedule.applyReservationCode(loadReservations(), codeText, IMPORT_CONTEXT);
+            if (result.ok && !saveReservations(result.reservations)) return { ok: false, errors: ['このブラウザでは予約データを保存できませんでした'] };
+            return result;
+        };
+        // 追加・更新した予約の利用開始日をカレンダーで開く
+        const showReservationStart = (result) => {
+            const reservation = result.reservations.find((entry) => entry.id === result.id);
+            writeViewState({ month: Schedule.toMonthKeyOfDate(reservation.startDate), selectedDate: reservation.startDate });
+        };
+        const importCodeFromForm = () => {
+            const result = applyCodeAndSave(byId('importCodeInput').value);
+            byId('importResult').innerHTML = buildResultHtml(result, result.ok ? buildImportSuccessText(result) : '');
+            if (result.ok) byId('importCodeInput').value = '';
+            if (result.ok && result.operation !== 'deleted') showReservationStart(result);
+            refreshView();
+        };
+        const deleteReservationById = (id) => {
+            if (!confirm(`予約番号 ${id} の予約を削除しますか？\n（この操作は元に戻せません）`)) return;
+            const result = applyCodeAndSave(Schedule.buildDeleteCode(id));
+            showToast(result.ok ? `予約番号 ${id} を削除しました` : result.errors.join(' '));
+            refreshView();
+        };
+
+        // ---------- 公開用データ（JSON）の出力・コピー・読み込み ----------
+        const exportPublicSchedule = () => {
+            byId('publicJsonOutput').value = Schedule.serializePublicSchedule(loadReservations(), CATALOG, toLocalDateTimeString(new Date()));
+            showToast('公開用データを出力しました（個人情報は含まれていません）');
+        };
+        const readExportedJson = () => {
+            if (byId('publicJsonOutput').value === '') exportPublicSchedule();
+            return byId('publicJsonOutput').value;
+        };
+        // クリップボードに書けないブラウザでは、文字を選んでコピーする
+        const copyBySelection = () => {
+            byId('publicJsonOutput').select();
+            showToast(document.execCommand('copy') ? '公開用データをコピーしました' : 'コピーできませんでした。表示された文字を選んでコピーしてください');
+        };
+        const copyPublicSchedule = () => {
+            const text = readExportedJson();
+            if (!navigator.clipboard) { copyBySelection(); return; }
+            navigator.clipboard.writeText(text).then(() => showToast('公開用データをコピーしました'), copyBySelection);
+        };
+        const downloadPublicSchedule = () => {
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(new Blob([readExportedJson()], { type: 'application/json' }));
+            link.download = 'public-schedule.json';
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+        };
+        const loadPublicScheduleFromForm = () => {
+            const result = Schedule.parsePublicSchedule(byId('publicJsonInput').value, CATALOG);
+            const savedResult = result.ok && !saveImportedPublicSchedule(result.schedule) ? { ok: false, errors: ['このブラウザでは保存できませんでした'] } : result;
+            byId('publicLoadResult').innerHTML = buildResultHtml(savedResult, savedResult.ok ? `公開用データ（${result.schedule.days.length}日分）を読み込みました。公開用モードで表示しています` : '', '読み込めませんでした');
+            if (savedResult.ok) switchMode('public'); else refreshView();
+        };
+        const clearImportedPublicSchedule = () => {
+            removeStoredItem(PUBLIC_STORAGE_KEY);
+            byId('publicLoadResult').innerHTML = buildResultHtml({ ok: true }, '読み込んだ公開用データを解除しました（このブラウザの予約データから表示します）');
+            refreshView();
+        };
+
+        // ---------- デモ確認用 ----------
+        const insertSampleReservations = () => {
+            const samples = createSampleReservations(getToday(), CATALOG);
+            if (!confirm(`動作確認用のサンプル予約（${samples.length}件）を入れますか？\n前に入れたサンプルは入れ直し、申し込んだ予約はそのまま残します。`)) return;
+            showToast(saveReservations(mergeSampleReservations(loadReservations(), samples)) ? 'サンプル予約を入れました' : 'このブラウザでは保存できませんでした');
+            refreshView();
+        };
+        const resetReservations = () => {
+            if (!confirm('このブラウザに保存されている予約データ（サンプルを含むすべて）を消しますか？\n（この操作は元に戻せません）')) return;
+            removeStoredItem(RESERVATION_STORAGE_KEY);
+            showToast('予約データをリセットしました');
+            refreshView();
+        };
+
+        // ---------- 画面の操作 ----------
+        const refreshView = () => {
+            const context = buildViewContext();
+            renderModeView(context);
+            renderCalendar(context);
+            renderDayDetail(context);
+            renderStaffPanel(context);
+        };
+        // モードを切り替え、URL（?mode=staff）も合わせる（再読み込みしても同じモードで開く）
+        const switchMode = (mode) => {
+            writeViewState({ mode });
+            try { history.replaceState(null, '', `${location.pathname}${Schedule.buildModeSearch(location.search, mode)}${location.hash}`); } catch (error) { /* URL を変えられなくても表示は切り替える */ }
+            refreshView();
+        };
+        const moveMonth = (delta) => {
+            writeViewState({ month: Schedule.shiftMonthKey(readViewState().month, delta) });
+            refreshView();
+        };
+        const moveToToday = () => {
+            writeViewState({ month: Schedule.toMonthKeyOfDate(getToday()), selectedDate: getToday() });
+            refreshView();
+        };
+        // 日付を選ぶ（カレンダーと詳細が縦に並ぶとき（職員用モード・狭い画面）は、詳細までスクロールする）
+        const selectDate = (date) => {
+            writeViewState({ selectedDate: date });
+            refreshView();
+            if (readViewState().mode === 'staff' || !window.matchMedia('(min-width: 1280px)').matches) byId('dayDetail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+
+        // ---------- お知らせ表示 ----------
+        const showToast = (message) => {
+            const toast = byId('toast');
+            toast.textContent = message;
+            toast.classList.remove('hidden');
+            clearTimeout(Number(toast.dataset.timerId));
+            toast.dataset.timerId = String(setTimeout(() => toast.classList.add('hidden'), 3500));
+        };
+
+        // ---------- 起動 ----------
+        const renderFacilityInfo = (info) => {
+            document.title = `${info.facilityName} スケジュール管理表`;
+            byId('pageHeading').textContent = document.title;
+        };
+        const initApp = () => {
+            renderFacilityInfo(ACTIVE_FACILITY_INFO);
+            writeViewState({ mode: Schedule.resolveInitialMode(location.search), month: Schedule.toMonthKeyOfDate(getToday()), selectedDate: getToday() });
+            refreshView();
+        };
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>

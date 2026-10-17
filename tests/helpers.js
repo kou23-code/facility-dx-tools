@@ -11,6 +11,9 @@ const PORTAL_PATH = path.join(ROOT_DIR, 'index.html');
 const RESERVATION_DIR = path.join(ROOT_DIR, 'reservation');
 const RESERVATION_HTML_PATH = path.join(RESERVATION_DIR, 'index.html');
 const RESERVATION_LOGIC_PATH = path.join(RESERVATION_DIR, 'reservation-logic.js');
+const SCHEDULE_DIR = path.join(ROOT_DIR, 'schedule');
+const SCHEDULE_HTML_PATH = path.join(SCHEDULE_DIR, 'index.html');
+const SCHEDULE_LOGIC_PATH = path.join(SCHEDULE_DIR, 'schedule-logic.js');
 const BROWSER_CANDIDATES = [
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
@@ -26,10 +29,10 @@ const buildBrowserArgs = (profileDir, fileUrl) => [
     '--dump-dom', fileUrl
 ];
 
-// ブラウザでページを開き、JavaScript 実行後の HTML を返す
-const renderDom = (browserPath, htmlPath) => {
+// ブラウザでページを開き、JavaScript 実行後の HTML を返す（search：URL の検索部分。例："?mode=staff"）
+const renderDom = (browserPath, htmlPath, search = '') => {
     const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'estimate-test-'));
-    const args = buildBrowserArgs(profileDir, pathToFileURL(htmlPath).href);
+    const args = buildBrowserArgs(profileDir, `${pathToFileURL(htmlPath).href}${search}`);
     return execFileSync(browserPath, args, { encoding: 'utf8', timeout: 60000 });
 };
 
@@ -40,5 +43,6 @@ const findById = (dom, id) => {
 
 module.exports = {
     ROOT_DIR, HTML_PATH, PORTAL_PATH, RESERVATION_DIR, RESERVATION_HTML_PATH, RESERVATION_LOGIC_PATH,
+    SCHEDULE_DIR, SCHEDULE_HTML_PATH, SCHEDULE_LOGIC_PATH,
     BROWSER_CANDIDATES, readHtml, findBrowser, renderDom, findById
 };
