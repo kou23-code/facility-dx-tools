@@ -56,7 +56,10 @@ const CAPTURE_SOURCE = `const capture = () => ({
     hourHeaders: Array.from(document.querySelectorAll('#slotGrid table:last-of-type thead th'), (cell) => cell.textContent).slice(2),
     feeQuantities: Array.from(document.querySelectorAll('#feeTable tbody tr'), (row) => row.cells[2].textContent),
     extraFeeNotes: Array.from(document.querySelectorAll('.extra-fee-note'), (element) => element.textContent),
-    removedInputCount: document.querySelectorAll('#in_price_type, #in_people').length
+    removedInputCount: document.querySelectorAll('#in_people').length,
+    priceTypeHidden: document.getElementById('priceTypeField').classList.contains('hidden'),
+    priceTypeOptions: Array.from(document.querySelectorAll('#in_price_type option'), (option) => option.value + ':' + option.textContent),
+    priceTypeValue: document.getElementById('in_price_type').value
 });
 const setValue = (id, value) => { document.getElementById(id).value = value; };
 // 宿泊は2泊とも10人（大学生・一般。利用人数10人）、朝食は2日目・3日目に10食ずつ、幕の内弁当は1日目に10食
@@ -133,7 +136,8 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.ok(initial.blockers.includes('団体名が未入力です'));
     assert.deepStrictEqual(initial.staySymbols, ['◎', '◎']);
     assert.strictEqual(initial.storage, null);
-    assert.strictEqual(initial.removedInputCount, 0, '料金区分・利用人数の入力欄はない（宿泊人数の内訳から自動で計算する）');
+    assert.strictEqual(initial.removedInputCount, 0, '利用人数の入力欄はない（宿泊人数の内訳から自動で計算する）');
+    assert.strictEqual(initial.priceTypeHidden, true, '2泊3日では料金区分のプルダウンを出さない（宿泊人数から自動で決める）');
     assert.deepStrictEqual(initial.hourHeaders, ['9-10時', '10-11時', '11-12時', '12-13時', '13-14時', '14-15時', '15-16時', '16-17時',
         '17-18時', '18-19時', '19-20時', '20-21時'], '研修室・ミーティングルームの見出しは1時間の枠がわかる表記');
     assert.deepStrictEqual(initial.dailyHead.slice(1, 4).map((text) => text.slice(0, 3)), ['1日目', '2日目', '3日目']);
@@ -291,6 +295,41 @@ test('画面：「全日」で1日目の数をコピーでき、利用日数を�
     assert.deepStrictEqual([dayTrip.lunchValues, dayTrip.stayInputs], [['7'], 0], '日帰りは宿泊人数を入力できない');
     assert.strictEqual(dayTrip.dayGuestInputs, 0, '日帰りは合流する宿泊団体がいないので、日帰り参加人数も入力できない');
     assert.deepStrictEqual(dayTrip.staySymbols, [], '日帰りは宿泊の空きを出さない');
+});
+
+test('画面：日帰り（1日）のときだけ料金区分のプルダウンが出て、選んだ区分で施設料金を計算する', { skip: !BROWSER }, () => {
+    const states = renderStates(`
+        [['in_group', 'テスト少年団'], ['in_representative', '山田 太郎'], ['in_phone', '000-0000-0000'],
+         ['in_email', 'test@example.com'], ['in_purpose', '大会・試合'], ['in_nights', '0']].forEach(([id, value]) => setValue(id, value));
+        refreshAll();
+        document.querySelector('input.slot-check[data-facility="field"][data-time="am"]').checked = true;
+        refreshSlots();
+        states.push(capture());
+        setValue('in_price_type', 'es');
+        refreshSummary();
+        states.push(capture());
+        setValue('in_nights', '1');
+        refreshAll();
+        states.push(capture());
+        setValue('in_nights', '0');
+        refreshAll();
+        confirmReservation();
+        states.push(capture());
+    `);
+    const [dayTripDefault, dayTripYouth, twoDays, completed] = states;
+    assert.strictEqual(dayTripDefault.priceTypeHidden, false, '日帰りでは料金区分のプルダウンを出す');
+    assert.deepStrictEqual(dayTripDefault.priceTypeOptions, ['es:小学生・中学生', 'hs:高校生', 'ad:大学生・一般']);
+    assert.strictEqual(dayTripDefault.priceTypeValue, 'ad', '初期値は大学生・一般');
+    assert.deepStrictEqual(dayTripDefault.blockers, []);
+    assert.deepStrictEqual([dayTripDefault.total, dayTripDefault.feeType], ['6,600', '施設は「日帰り専有料金（大学生・一般 基準）」で計算しています']);
+    assert.deepStrictEqual([dayTripYouth.total, dayTripYouth.feeType], ['4,400', '施設は「日帰り専有料金（小学生・中学生 基準）」で計算しています'],
+        '選んだ区分（小中高）の日帰り専有料金になる');
+    assert.strictEqual(twoDays.priceTypeHidden, true, '2日以上ではプルダウンを隠す');
+    assert.deepStrictEqual([twoDays.total, twoDays.feeType], ['6,600', '施設は「日帰り専有料金（大学生・一般 基準）」で計算しています'],
+        '2日以上は選んだ区分を使わない（宿泊0人なので大学生・一般）');
+    const stored = JSON.parse(completed.storage)[0];
+    assert.deepStrictEqual([stored.nights, stored.priceType, stored.estimatedTotal], [0, 'es', 4400]);
+    assert.ok(completed.receiptText.includes('宿泊者なし（日帰りの料金区分：小学生・中学生）'), '控えに日帰りの料金区分');
 });
 
 test('画面：facility-config.js で施設名と宿泊の上限（人数・団体数）を上書きできる', { skip: !BROWSER }, () => {

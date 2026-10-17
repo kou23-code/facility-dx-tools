@@ -116,7 +116,7 @@
                         <!-- STEP2 日程・人数 -->
                         <section class="bg-gray-50 p-3 rounded border">
                             <div class="flex items-center gap-2 mb-3"><span class="step-badge">2</span><span class="font-bold text-base">日程・人数</span></div>
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
                                 <div>
                                     <label class="field-label required" for="in_start">利用開始日</label>
                                     <input type="date" id="in_start" class="field-input font-bold text-blue-700" onchange="refreshAll()">
@@ -125,9 +125,14 @@
                                     <label class="field-label required" for="in_nights">利用日数</label>
                                     <select id="in_nights" class="field-input font-bold text-blue-700" onchange="refreshAll()"></select>
                                 </div>
+                                <!-- 日帰り（1日）のときだけ表示する。宿泊を伴う日程の料金区分は宿泊人数から自動で決める -->
+                                <div id="priceTypeField" class="hidden">
+                                    <label class="field-label required" for="in_price_type">料金区分（日帰り）</label>
+                                    <select id="in_price_type" class="field-input" onchange="refreshSummary()"></select>
+                                </div>
                             </div>
                             <div class="text-xs text-gray-500 mt-2">※人数は次の表で、日ごとに区分（小学生・中学生／高校生／大学生・一般）・男女別に入力します。利用人数と料金区分は、その人数から自動で計算します。</div>
-                            <div class="text-xs text-gray-500">※施設料金は、宿泊人数がいちばん多い区分で計算します（宿泊者がいないとき（日帰り）は大学生・一般の料金）。</div>
+                            <div class="text-xs text-gray-500">※施設料金は、宿泊人数がいちばん多い区分で計算します。日帰り（1日）のときは、「料金区分（日帰り）」で選んだ区分の料金です（2日以上で宿泊者がいないときは大学生・一般の料金）。</div>
                         </section>
 
                         <!-- STEP3 日ごとの人数・食事 -->
@@ -254,11 +259,15 @@
         const buildNightOptions = (maxNights) => Array.from({ length: maxNights + 1 },
             (_, nights) => ({ value: String(nights), label: nights === 0 ? '1日（日帰り）' : `${nights + 1}日（${nights}泊${nights + 1}日）` }));
         const buildPurposeOptions = (purposes) => [{ value: '', label: '選んでください' }, ...purposes.map((purpose) => ({ value: purpose, label: purpose }))];
+        const buildPriceTypeOptions = (priceTypes) => priceTypes.map((type) => ({ value: type.key, label: type.name }));
 
         const renderFormParts = (config, catalog) => {
             byId('in_nights').innerHTML = buildOptionsHtml(buildNightOptions(config.maxNights), String(DEFAULT_NIGHTS));
             byId('in_purpose').innerHTML = buildOptionsHtml(buildPurposeOptions(catalog.purposes), '');
+            byId('in_price_type').innerHTML = buildOptionsHtml(buildPriceTypeOptions(catalog.priceTypes), catalog.dayTripPriceType);
         };
+        // 料金区分のプルダウンは、日帰り（0泊）のときだけ表示する
+        const renderPriceTypeField = (request) => byId('priceTypeField').classList.toggle('hidden', request.nights !== 0);
 
         // ---------- 日ごとの人数・食事の表（行のキー：宿泊は "stay_区分_性別"（例：stay_hs_m）、日帰り参加は "day_区分"、食事などは "meal_品目キー"） ----------
         const STAY_PLAN_NOTE = '※現時点での予定人数で構いません（後日変更可能です）';
@@ -362,7 +371,7 @@
         const readFormValues = () => ({
             groupName: byId('in_group').value, representative: byId('in_representative').value, phone: byId('in_phone').value,
             email: byId('in_email').value, purpose: byId('in_purpose').value, startDate: byId('in_start').value,
-            nights: byId('in_nights').value,
+            nights: byId('in_nights').value, priceType: byId('in_price_type').value,
             stays: Object.fromEntries(CATALOG.stayGuestTypes.map((type) => [type.key, readRowValues(`stay_${type.key}`)])),
             meals: Object.fromEntries(CATALOG.meals.map((meal) => [meal.key, readRowValues(`meal_${meal.key}`)])),
             dayGuests: Object.fromEntries(CATALOG.priceTypes.map((type) => [type.key, readRowValues(`day_${type.key}`)]))
@@ -496,6 +505,7 @@
             const context = buildContext();
             const formValues = readFormValues();
             const request = buildRequest(formValues, readSelectedSlots(), context.catalog);
+            renderPriceTypeField(request);
             renderDailyTable(request, formValues, context);
             renderSlotGrid(request, context);
             refreshSummaryWith(readRequest(), context);
