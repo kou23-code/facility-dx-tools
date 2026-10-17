@@ -215,6 +215,25 @@ test('findInputMessages：食堂の食事は日ごとに1件の予約の上限�
         '宿泊者がいない日帰りでも、食堂の食事を申し込める');
 });
 
+test('findInputMessages：日帰り参加人数は区分ごとに日ごとに0〜300人、その日の合計も300人まで（ちょうどは可）', () => {
+    assert.deepStrictEqual(findInputMessages(buildRequest({ dayGuests: { es: [100, 0, 0], hs: [100, 0, 300], ad: [100, 0, 0] } }), CONFIG, CATALOG), []);
+    assert.deepStrictEqual(findInputMessages(buildRequest({ dayGuests: { es: [NaN, 0, 0], hs: [0, 301, 0], ad: [0, 0, -1] } }), CONFIG, CATALOG), [
+        '11/2(月)の日帰り参加人数（小学生・中学生）は0〜300人で入力してください', '11/3(火)の日帰り参加人数（高校生）は0〜300人で入力してください',
+        '11/4(水)の日帰り参加人数（大学生・一般）は0〜300人で入力してください', '11/3(火)の日帰り参加人数の合計（301人）が1件の予約の上限（300人）を超えています'
+    ]);
+    assert.deepStrictEqual(findInputMessages(buildRequest({ dayGuests: { es: [200, 0, 0], ad: [101, 0, 0] } }), CONFIG, CATALOG),
+        ['11/2(月)の日帰り参加人数の合計（301人）が1件の予約の上限（300人）を超えています']);
+});
+
+test('findInputMessages：宿泊人数が0人なのに日帰り参加人数があれば止める（合流する宿泊団体がいない）', () => {
+    const message = '宿泊人数が0人なのに日帰り参加人数が入っています。日帰り参加人数は宿泊する団体に日帰りで合流する人の人数です。宿泊人数を入れるか、日帰り参加人数を消してください。';
+    const slots = [slotOf('2026-11-02', 'gym', 'am')];
+    assert.deepStrictEqual(findInputMessages(buildRequest({ stays: staysOf([0, 0]), dayGuests: { hs: [0, 0, 5] }, slots }), CONFIG, CATALOG), [message]);
+    assert.deepStrictEqual(findInputMessages(buildRequest({ nights: 0, stays: staysOf([]), dayGuests: { ad: [3] }, slots }), CONFIG, CATALOG), [message], '日帰り');
+    assert.deepStrictEqual(findInputMessages(buildRequest({ stays: staysOf([0, 1]), dayGuests: { hs: [5, 0, 0] }, slots }), CONFIG, CATALOG), [], '1泊でも宿泊があればよい');
+    assert.deepStrictEqual(findInputMessages(buildRequest({ stays: staysOf([0, 0]), dayGuests: { hs: [0, 0, 0] }, slots }), CONFIG, CATALOG), []);
+});
+
 test('findInputMessages：宿泊・施設コマ・食事がどれもないときと、日程の外のコマを止める', () => {
     const empty = '宿泊人数・施設コマ・食事のどれかを入力してください';
     assert.deepStrictEqual(findInputMessages(buildRequest({ nights: 0, stays: staysOf([]) }), CONFIG, CATALOG), [empty]);
