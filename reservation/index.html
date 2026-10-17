@@ -81,7 +81,7 @@
                                 <li><b>申込者</b>：団体名・代表者名・連絡先・利用目的を入力します。</li>
                                 <li><b>日程・人数</b>：利用開始日・利用日数・利用人数を入力すると、右側に<b>空き状況（◎/△/×）</b>が表示されます。</li>
                                 <li><b>宿泊・食事</b>：表に<b>日ごと</b>の宿泊人数（泊まる夜の日付）と、食事・弁当・お茶などの数を入れます。</li>
-                                <li><b>施設コマ・確定</b>：使いたい施設の時間帯を押して選び、概算料金を確認して「予約を確定する」を押します。</li>
+                                <li><b>施設コマ・確定</b>：使いたい施設の時間帯を押して選び、概算料金を確認して「予約内容を確定する」を押し、次の画面の「施設へ予約データを送信する」でメールを送信すると申込が完了します。</li>
                             </ol>
                             <div class="mt-2 text-xs text-gray-600">※宿泊は1日あたり全団体で<span class="stay-limit-text"></span>までです。上限を超える日や予約済みのコマがあるときは、赤い警告が出て確定できません。</div>
                         </div>
@@ -162,7 +162,7 @@
                                 <div class="text-xs text-gray-500">概算料金（税込）</div>
                                 <div class="text-2xl font-bold text-blue-800">¥<span id="panel_total">0</span></div>
                             </div>
-                            <button type="button" id="confirmButton" onclick="confirmReservation()" disabled class="bg-blue-700 text-white font-bold py-3 px-8 rounded shadow-lg hover:bg-blue-800 transition text-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-700">予約を確定する</button>
+                            <button type="button" id="confirmButton" onclick="confirmReservation()" disabled class="bg-blue-700 text-white font-bold py-3 px-8 rounded shadow-lg hover:bg-blue-800 transition text-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-700">予約内容を確定する</button>
                         </div>
                         <div id="confirmReady" class="hidden text-xs text-green-700 mt-1 text-right">入力内容に問題はありません。確定できます。</div>
                         <ul id="confirmBlockers" class="text-xs text-red-600 mt-1 list-disc pl-5 max-h-24 overflow-y-auto"></ul>
@@ -200,17 +200,19 @@
 
         <!-- ===================== 完了画面 ===================== -->
         <div id="completeView" class="hidden">
-            <div class="no-print bg-white rounded-lg shadow-md border-t-4 border-green-600 p-5 mb-6 max-w-[210mm] mx-auto">
-                <h2 class="text-xl font-bold text-green-800">予約の申込を受け付けました（予約番号 <span id="complete_id"></span>）</h2>
-                <p class="text-sm text-gray-700 mt-1">下の「予約申込控え」を印刷・PDF保存し、施設の職員へメールで連絡してください。</p>
-                <div class="flex flex-wrap gap-2 mt-4">
-                    <button type="button" id="printButton" onclick="printReceipt()" class="bg-blue-700 text-white font-bold py-2 px-4 rounded hover:bg-blue-800">予約申込控えを印刷・PDF保存</button>
-                    <a id="mailButton" href="#" class="bg-green-700 text-white font-bold py-2 px-4 rounded hover:bg-green-800">施設の職員へメールを作成</a>
-                    <button type="button" id="copyButton" onclick="copyReservationCode()" class="bg-gray-800 text-white font-bold py-2 px-4 rounded hover:bg-gray-900">職員取込用1行コードをコピー</button>
+            <div class="no-print bg-white rounded-lg shadow-md p-5 mb-6 max-w-[210mm] mx-auto">
+                <!-- メールの送り忘れを防ぐため、送信が済むまで予約は完了していないことを強調する -->
+                <div id="sendAlert" class="bg-red-50 border-4 border-red-500 rounded-lg p-5 text-center">
+                    <div class="text-2xl font-bold text-red-700">※まだ予約は完了していません！</div>
+                    <div class="text-lg font-bold text-red-800 mt-2">以下のボタンから、施設へ予約データを送信してください。</div>
+                    <div class="text-sm text-gray-700 mt-1">（予約番号 <span id="complete_id" class="font-bold"></span>）</div>
+                    <a id="mailButton" href="#" onclick="onMailButtonClick()" class="inline-block mt-4 bg-red-600 text-white text-xl font-bold py-4 px-10 rounded-lg shadow-lg hover:bg-red-700 animate-pulse">施設へ予約データを送信する</a>
+                    <div class="text-sm text-gray-700 mt-3">ボタンを押すとメールソフトが開きます。宛先・件名・本文は入力済みなので、<b>内容を変えずにそのまま送信</b>してください。</div>
+                    <div id="mailOpenedNote" class="hidden mt-3 text-sm font-bold text-blue-800 bg-blue-50 border border-blue-300 rounded px-3 py-2">メールソフトで「送信」を押すと、予約の申込が完了します。送信したかどうか分からない場合は、もう一度ボタンを押して送り直してください。</div>
+                    <div class="text-xs text-gray-600 mt-2">メールソフトが開かない場合は、お手数ですが <span id="facilityContact"></span> までご連絡ください。</div>
                 </div>
-                <label class="block text-xs font-bold text-gray-600 mt-4" for="out_code">職員取込用1行コード</label>
-                <textarea id="out_code" readonly rows="3" class="w-full p-2 border rounded font-mono text-[11px] bg-gray-50" onfocus="this.select()"></textarea>
-                <div class="text-right mt-2">
+                <div class="flex flex-wrap justify-between items-center gap-2 mt-4">
+                    <button type="button" id="printButton" onclick="printReceipt()" class="text-sm px-4 py-2 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">予約申込控えを印刷・PDF保存（任意）</button>
                     <button type="button" onclick="startNewReservation()" class="text-sm px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50">新しい予約を申し込む</button>
                 </div>
             </div>
@@ -501,7 +503,8 @@
 
         // ---------- 完了画面・予約申込控え ----------
         const RECEIPT_NOTES_HTML = `<div class="mt-6 text-xs text-gray-600 space-y-1">
-                <div>※この控えは、Web予約の申込を受け付けた内容の控えです。施設の職員から確認の連絡をいたします。</div>
+                <div>※この控えは、Web予約の申込内容の控えです。</div>
+                <div>※内容に確認が必要な場合のみ、施設よりご連絡させていただきます</div>
                 <div class="font-bold text-gray-800">${escapeHtml(EXTRA_FEE_NOTE)}</div>
                 <div>※料金は概算です。食事代・施設使用料等は実際のご利用数に基づき精算します。</div>
                 <div>※区分・・・AM (8:30~12:30) PM (12:30~17:00) 夜(17:00~21:00)。研修室・ミーティングルームは1時間単位です。</div></div>`;
@@ -527,27 +530,22 @@
             byId('receipt').innerHTML = buildReceiptHtml(reservation, ACTIVE_FACILITY_INFO, CATALOG);
             byId('receipt').dataset.reservationId = reservation.id;
             byId('complete_id').textContent = reservation.id;
-            byId('out_code').value = buildReservationCode(reservation);
+            // 施設の予約管理用データ（1行コード）は画面に出さず、メールの本文の最後にだけ入れる（buildMailBody）
             byId('mailButton').href = buildStaffMailUrl(ACTIVE_CONFIG.staffEmail, buildMailSubject(reservation), buildMailBody(reservation, CATALOG));
+            byId('facilityContact').textContent = buildFacilityContactText(ACTIVE_FACILITY_INFO);
+            byId('mailOpenedNote').classList.add('hidden');
             switchView(true);
         };
+        // メールが開かないときの連絡先（"あおぞらセミナーハウス（TEL …）"）
+        const buildFacilityContactText = (info) => `${info.facilityName}（${buildIssuerLines(info)[2]}）`;
+        // 送信ボタンを押したら、メールソフトで送信まで済ませるよう案内を出す
+        const onMailButtonClick = () => byId('mailOpenedNote').classList.remove('hidden');
         // 印刷のあいだだけ、ページのタイトルを PDF のファイル名にする
         const printReceipt = () => {
             const originalTitle = document.title;
             document.title = `予約申込控え_${byId('receipt').dataset.reservationId}`;
             window.print();
             setTimeout(() => { document.title = originalTitle; }, 1000);
-        };
-        const COPIED_MESSAGE = '職員取込用1行コードをコピーしました';
-        // クリップボードが使えないブラウザでは、コードを選んでコピーする
-        const copyBySelection = () => {
-            byId('out_code').select();
-            const isCopied = document.execCommand('copy');
-            showToast(isCopied ? COPIED_MESSAGE : 'コピーできませんでした。枠の中のコードを選んでコピーしてください');
-        };
-        const copyReservationCode = () => {
-            if (!navigator.clipboard) { copyBySelection(); return; }
-            navigator.clipboard.writeText(byId('out_code').value).then(() => showToast(COPIED_MESSAGE)).catch(copyBySelection);
         };
         // 表の中の入力欄は reset() で作ったときの値に戻ってしまうので、先に表を消しておく
         const startNewReservation = () => {
