@@ -11,7 +11,7 @@ const SCHEDULE_LOGIC_PATH = path.join(ROOT_DIR, 'schedule', 'schedule-logic.js')
 const ScheduleLogic = require(SCHEDULE_LOGIC_PATH);
 const {
     STAY_THRESHOLDS, MEAL_SUMMARY_ITEMS, findNightIndex, findDayIndex, countStayOnDate,
-    countStayGuests, countStayGroups, summarizeDailyReservations, judgeStaySymbol
+    countStayGuests, countStayGroups, summarizeDailyReservations, judgeStaySymbol, mapFacilitySchedule
 } = ScheduleLogic;
 
 // キーごとの日ごとの数の表を、keyedList のすべてのキー・日数分にそろえる（書いていないキーは毎日0）
@@ -133,4 +133,45 @@ test('judgeStaySymbol は人数と団体数の重いほうの記号にする', (
     assert.strictEqual(judgeStaySymbol(299, 6, STAY_THRESHOLDS), '×');
     assert.strictEqual(judgeStaySymbol(300, 0, STAY_THRESHOLDS), '×');
     assert.strictEqual(judgeStaySymbol(199, 4, STAY_THRESHOLDS), '△');
+});
+
+// ---------- 施設の空き状況 ----------
+const findFacility = (facilitySchedules, facilityKey) => facilitySchedules.find((schedule) => schedule.facilityKey === facilityKey);
+const listSymbols = (facilitySchedule) => facilitySchedule.units.map((unit) => unit.symbol).join('');
+
+test('mapFacilitySchedule はすべての施設を、区分の施設は3区分・1時間の施設は12コマで返す', () => {
+    const facilitySchedules = mapFacilitySchedule(RESERVATION_LIST, '2026-11-03', CATALOG);
+    assert.deepStrictEqual(facilitySchedules.map((schedule) => schedule.facilityKey), ['gym', 'gym_s', 'field', 'kL', 'kS', 'mr']);
+    assert.deepStrictEqual(facilitySchedules.map((schedule) => schedule.units.length), [3, 3, 3, 12, 12, 12]);
+    assert.deepStrictEqual(findFacility(facilitySchedules, 'gym').units.map((unit) => unit.timeKey), ['am', 'pm', 'ev']);
+    assert.deepStrictEqual(findFacility(facilitySchedules, 'kL').units.map((unit) => unit.label).slice(0, 1), ['9:00~10:00']);
+    assert.deepStrictEqual(findFacility(facilitySchedules, 'kL').units.map((unit) => unit.label).slice(-1), ['20:00~21:00']);
+});
+
+test('mapFacilitySchedule は予約済みのコマを×、空いているコマを○にする（最初と最後のコマも判定する）', () => {
+    const facilitySchedules = mapFacilitySchedule(RESERVATION_LIST, '2026-11-03', CATALOG);
+    assert.strictEqual(listSymbols(findFacility(facilitySchedules, 'gym')), '×○○');
+    assert.strictEqual(listSymbols(findFacility(facilitySchedules, 'gym_s')), '○○×');
+    assert.strictEqual(listSymbols(findFacility(facilitySchedules, 'field')), '○○○');
+    assert.strictEqual(listSymbols(findFacility(facilitySchedules, 'kL')), `×${'○'.repeat(11)}`);
+    assert.strictEqual(listSymbols(findFacility(facilitySchedules, 'mr')), `${'○'.repeat(11)}×`);
+});
+
+test('mapFacilitySchedule は日付が違う予約のコマを数えない', () => {
+    const facilitySchedules = mapFacilitySchedule(RESERVATION_LIST, '2026-11-02', CATALOG);
+    assert.strictEqual(listSymbols(findFacility(facilitySchedules, 'gym')), '○×○');
+    assert.strictEqual(listSymbols(findFacility(facilitySchedules, 'kL')), '○'.repeat(12));
+});
+
+test('mapFacilitySchedule は職員用に、予約しているコマへ団体の詳細を付け、空きのコマは空にする', () => {
+    const gymSchedule = findFacility(mapFacilitySchedule(RESERVATION_LIST, '2026-11-03', CATALOG), 'gym');
+    assert.deepStrictEqual(gymSchedule.units[0].bookings, [{
+        id: UNIVERSITY.id, groupName: UNIVERSITY.groupName, representative: '山田 太郎', phone: '000-0000-0000', email: 'sample@example.com'
+    }]);
+    assert.deepStrictEqual(gymSchedule.units[1].bookings, []);
+});
+
+test('mapFacilitySchedule は予約が空ならすべて○', () => {
+    const symbols = mapFacilitySchedule([], '2026-11-03', CATALOG).map(listSymbols).join('');
+    assert.strictEqual(symbols, '○'.repeat(3 * 3 + 12 * 3));
 });

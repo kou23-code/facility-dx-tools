@@ -96,12 +96,39 @@
         return reachesThreshold(stayGuests, stayGroups, thresholds.few) ? '△' : '◎';
     };
 
+    // ---------- 施設の空き状況（○：空き ／ ×：予約済み）と、職員用の予約団体の詳細 ----------
+    // 施設で使えるコマの一覧（区分の施設は AM・PM・夜の3区分、1時間の施設は 9-10時〜20-21時の12コマ）
+    const listTimeUnits = (facility, catalog) => (facility?.billing === 'hour' ? catalog.hourSlots : catalog.periods);
+    const isSameSlot = (slot, otherSlot) => slot.date === otherSlot.date
+        && slot.facilityKey === otherSlot.facilityKey && slot.timeKey === otherSlot.timeKey;
+    const hasSlot = (reservation, slot) => reservation.slots.some((bookedSlot) => isSameSlot(bookedSlot, slot));
+    // 職員用の予約団体の詳細（スケジュール管理表の職員画面だけで使い、公開用データには入れない）
+    const toStaffBooking = (reservation) => ({
+        id: reservation.id, groupName: reservation.groupName, representative: reservation.representative,
+        phone: reservation.phone, email: reservation.email
+    });
+    // 1コマの空き状況（bookings：そのコマを予約している団体。ふつうは0件か1件）
+    const buildUnitStatus = (reservationList, slot, timeUnit) => {
+        const bookings = reservationList.filter((reservation) => hasSlot(reservation, slot)).map(toStaffBooking);
+        return { timeKey: timeUnit.key, label: timeUnit.label, symbol: bookings.length > 0 ? '×' : '○', bookings };
+    };
+    // 1つの施設の、その日のコマごとの空き状況
+    const buildFacilitySchedule = (reservationList, date, facility, catalog) => ({
+        facilityKey: facility.key, name: facility.name,
+        units: listTimeUnits(facility, catalog).map((timeUnit) => buildUnitStatus(reservationList,
+            { date, facilityKey: facility.key, timeKey: timeUnit.key }, timeUnit))
+    });
+    // 指定日の、すべての施設（catalog.facilities の順）のコマごとの空き状況
+    const mapFacilitySchedule = (reservationList, date, catalog) => catalog.facilities
+        .map((facility) => buildFacilitySchedule(reservationList, date, facility, catalog));
+
     // SCHEDULE_EXPORTS:start
     // ブラウザでは window.ScheduleLogic、Node.js（テスト）では module.exports から使う
     const ScheduleLogic = Object.freeze({
         STAY_THRESHOLDS, MEAL_SUMMARY_ITEMS,
         isValidDateString, addDaysToDateString, countDaysBetween, findNightIndex, findDayIndex, countStayOnDate,
-        countStayGuests, countStayGroups, buildStayBreakdown, buildMealTotals, summarizeDailyReservations, judgeStaySymbol
+        countStayGuests, countStayGroups, buildStayBreakdown, buildMealTotals, summarizeDailyReservations, judgeStaySymbol,
+        listTimeUnits, isSameSlot, mapFacilitySchedule
     });
     if (typeof module !== 'undefined') module.exports = ScheduleLogic;
     if (typeof window !== 'undefined') window.ScheduleLogic = ScheduleLogic;
