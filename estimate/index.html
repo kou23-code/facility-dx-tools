@@ -221,13 +221,16 @@
     <!-- お知らせ表示（エラーなど） -->
     <div id="toast" class="no-print hidden" onclick="this.classList.add('hidden')"></div>
 
-    <!-- ローカル専用の実名設定（Git管理外）。ファイルがなければ下のダミー表記のまま表示する -->
+    <!-- ローカル専用の実名設定（Git管理外）。ファイルがなければ下のダミー表記のまま表示する
+         ルートの ../facility-config.js（全ツール共通）を優先し、このフォルダの facility-config.js は、ルートに同じ設定がないときに使う
+         （あとから読み込んだほうの window.CUSTOM_〇〇 が使われるため、このフォルダ → ルートの順に読み込む） -->
     <script src="facility-config.js"></script>
+    <script src="../facility-config.js"></script>
     <script>
         // ======================================================
         //  発行元の情報（ダミー表記）
-        //  実名で表示したいときは、このファイルではなく同じフォルダの
-        //  facility-config.js（Git管理外）に window.CUSTOM_FACILITY_INFO を書いてください
+        //  実名で表示したいときは、このファイルではなくルートの facility-config.js（全ツール共通・Git管理外。
+        //  同じフォルダの facility-config.js でもよい）に window.CUSTOM_FACILITY_INFO を書いてください
         //  ※テストがこのブロックを読み込むため、目印のコメントは消さないでください
         // ======================================================
         // FACILITY_INFO:start
