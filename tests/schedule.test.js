@@ -6,12 +6,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { ROOT_DIR, RESERVATION_LOGIC_PATH } = require('./helpers');
-const { RESERVATION_CATALOG: CATALOG } = require(RESERVATION_LOGIC_PATH);
+const {
+    RESERVATION_CATALOG: CATALOG, RESERVATION_CODE_TYPE, RESERVATION_CODE_VERSION, buildReservationCode, createSampleReservations
+} = require(RESERVATION_LOGIC_PATH);
 const SCHEDULE_LOGIC_PATH = path.join(ROOT_DIR, 'schedule', 'schedule-logic.js');
 const ScheduleLogic = require(SCHEDULE_LOGIC_PATH);
 const {
-    STAY_THRESHOLDS, MEAL_SUMMARY_ITEMS, findNightIndex, findDayIndex, countStayOnDate,
-    countStayGuests, countStayGroups, summarizeDailyReservations, judgeStaySymbol, mapFacilitySchedule
+    SCHEDULE_CODE_TYPE, SCHEDULE_CODE_VERSION, STAY_THRESHOLDS, STAY_LIMITS, MEAL_SUMMARY_ITEMS, findNightIndex, findDayIndex, countStayOnDate,
+    countStayGuests, countStayGroups, summarizeDailyReservations, judgeStaySymbol, mapFacilitySchedule,
+    isImportableReservation, parseScheduleCode, applyReservationCode, buildDeleteCode
 } = ScheduleLogic;
 
 // キーごとの日ごとの数の表を、keyedList のすべてのキー・日数分にそろえる（書いていないキーは毎日0）
@@ -174,4 +177,115 @@ test('mapFacilitySchedule は職員用に、予約しているコマへ団体の
 test('mapFacilitySchedule は予約が空ならすべて○', () => {
     const symbols = mapFacilitySchedule([], '2026-11-03', CATALOG).map(listSymbols).join('');
     assert.strictEqual(symbols, '○'.repeat(3 * 3 + 12 * 3));
+});
+
+// ---------- 職員取込用の1行コード ----------
+const IMPORT_CONTEXT = Object.freeze({ catalog: CATALOG, limits: STAY_LIMITS });
+// その夜（2026-11-10）に guests 人が泊まる1泊の予約
+const buildStayReservation = (id, guests, slots) => buildReservation({
+    id, startDate: '2026-11-10', nights: 1, stays: { ad_m: [guests] }, slots
+});
+const toPlain = (value) => JSON.parse(JSON.stringify(value));
+
+test('取込用コードの種類・版は予約システムの1行コードと同じで、予約システムのコードをそのまま読める', () => {
+    assert.strictEqual(SCHEDULE_CODE_TYPE, RESERVATION_CODE_TYPE);
+    assert.strictEqual(SCHEDULE_CODE_VERSION, RESERVATION_CODE_VERSION);
+    const result = applyReservationCode([], buildReservationCode(HIGH_SCHOOL), IMPORT_CONTEXT);
+    assert.deepStrictEqual(toPlain(result), { ok: true, operation: 'added', id: HIGH_SCHOOL.id, reservations: [toPlain(HIGH_SCHOOL)] });
+});
+
+test('予約システムのデモ用サンプル予約は、すべて取込できる形と判定される', () => {
+    createSampleReservations('2026-10-18', CATALOG).forEach((sample) => assert.strictEqual(isImportableReservation(sample, CATALOG), true, sample.id));
+});
+
+test('applyReservationCode は同じ予約番号があれば更新し、元の一覧を書き換えない', () => {
+    const changed = { ...HIGH_SCHOOL, groupName: 'サンプル高校 陸上部（変更）' };
+    const result = applyReservationCode(RESERVATION_LIST, buildReservationCode(changed), IMPORT_CONTEXT);
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.operation, 'updated');
+    assert.deepStrictEqual(result.reservations.map((reservation) => reservation.groupName), [changed.groupName, UNIVERSITY.groupName, DAY_TRIP.groupName]);
+    assert.strictEqual(RESERVATION_LIST[0].groupName, HIGH_SCHOOL.groupName);
+});
+
+test('applyReservationCode の更新は、同じ予約の古いコマ・人数とは重複にしない', () => {
+    const moreGuests = { ...HIGH_SCHOOL, stays: { ...HIGH_SCHOOL.stays, hs_m: [30, 30] } };
+    assert.strictEqual(applyReservationCode(RESERVATION_LIST, buildReservationCode(moreGuests), IMPORT_CONTEXT).ok, true);
+});
+
+test('applyReservationCode は action: delete のコードで予約を削除する', () => {
+    const result = applyReservationCode(RESERVATION_LIST, buildDeleteCode(UNIVERSITY.id), IMPORT_CONTEXT);
+    assert.deepStrictEqual(toPlain(result), { ok: true, operation: 'deleted', id: UNIVERSITY.id, reservations: toPlain([HIGH_SCHOOL, DAY_TRIP]) });
+    assert.strictEqual(RESERVATION_LIST.length, 3);
+});
+
+test('applyReservationCode は、ない予約番号の削除をエラーにする', () => {
+    assert.deepStrictEqual(applyReservationCode(RESERVATION_LIST, buildDeleteCode('R20990101-001'), IMPORT_CONTEXT),
+        { ok: false, errors: ['予約番号 R20990101-001 の予約はありません'] });
+});
+
+test('applyReservationCode はほかの団体と重なる施設コマをエラーにし、一覧を返さない', () => {
+    const overlapping = buildReservation({ id: 'R20261001-020', startDate: '2026-11-03', nights: 0,
+        slots: [{ date: '2026-11-03', facilityKey: 'gym', timeKey: 'am' }, { date: '2026-11-03', facilityKey: 'mr', timeKey: 'h20' },
+            { date: '2026-11-03', facilityKey: 'field', timeKey: 'am' }] });
+    assert.deepStrictEqual(applyReservationCode(RESERVATION_LIST, buildReservationCode(overlapping), IMPORT_CONTEXT), {
+        ok: false, errors: ['2026-11-03 大体育館 AM はすでに別の団体の予約が入っています',
+            '2026-11-03 ミーティングルーム 20:00~21:00 はすでに別の団体の予約が入っています']
+    });
+});
+
+test('applyReservationCode は同じ予約の中で2回入っている施設コマをエラーにする', () => {
+    const slot = { date: '2026-11-10', facilityKey: 'field', timeKey: 'ev' };
+    const result = applyReservationCode([], buildReservationCode(buildStayReservation('R20261001-021', 10, [slot, slot])), IMPORT_CONTEXT);
+    assert.deepStrictEqual(result, { ok: false, errors: ['2026-11-10 陸上/球技場 夜 が2回入っています'] });
+});
+
+test('applyReservationCode は1日の宿泊人数がちょうど300人までは取り込み、301人でエラーにする', () => {
+    const others = [buildStayReservation('R20261001-030', 200), buildStayReservation('R20261001-031', 60)];
+    assert.strictEqual(applyReservationCode(others, buildReservationCode(buildStayReservation('R20261001-032', 40)), IMPORT_CONTEXT).ok, true);
+    assert.deepStrictEqual(applyReservationCode(others, buildReservationCode(buildStayReservation('R20261001-032', 41)), IMPORT_CONTEXT),
+        { ok: false, errors: ['2026-11-10の夜の宿泊人数が1日の上限（300人）を超えます（合計 301人）'] });
+});
+
+test('applyReservationCode は1日の宿泊団体がちょうど6団体までは取り込み、7団体目でエラーにする', () => {
+    const fiveGroups = Array.from({ length: 5 }, (_, index) => buildStayReservation(`R20261001-04${index}`, 10));
+    const sixGroups = [...fiveGroups, buildStayReservation('R20261001-045', 10)];
+    assert.strictEqual(applyReservationCode(fiveGroups, buildReservationCode(buildStayReservation('R20261001-046', 10)), IMPORT_CONTEXT).ok, true);
+    assert.deepStrictEqual(applyReservationCode(sixGroups, buildReservationCode(buildStayReservation('R20261001-046', 10)), IMPORT_CONTEXT),
+        { ok: false, errors: ['2026-11-10の夜の宿泊団体数が1日の上限（6団体）を超えます（合計 7団体）'] });
+});
+
+test('applyReservationCode は宿泊人数・団体数が上限の夜でも、泊まらない予約（日帰り）は取り込む', () => {
+    const sixGroups = Array.from({ length: 6 }, (_, index) => buildStayReservation(`R20261001-05${index}`, 50));
+    const dayTrip = buildReservation({ id: 'R20261001-056', startDate: '2026-11-10', nights: 0 });
+    assert.strictEqual(applyReservationCode(sixGroups, buildReservationCode(dayTrip), IMPORT_CONTEXT).ok, true);
+});
+
+test('applyReservationCode は人数と団体数の両方が上限を超えると、両方の文言を返す', () => {
+    const sixGroups = Array.from({ length: 6 }, (_, index) => buildStayReservation(`R20261001-06${index}`, 50));
+    assert.strictEqual(applyReservationCode(sixGroups, buildReservationCode(buildStayReservation('R20261001-066', 1)), IMPORT_CONTEXT).errors.length, 2);
+});
+
+test('parseScheduleCode は取込用コードでないもの・違う版・知らない操作をエラーにする', () => {
+    assert.deepStrictEqual(parseScheduleCode(''), { ok: false, errors: ['予約の取込用コードではありません'] });
+    assert.deepStrictEqual(parseScheduleCode('{壊れたJSON'), { ok: false, errors: ['予約の取込用コードではありません'] });
+    assert.deepStrictEqual(parseScheduleCode(undefined), { ok: false, errors: ['予約の取込用コードではありません'] });
+    assert.deepStrictEqual(parseScheduleCode(JSON.stringify({ type: SCHEDULE_CODE_TYPE, version: 2 })),
+        { ok: false, errors: ['対応していない版のコードです（version 2）'] });
+    assert.deepStrictEqual(parseScheduleCode(JSON.stringify({ type: SCHEDULE_CODE_TYPE, version: 3, action: 'drop' })),
+        { ok: false, errors: ['知らない操作です（action drop）'] });
+});
+
+test('parseScheduleCode は前後の空白・改行を無視して読む', () => {
+    assert.strictEqual(parseScheduleCode(`  ${buildReservationCode(HIGH_SCHOOL)}\n`).ok, true);
+});
+
+test('applyReservationCode は形の正しくない予約をエラーにする', () => {
+    [null, {}, { ...HIGH_SCHOOL, id: '' }, { ...HIGH_SCHOOL, startDate: '2026-02-30' }, { ...HIGH_SCHOOL, nights: -1 },
+        { ...HIGH_SCHOOL, stays: { hs_m: [20] } }, { ...HIGH_SCHOOL, meals: { bf: [1, 2] } }, { ...HIGH_SCHOOL, slots: 'gym' },
+        { ...HIGH_SCHOOL, slots: [{ date: '2026-11-02', facilityKey: 'pool', timeKey: 'am' }] },
+        { ...HIGH_SCHOOL, slots: [{ date: '2026-11-02', facilityKey: 'gym', timeKey: 'h09' }] },
+        { ...HIGH_SCHOOL, slots: [{ date: '2026-11-02', facilityKey: 'kL', timeKey: 'h21' }] },
+        { ...HIGH_SCHOOL, slots: [{ date: '2026-11-05', facilityKey: 'gym', timeKey: 'am' }] }
+    ].forEach((reservation, index) => assert.deepStrictEqual(applyReservationCode([], buildReservationCode(reservation), IMPORT_CONTEXT),
+        { ok: false, errors: ['予約の内容が正しくありません'] }, `${index}番目`));
 });

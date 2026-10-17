@@ -8,6 +8,11 @@
 {
     // ---------- 共通の設定 ----------
     const DAY_MS = 24 * 60 * 60 * 1000;
+    const SCHEDULE_CODE_TYPE = 'facility_dx_reservation'; // 職員取込用コードの種類（予約システムの1行コードと同じ）
+    const SCHEDULE_CODE_VERSION = 3;                      // 職員取込用コードの版（予約システムの1行コードと同じ）
+
+    // 取り込むときの1日（1泊）あたりの上限（全団体の合計宿泊人数・宿泊団体数）
+    const STAY_LIMITS = Object.freeze({ stayCapacity: 300, maxStayGroups: 6 });
 
     // 宿泊の空き状況のしきい値（人数か団体数のどちらかが達したら、その記号）
     const STAY_THRESHOLDS = Object.freeze({
@@ -122,13 +127,109 @@
     const mapFacilitySchedule = (reservationList, date, catalog) => catalog.facilities
         .map((facility) => buildFacilitySchedule(reservationList, date, facility, catalog));
 
+    // ---------- 職員取込用の1行コード（予約システムのメールに載る JSON。削除は action: 'delete' と予約番号 id） ----------
+    // 取込のときの文言用の "2026-11-03 大体育館 AM"
+    const formatSlotLabel = (slot, catalog) => {
+        const facility = catalog.facilities.find((entry) => entry.key === slot.facilityKey);
+        const timeUnit = listTimeUnits(facility, catalog).find((entry) => entry.key === slot.timeKey);
+        return `${slot.date} ${facility.name} ${timeUnit.label}`;
+    };
+    const isCountList = (value, length) => Array.isArray(value) && value.length === length && value.every(isNonNegativeInteger);
+    // キーごとに決まった日数分の数の配列を持つオブジェクトか（宿泊人数・食事）
+    const isCountTable = (countTable, length) => typeof countTable === 'object' && countTable !== null && !Array.isArray(countTable)
+        && Object.values(countTable).every((counts) => isCountList(counts, length));
+    // 知っている施設の、その施設で使えるコマか
+    const isKnownSlot = (slot, catalog) => {
+        const facility = catalog.facilities.find((entry) => entry.key === slot?.facilityKey);
+        return Boolean(facility) && listTimeUnits(facility, catalog).some((timeUnit) => timeUnit.key === slot.timeKey);
+    };
+    // 日程の中の日付で、知っている施設のコマか
+    const isSlotOfReservation = (slot, reservation, catalog) => isKnownSlot(slot, catalog)
+        && isValidDateString(slot.date) && findDayIndex(reservation, slot.date) >= 0;
+    // 取り込める予約の形か（予約番号・日程・宿泊人数は夜ごと・食事は利用日ごと・施設コマ）
+    const isImportableReservation = (value, catalog) => typeof value === 'object' && value !== null
+        && typeof value.id === 'string' && value.id !== '' && typeof value.groupName === 'string'
+        && isValidDateString(value.startDate) && isNonNegativeInteger(value.nights)
+        && isCountTable(value.stays, value.nights) && isCountTable(value.meals, value.nights + 1)
+        && Array.isArray(value.slots) && value.slots.every((slot) => isSlotOfReservation(slot, value, catalog));
+    const removeReservationById = (reservationList, id) => reservationList.filter((reservation) => reservation.id !== id);
+    const hasReservationId = (reservationList, id) => reservationList.some((reservation) => reservation.id === id);
+    // 同じ予約番号があれば置き換え、なければ最後に加えた、新しい一覧
+    const upsertReservation = (reservationList, reservation) => (hasReservationId(reservationList, reservation.id)
+        ? reservationList.map((current) => (current.id === reservation.id ? reservation : current))
+        : [...reservationList, reservation]);
+
+    // 予約の中で2回以上入っている施設コマの文言（2回目以降）
+    const findInnerDuplicateMessages = (reservation, catalog) => reservation.slots
+        .filter((slot, index) => reservation.slots.findIndex((otherSlot) => isSameSlot(otherSlot, slot)) !== index)
+        .map((slot) => `${formatSlotLabel(slot, catalog)} が2回入っています`);
+    // ほかの予約（otherReservations）と重なる施設コマの文言
+    const findSlotConflictMessages = (otherReservations, reservation, catalog) => reservation.slots
+        .filter((slot) => otherReservations.some((other) => hasSlot(other, slot)))
+        .map((slot) => `${formatSlotLabel(slot, catalog)} はすでに別の団体の予約が入っています`);
+    const listStayNightDates = (reservation) => Array.from({ length: reservation.nights },
+        (_, nightIndex) => addDaysToDateString(reservation.startDate, nightIndex));
+    // その夜に、ほかの予約と合わせて宿泊人数・団体数の上限を超えるときの文言（その夜に泊まらなければ対象外）
+    const findStayLimitMessagesOnDate = (otherReservations, reservation, date, limits) => {
+        const requestedGuests = countStayOnDate(reservation, date);
+        const totalGuests = countStayGuests(otherReservations, date) + requestedGuests;
+        const totalGroups = countStayGroups(otherReservations, date) + 1;
+        return requestedGuests === 0 ? [] : [
+            totalGuests > limits.stayCapacity && `${date}の夜の宿泊人数が1日の上限（${limits.stayCapacity}人）を超えます（合計 ${totalGuests}人）`,
+            totalGroups > limits.maxStayGroups && `${date}の夜の宿泊団体数が1日の上限（${limits.maxStayGroups}団体）を超えます（合計 ${totalGroups}団体）`
+        ].filter(Boolean);
+    };
+    const findStayLimitMessages = (otherReservations, reservation, limits) => listStayNightDates(reservation)
+        .flatMap((date) => findStayLimitMessagesOnDate(otherReservations, reservation, date, limits));
+    // 取り込めない理由のすべて（更新のときは、同じ予約番号の古い予約を除いて比べる）。context：{ catalog, limits }
+    const findImportErrors = (reservationList, reservation, context) => {
+        if (!isImportableReservation(reservation, context.catalog)) return ['予約の内容が正しくありません'];
+        const otherReservations = removeReservationById(reservationList, reservation.id);
+        return [...findInnerDuplicateMessages(reservation, context.catalog),
+            ...findSlotConflictMessages(otherReservations, reservation, context.catalog),
+            ...findStayLimitMessages(otherReservations, reservation, context.limits)];
+    };
+
+    const safeParseJson = (text) => {
+        try { return JSON.parse(text); } catch (error) { return null; }
+    };
+    // 1行コードを読み取る（{ ok: true, code } または { ok: false, errors }）
+    const parseScheduleCode = (codeText) => {
+        const parsed = safeParseJson(typeof codeText === 'string' ? codeText.trim() : '');
+        if (parsed?.type !== SCHEDULE_CODE_TYPE) return { ok: false, errors: ['予約の取込用コードではありません'] };
+        if (parsed.version !== SCHEDULE_CODE_VERSION) return { ok: false, errors: [`対応していない版のコードです（version ${parsed.version}）`] };
+        if (![undefined, 'delete'].includes(parsed.action)) return { ok: false, errors: [`知らない操作です（action ${parsed.action}）`] };
+        return { ok: true, code: parsed };
+    };
+    const applyDeleteCode = (reservationList, id) => (hasReservationId(reservationList, id)
+        ? { ok: true, operation: 'deleted', id, reservations: removeReservationById(reservationList, id) }
+        : { ok: false, errors: [`予約番号 ${id} の予約はありません`] });
+    const applyUpsertCode = (reservationList, reservation, context) => {
+        const errors = findImportErrors(reservationList, reservation, context);
+        if (errors.length > 0) return { ok: false, errors };
+        const operation = hasReservationId(reservationList, reservation.id) ? 'updated' : 'added';
+        return { ok: true, operation, id: reservation.id, reservations: upsertReservation(reservationList, reservation) };
+    };
+    // 1行コードを予約の一覧に反映する。新しい予約番号なら追加、同じ予約番号があれば更新、action: 'delete' なら削除
+    // 成功：{ ok: true, operation: 'added' | 'updated' | 'deleted', id, reservations（新しい一覧） } ／ 失敗：{ ok: false, errors }
+    // context：{ catalog, limits（STAY_LIMITS） }。元の一覧は書き換えない
+    const applyReservationCode = (reservationList, codeText, context) => {
+        const result = parseScheduleCode(codeText);
+        if (!result.ok) return result;
+        if (result.code.action === 'delete') return applyDeleteCode(reservationList, result.code.id);
+        return applyUpsertCode(reservationList, result.code.reservation, context);
+    };
+    // 予約を削除する1行コード
+    const buildDeleteCode = (id) => JSON.stringify({ type: SCHEDULE_CODE_TYPE, version: SCHEDULE_CODE_VERSION, action: 'delete', id });
+
     // SCHEDULE_EXPORTS:start
     // ブラウザでは window.ScheduleLogic、Node.js（テスト）では module.exports から使う
     const ScheduleLogic = Object.freeze({
-        STAY_THRESHOLDS, MEAL_SUMMARY_ITEMS,
+        SCHEDULE_CODE_TYPE, SCHEDULE_CODE_VERSION, STAY_THRESHOLDS, STAY_LIMITS, MEAL_SUMMARY_ITEMS,
         isValidDateString, addDaysToDateString, countDaysBetween, findNightIndex, findDayIndex, countStayOnDate,
         countStayGuests, countStayGroups, buildStayBreakdown, buildMealTotals, summarizeDailyReservations, judgeStaySymbol,
-        listTimeUnits, isSameSlot, mapFacilitySchedule
+        listTimeUnits, isSameSlot, mapFacilitySchedule,
+        isImportableReservation, upsertReservation, parseScheduleCode, applyReservationCode, buildDeleteCode
     });
     if (typeof module !== 'undefined') module.exports = ScheduleLogic;
     if (typeof window !== 'undefined') window.ScheduleLogic = ScheduleLogic;
