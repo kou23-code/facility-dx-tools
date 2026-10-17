@@ -33,7 +33,10 @@ const CAPTURE_SOURCE = `const capture = () => ({
     completeHidden: document.getElementById('completeView').classList.contains('hidden'),
     storage: localStorage.getItem('${RESERVATION_STORAGE_KEY}'),
     storageStatus: document.getElementById('storageStatus').textContent,
-    code: document.getElementById('out_code').value,
+    code: decodeURIComponent((/[?&]body=([^&]*)/.exec(document.getElementById('mailButton').getAttribute('href')) || ['', ''])[1]).split('\\n').pop(),
+    codeUiCount: document.querySelectorAll('#out_code, #copyButton').length,
+    completeText: document.querySelector('#completeView > div').textContent.replace(/\\s+/g, ' '),
+    mailOpenedHidden: document.getElementById('mailOpenedNote').classList.contains('hidden'),
     mailHref: document.getElementById('mailButton').getAttribute('href'),
     receiptText: document.getElementById('receipt').textContent.replace(/\\s+/g, ' '),
     dailyHead: Array.from(document.querySelectorAll('#dailyTable thead th'), (cell) => cell.textContent),
@@ -180,6 +183,40 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.ok(completed.receiptText.includes('※体育館の照明代金、研修室の冷暖房代などは別途料金がかかります'), '控えにも別途料金の案内');
     assert.ok(completed.receiptText.includes('10（人／泊）'));
     assert.ok(completed.receiptText.includes(`${CATALOG.facilities[0].name} AM、大研修室(1･3研) 9:00~11:00`));
+});
+
+test('画面：完了画面は送信がまだであることを強調し、1行コードは画面に出さずメールの本文にだけ入れる', { skip: !BROWSER }, () => {
+    const [completed, afterMailClick] = renderStates(`
+        insertSampleReservations();
+        fillApplicant();
+        refreshSummary();
+        confirmReservation();
+        states.push(capture());
+        onMailButtonClick();
+        states.push(capture());
+    `);
+    assert.strictEqual(completed.completeHidden, false);
+    assert.ok(completed.completeText.includes('※まだ予約は完了していません！'), '送信がまだであることを強調する');
+    assert.ok(completed.completeText.includes('以下のボタンから、施設へ予約データを送信してください。'));
+    assert.ok(completed.completeText.includes('施設へ予約データを送信する'), 'メール送信のボタン');
+    assert.ok(completed.completeText.includes('あおぞらセミナーハウス（TEL 03-0000-0000）'), 'メールが開かないときの連絡先');
+    assert.strictEqual(completed.codeUiCount, 0, '1行コードの欄・コピーボタンは画面にない');
+    ['職員取込用', '1行コード', 'コピー', completed.code].forEach((text) => {
+        assert.ok(!completed.completeText.includes(text), `完了画面に「${text.slice(0, 20)}」が出ている`);
+    });
+    assert.strictEqual(parseReservationCode(completed.code).ok, true, 'メールの本文の最後の行が1行コード');
+    assert.ok(decodeURIComponent(completed.mailHref).includes('▼施設の予約管理用データ（この行と次の行は消したり書き換えたりせず、そのまま送信してください）'));
+    assert.ok(completed.receiptText.includes('※内容に確認が必要な場合のみ、施設よりご連絡させていただきます'), '控えの注意事項');
+    assert.ok(!completed.receiptText.includes('施設の職員から確認の連絡をいたします'), '前の文言は残さない');
+    assert.strictEqual(completed.mailOpenedHidden, true);
+    assert.strictEqual(afterMailClick.mailOpenedHidden, false, '送信ボタンを押すと、メールソフトで送信するよう案内する');
+});
+
+test('予約画面に1行コードの欄・コピーの処理が残っていない', () => {
+    const html = readPage();
+    ['out_code', 'copyButton', 'copyReservationCode', '職員取込用'].forEach((text) => {
+        assert.ok(!html.includes(text), `予約画面に「${text}」が残っている`);
+    });
 });
 
 test('画面：予約済みのコマを選んでいると赤くなって確定できず、リセットで予約データが消える', { skip: !BROWSER }, () => {

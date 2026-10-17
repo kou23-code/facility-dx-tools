@@ -574,7 +574,7 @@ const buildMailBody = (reservation, catalog) => [
     'Web予約システムから予約の申込がありました。内容を確認してください。', '',
     ...buildReservationSummary(reservation, catalog).map(([label, value]) => `${label}：${value}`),
     `概算料金：${formatYen(calculateReservationFee(reservation, catalog).total)}（税込）`, '',
-    '▼職員取込用1行コード（1行すべてをコピーして取り込んでください）', buildReservationCode(reservation)
+    '▼施設の予約管理用データ（この行と次の行は消したり書き換えたりせず、そのまま送信してください）', buildReservationCode(reservation)
 ].join('\n');
 // メールソフトを開く mailto: の URL（件名・本文は URL 用に変換する）
 const buildStaffMailUrl = (address, subject, body) => `mailto:${address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
