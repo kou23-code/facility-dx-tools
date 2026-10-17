@@ -79,7 +79,7 @@
                             <div class="font-bold text-blue-900 mb-2">かんたん4ステップ</div>
                             <ol class="list-decimal pl-5 space-y-1 text-gray-800">
                                 <li><b>申込者</b>：団体名・代表者名・連絡先・利用目的を入力します。</li>
-                                <li><b>日程・人数</b>：利用開始日・利用日数・利用人数を入力すると、右側に<b>空き状況（◎/△/×）</b>が表示されます。</li>
+                                <li><b>日程・人数</b>：利用開始日・利用日数を選ぶと、右側に<b>空き状況（◎/△/×）</b>が表示されます。</li>
                                 <li><b>宿泊・食事</b>：表に<b>日ごと</b>の宿泊人数（泊まる夜の日付）と、食事・弁当・お茶などの数を入れます。</li>
                                 <li><b>施設コマ・確定</b>：使いたい施設の時間帯を押して選び、概算料金を確認して「予約内容を確定する」を押し、次の画面の「施設へ予約データを送信する」でメールを送信すると申込が完了します。</li>
                             </ol>
@@ -116,7 +116,7 @@
                         <!-- STEP2 日程・人数 -->
                         <section class="bg-gray-50 p-3 rounded border">
                             <div class="flex items-center gap-2 mb-3"><span class="step-badge">2</span><span class="font-bold text-base">日程・人数</span></div>
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <label class="field-label required" for="in_start">利用開始日</label>
                                     <input type="date" id="in_start" class="field-input font-bold text-blue-700" onchange="refreshAll()">
@@ -125,17 +125,9 @@
                                     <label class="field-label required" for="in_nights">利用日数</label>
                                     <select id="in_nights" class="field-input font-bold text-blue-700" onchange="refreshAll()"></select>
                                 </div>
-                                <div>
-                                    <label class="field-label required" for="in_price_type">料金区分</label>
-                                    <select id="in_price_type" class="field-input" onchange="refreshSummary()"></select>
-                                </div>
-                                <div>
-                                    <label class="field-label required" for="in_people">利用人数</label>
-                                    <input type="number" id="in_people" inputmode="numeric" min="1" class="field-input text-right font-bold" placeholder="0" oninput="refreshSummary()">
-                                </div>
                             </div>
-                            <div class="text-xs text-gray-500 mt-2">※利用人数は団体全体の人数です。宿泊人数は次の表で日ごとに、区分・男女別に入力します（1泊の合計は利用人数まで）。</div>
-                            <div class="text-xs text-gray-500">※宿泊者がいるときの施設料金は、宿泊人数がいちばん多い区分で計算します。料金区分は宿泊者がいないとき（日帰り）の施設料金に使います。</div>
+                            <div class="text-xs text-gray-500 mt-2">※人数は次の表で、日ごとに区分（小学生・中学生／高校生／大学生・一般）・男女別に入力します。利用人数と料金区分は、その人数から自動で計算します。</div>
+                            <div class="text-xs text-gray-500">※施設料金は、宿泊人数がいちばん多い区分で計算します（宿泊者がいないとき（日帰り）は大学生・一般の料金）。</div>
                         </section>
 
                         <!-- STEP3 日ごとの宿泊人数・食事 -->
@@ -261,12 +253,10 @@
         const buildNightOptions = (maxNights) => Array.from({ length: maxNights + 1 },
             (_, nights) => ({ value: String(nights), label: nights === 0 ? '1日（日帰り）' : `${nights + 1}日（${nights}泊${nights + 1}日）` }));
         const buildPurposeOptions = (purposes) => [{ value: '', label: '選んでください' }, ...purposes.map((purpose) => ({ value: purpose, label: purpose }))];
-        const buildPriceTypeOptions = (priceTypes) => priceTypes.map((type) => ({ value: type.key, label: type.name }));
 
         const renderFormParts = (config, catalog) => {
             byId('in_nights').innerHTML = buildOptionsHtml(buildNightOptions(config.maxNights), String(DEFAULT_NIGHTS));
             byId('in_purpose').innerHTML = buildOptionsHtml(buildPurposeOptions(catalog.purposes), '');
-            byId('in_price_type').innerHTML = buildOptionsHtml(buildPriceTypeOptions(catalog.priceTypes), 'ad');
         };
 
         // ---------- 日ごとの宿泊人数・食事の表（行のキー：宿泊は "stay_区分_性別"（例：stay_hs_m）、食事などは "meal_品目キー"） ----------
@@ -351,7 +341,7 @@
         const readFormValues = () => ({
             groupName: byId('in_group').value, representative: byId('in_representative').value, phone: byId('in_phone').value,
             email: byId('in_email').value, purpose: byId('in_purpose').value, startDate: byId('in_start').value,
-            nights: byId('in_nights').value, priceType: byId('in_price_type').value, people: byId('in_people').value,
+            nights: byId('in_nights').value,
             stays: Object.fromEntries(CATALOG.stayGuestTypes.map((type) => [type.key, readRowValues(`stay_${type.key}`)])),
             meals: Object.fromEntries(CATALOG.meals.map((meal) => [meal.key, readRowValues(`meal_${meal.key}`)]))
         });

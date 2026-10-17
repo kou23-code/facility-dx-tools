@@ -110,6 +110,9 @@ test('buildReservationSummary は控えとメールに載せる見出しと内�
     assert.strictEqual(summaryOf({ nights: 2, stays: { es_m: [3, 0], ad_f: [1, 0], hs_f: [0, 0] } })['宿泊人数'],
         '11/2(月) 4人（小学生・中学生 男3、大学生・一般 女1） ／ 11/3(火) 0人', '人数が0人の区分・性別は出さない');
     assert.strictEqual(summaryOf({ meals: {} })['食事など'], 'なし');
+    assert.strictEqual(summaryOf({ nights: 2, people: 1, priceType: 'ad', stays: { es_m: [3, 5], ad_f: [1, 2] } })['利用人数'], '7人（小学生・中学生）',
+        '利用人数と料金区分は、保存した people・priceType ではなく宿泊人数から出す');
+    assert.strictEqual(summaryOf({ nights: 0, stays: {} })['利用人数'], '宿泊者なし');
 });
 
 test('職員宛てメールの件名・本文・mailto の URL', () => {
