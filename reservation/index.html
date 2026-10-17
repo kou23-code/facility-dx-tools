@@ -83,7 +83,7 @@
                                 <li><b>宿泊・食事</b>：表に<b>日ごと</b>の宿泊人数（泊まる夜の日付）と、食事・弁当・お茶などの数を入れます。</li>
                                 <li><b>施設コマ・確定</b>：使いたい施設の時間帯を押して選び、概算料金を確認して「予約を確定する」を押します。</li>
                             </ol>
-                            <div class="mt-2 text-xs text-gray-600">※定員超過や予約済みのコマがあるときは、赤い警告が出て確定できません。</div>
+                            <div class="mt-2 text-xs text-gray-600">※宿泊は1日あたり全団体で<span class="stay-limit-text"></span>までです。上限を超える日や予約済みのコマがあるときは、赤い警告が出て確定できません。</div>
                         </div>
 
                         <!-- STEP1 申込者 -->
@@ -134,13 +134,15 @@
                                     <input type="number" id="in_people" inputmode="numeric" min="1" class="field-input text-right font-bold" placeholder="0" oninput="refreshSummary()">
                                 </div>
                             </div>
-                            <div class="text-xs text-gray-500 mt-2">※利用人数は団体全体の人数です。宿泊人数は次の表で日ごとに入力します（利用人数まで）。</div>
+                            <div class="text-xs text-gray-500 mt-2">※利用人数は団体全体の人数です。宿泊人数は次の表で日ごとに、区分・男女別に入力します（1泊の合計は利用人数まで）。</div>
+                            <div class="text-xs text-gray-500">※宿泊者がいるときの施設料金は、宿泊人数がいちばん多い区分で計算します。料金区分は宿泊者がいないとき（日帰り）の施設料金に使います。</div>
                         </section>
 
                         <!-- STEP3 日ごとの宿泊人数・食事 -->
                         <section class="bg-gray-50 p-3 rounded border">
                             <div class="flex items-center gap-2 mb-1"><span class="step-badge">3</span><span class="font-bold text-base">日ごとの宿泊人数・食事</span></div>
-                            <p class="text-xs text-gray-500 mb-2 ml-8">宿泊は「泊まる夜の日付」に人数を入れます（最終日の夜は泊まりません）。空欄は0。「全日」で1日目の数を他の日にもコピーできます。</p>
+                            <p class="text-xs text-gray-500 mb-1 ml-8">宿泊は「泊まる夜の日付」に、区分（小学生・中学生／高校生／大学生・一般）×男女の人数を入れます（最終日の夜は泊まりません）。空欄は0。「全日」で1日目の数を他の日にもコピーできます。</p>
+                            <p id="stayPlanNote" class="text-sm font-bold text-blue-800 mb-2 ml-8">※現時点での予定人数で構いません（後日変更可能です）</p>
                             <div id="dailyTable" class="overflow-x-auto"></div>
                         </section>
 
@@ -175,10 +177,10 @@
                         <p class="text-xs text-gray-600 mb-2">
                             <span class="font-bold text-green-700">◎</span> 空きあり ／
                             <span class="font-bold text-amber-600">△</span> 残りわずか・一部の時間帯が予約済み ／
-                            <span class="font-bold text-red-600">×</span> 満室・すべて予約済み・休館日
+                            <span class="font-bold text-red-600">×</span> 満室（人数か団体数が上限）・すべて予約済み・休館日
                         </p>
                         <div id="availabilityTable" class="overflow-x-auto text-sm"></div>
-                        <p class="text-[11px] text-gray-500 mt-1">宿泊はその日の夜の空き（最終日の夜は泊まらないため「—」）。</p>
+                        <p class="text-[11px] text-gray-500 mt-1">宿泊はその日の夜の空き（1日あたり全団体で<span class="stay-limit-text"></span>まで。最終日の夜は泊まらないため「—」）。</p>
                     </section>
                     <section class="bg-white rounded-lg shadow-md p-4">
                         <h2 class="font-bold text-lg mb-2">概算料金</h2>
@@ -265,7 +267,8 @@
             byId('in_price_type').innerHTML = buildOptionsHtml(buildPriceTypeOptions(catalog.priceTypes), 'ad');
         };
 
-        // ---------- 日ごとの宿泊人数・食事の表（行のキー：宿泊は "stay"、食事などは "meal_品目キー"） ----------
+        // ---------- 日ごとの宿泊人数・食事の表（行のキー：宿泊は "stay_区分_性別"（例：stay_hs_m）、食事などは "meal_品目キー"） ----------
+        const STAY_PLAN_NOTE = '※現時点での予定人数で構いません（後日変更可能です）';
         const buildDailyHeadHtml = (dates) => `<thead><tr><th class="text-left">項目</th>${dates
             .map((date, dayIndex) => `<th><div class="font-normal text-gray-300">${dayIndex + 1}日目</div>${formatDateLabel(date)}</th>`).join('')}<th>合計</th></tr></thead>`;
         const buildCountInputHtml = (rowKey, dayIndex, value, ariaLabel) => `<td><input type="number" inputmode="numeric" min="0" class="count-input"`
@@ -273,10 +276,21 @@
         const buildRowLabelHtml = (name, note, rowKey, canCopy) => `<th>${escapeHtml(name)}<span class="ml-1 text-[10px] font-normal text-gray-500">${escapeHtml(note)}</span>`
             + `${canCopy ? `<button type="button" class="copy-button" onclick="copyFirstDayToAll('${rowKey}')" title="1日目の数を他の日にもコピーします">全日</button>` : ''}</th>`;
         const buildGroupRowHtml = (title, columnCount) => `<tr class="group-row"><td colspan="${columnCount}">${escapeHtml(title)}</td></tr>`;
-        // 宿泊人数の行（泊まる夜だけ入力でき、最終日は「—」）
-        const buildStayRowHtml = (dates, nights, values) => `<tr>${buildRowLabelHtml('宿泊人数', '泊まる夜', 'stay', nights > 1)}${dates
-            .map((date, dayIndex) => (dayIndex < nights ? buildCountInputHtml('stay', dayIndex, values[dayIndex], `${formatDateLabel(date)} 宿泊人数`)
-                : '<td class="text-gray-400" title="最終日の夜は泊まりません">—</td>')).join('')}<td id="total_stay" class="text-right"></td></tr>`;
+        const LAST_NIGHT_CELL_HTML = '<td class="text-gray-400" title="最終日の夜は泊まりません">—</td>';
+        // 宿泊人数の1行（区分×性別。泊まる夜だけ入力でき、最終日は「—」。男性の行に1泊の単価を出す）
+        const buildStayRowHtml = (guestType, dates, nights, values, catalog) => {
+            const rowKey = `stay_${guestType.key}`;
+            const note = guestType.gender === catalog.genders[0].key ? `${formatNumber(catalog.stayPrices[guestType.priceType])}円/泊` : '';
+            return `<tr>${buildRowLabelHtml(guestType.name, note, rowKey, nights > 1)}${dates.map((date, dayIndex) => (dayIndex < nights
+                ? buildCountInputHtml(rowKey, dayIndex, values[dayIndex], `${formatDateLabel(date)} 宿泊人数 ${guestType.name}`) : LAST_NIGHT_CELL_HTML)).join('')}`
+                + `<td id="total_${rowKey}" class="text-right"></td></tr>`;
+        };
+        // 夜ごとの宿泊人数の合計の行
+        const buildStayTotalRowHtml = (dates, nights) => `<tr class="font-bold"><th>宿泊人数 合計</th>${dates.map((date, dayIndex) => (dayIndex < nights
+            ? `<td id="total_stay_night_${dayIndex}" class="text-right"></td>` : LAST_NIGHT_CELL_HTML)).join('')}<td id="total_stay" class="text-right"></td></tr>`;
+        const buildStayRowsHtml = (dates, nights, formValues, catalog) => catalog.stayGuestTypes
+            .map((guestType) => buildStayRowHtml(guestType, dates, nights, formValues.stays?.[guestType.key] ?? [], catalog)).join('')
+            + buildStayTotalRowHtml(dates, nights);
         const buildMealRowHtml = (meal, dates, values) => `<tr>${buildRowLabelHtml(meal.name, `${formatNumber(meal.price)}円/${meal.unit}`, `meal_${meal.key}`, dates.length > 1)}${dates
             .map((date, dayIndex) => buildCountInputHtml(`meal_${meal.key}`, dayIndex, values[dayIndex], `${formatDateLabel(date)} ${meal.name}`)).join('')}<td id="total_meal_${meal.key}" class="text-right"></td></tr>`;
         // 食事などの行（品目のグループが変わるところに見出しの行を入れる）
@@ -285,7 +299,8 @@
             return `${isNewGroup ? buildGroupRowHtml(meal.group, dates.length + 2) : ''}${buildMealRowHtml(meal, dates, formValues.meals?.[meal.key] ?? [])}`;
         }).join('');
         const buildDailyTableHtml = (dates, nights, formValues, catalog) => `<table class="grid-table daily-table w-full text-xs">${buildDailyHeadHtml(dates)}<tbody>`
-            + `${buildGroupRowHtml('宿泊', dates.length + 2)}${buildStayRowHtml(dates, nights, formValues.stays ?? [])}${buildMealRowsHtml(dates, formValues, catalog)}</tbody></table>`;
+            + `${buildGroupRowHtml(`宿泊（泊まる夜の日付に、区分・男女別の人数）　${STAY_PLAN_NOTE}`, dates.length + 2)}`
+            + `${buildStayRowsHtml(dates, nights, formValues, catalog)}${buildMealRowsHtml(dates, formValues, catalog)}</tbody></table>`;
         // formValues の入力中の値を残したまま作り直す（日数を減らした日の値は消える）
         const renderDailyTable = (request, formValues, context) => {
             if (!canCheckSchedule(request, context.config)) { byId('dailyTable').innerHTML = SCHEDULE_PLACEHOLDER_HTML; return; }
@@ -297,7 +312,9 @@
         };
         // 表の右端の合計
         const renderDailyTotals = (request, catalog) => {
-            setTextIfExists('total_stay', `${sumCounts(request.stays)}人`);
+            catalog.stayGuestTypes.forEach((type) => setTextIfExists(`total_stay_${type.key}`, `${sumCounts(request.stays[type.key])}人`));
+            listNightTotals(request).forEach((total, nightIndex) => setTextIfExists(`total_stay_night_${nightIndex}`, `${total}人`));
+            setTextIfExists('total_stay', `${listNightTotals(request).reduce((sum, total) => sum + total, 0)}人`);
             catalog.meals.forEach((meal) => setTextIfExists(`total_meal_${meal.key}`, `${sumCounts(request.meals[meal.key])}${meal.unit}`));
         };
         // 1日目の数を、同じ行の他の日にもコピーする
@@ -319,6 +336,10 @@
         const renderExtraFeeNotes = (note) => {
             document.querySelectorAll('.extra-fee-note').forEach((element) => { element.textContent = note; });
         };
+        // 宿泊の上限（"300人・6団体"）を、画面の決まった場所（class="stay-limit-text"）に出す
+        const renderStayLimitTexts = (config) => {
+            document.querySelectorAll('.stay-limit-text').forEach((element) => { element.textContent = `${config.stayCapacity}人・${config.maxStayGroups}団体`; });
+        };
         const renderFacilityInfo = (info) => {
             document.title = `${info.facilityName} Web予約システム`;
             byId('pageHeading').textContent = document.title;
@@ -329,7 +350,7 @@
             groupName: byId('in_group').value, representative: byId('in_representative').value, phone: byId('in_phone').value,
             email: byId('in_email').value, purpose: byId('in_purpose').value, startDate: byId('in_start').value,
             nights: byId('in_nights').value, priceType: byId('in_price_type').value, people: byId('in_people').value,
-            stays: readRowValues('stay'),
+            stays: Object.fromEntries(CATALOG.stayGuestTypes.map((type) => [type.key, readRowValues(`stay_${type.key}`)])),
             meals: Object.fromEntries(CATALOG.meals.map((meal) => [meal.key, readRowValues(`meal_${meal.key}`)]))
         });
         // 日ごとの表の1行分の入力値（1日目から順に）
@@ -389,17 +410,20 @@
         // ---------- 空き状況の表（◎/△/×） ----------
         const buildSymbolHtml = (symbol) => `<span class="font-bold text-base ${SYMBOL_CLASSES[symbol]}">${symbol}</span>`;
         // 宿泊の欄（その夜の希望の宿泊人数が残りより多いときは「残り」を赤くする）
+        // 宿泊の欄（残りの人数と団体数。その夜の希望が残りの人数より多い、または団体の残りがないときは赤くする）
         const buildStayCellHtml = (stay, requestedStay) => {
             if (!stay) return '<td class="text-gray-400">—</td>';
-            const remainingClass = requestedStay > stay.remaining ? 'text-red-600 font-bold' : 'text-gray-500';
-            return `<td data-stay-symbol="${stay.symbol}">${buildSymbolHtml(stay.symbol)}<div class="text-[10px] ${remainingClass}">残り${stay.remaining}人</div></td>`;
+            const isShort = requestedStay > stay.remaining || (requestedStay > 0 && stay.remainingGroups === 0);
+            return `<td data-stay-symbol="${stay.symbol}">${buildSymbolHtml(stay.symbol)}<div class="stay-remaining text-[10px] ${isShort ? 'text-red-600 font-bold' : 'text-gray-500'}">`
+                + `残り${stay.remaining}人・${stay.remainingGroups}団体</div></td>`;
         };
         const buildAvailabilityRowHtml = (row, requestedStay) => `<tr>${buildDateHeaderHtml(row)}${buildStayCellHtml(row.stay, requestedStay)}${row.facilities
             .map((status) => `<td data-facility="${status.facilityKey}">${buildSymbolHtml(status.symbol)}</td>`).join('')}</tr>`;
         const renderAvailability = (request, context) => {
             if (!canCheckSchedule(request, context.config)) { byId('availabilityTable').innerHTML = SCHEDULE_PLACEHOLDER_HTML; return; }
             const rows = buildAvailabilityRows(context.reservations, request.startDate, request.nights, context);
-            const bodyHtml = rows.map((row, dayIndex) => buildAvailabilityRowHtml(row, toSafeCount(request.stays[dayIndex]))).join('');
+            const nightTotals = listNightTotals(request);
+            const bodyHtml = rows.map((row, dayIndex) => buildAvailabilityRowHtml(row, nightTotals[dayIndex] ?? 0)).join('');
             byId('availabilityTable').innerHTML = `<table class="grid-table w-full">${buildFacilityHeadHtml(context.catalog.facilities, '<th>宿泊</th>')}<tbody>${bodyHtml}</tbody></table>`;
         };
 
@@ -412,13 +436,14 @@
         // "（うち消費税 10%：X円 ／ 8%：Y円）"
         const buildTaxText = (fee) => `（うち消費税 ${[fee.taxBreakdown.standard, fee.taxBreakdown.reduced]
             .map((part) => `${Math.round(part.rate * 100)}%：${formatYen(part.tax)}`).join(' ／ ')}）`;
-        const buildPriceTypeText = (fee) => `施設は「${fee.isStay ? '宿泊利用料金' : '日帰り専有料金'}」で計算しています`;
+        const buildPriceTypeText = (fee, catalog) => `施設は「${fee.isStay ? '宿泊利用料金' : '日帰り専有料金'}`
+            + `（${findByKey(catalog.priceTypes, fee.facilityPriceType)?.name ?? '-'} 基準）」で計算しています`;
         const renderFee = (fee, catalog) => {
             byId('feeTable').innerHTML = buildFeeTableHtml(fee);
             byId('fee_total').textContent = formatNumber(fee.total);
             byId('panel_total').textContent = formatNumber(fee.total);
             byId('fee_tax').textContent = buildTaxText(fee, catalog);
-            byId('fee_type').textContent = buildPriceTypeText(fee);
+            byId('fee_type').textContent = buildPriceTypeText(fee, catalog);
         };
 
         // ---------- 予約確定ボタンのガード ----------
@@ -561,6 +586,7 @@
         const initApp = () => {
             renderFacilityInfo(ACTIVE_FACILITY_INFO);
             renderExtraFeeNotes(EXTRA_FEE_NOTE);
+            renderStayLimitTexts(ACTIVE_CONFIG);
             renderFormParts(ACTIVE_CONFIG, CATALOG);
             setDefaultSchedule(getToday(), ACTIVE_CONFIG);
             refreshAll();

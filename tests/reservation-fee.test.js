@@ -11,10 +11,15 @@ const {
     parseDateString, isValidDateString, addDaysToDateString, countDaysBetween, formatDateLabel, formatDateJapanese,
     toLocalDateString, toLocalDateTimeString, listUsageDates, listStayNights, formatScheduleLabel,
     toHourKey, buildHourSlots, listTimeUnits, toHalfWidthDigits, parseCount, sortUniqueSlots, buildRequest,
-    sumCounts, isStayRequest, pickFacilityPrice, calculateIncludedTax, calculateTaxBreakdown, calculateReservationFee, formatYen
+    sumCounts, sumStayOnNight, listNightTotals, countStayOfPriceType, resolveFacilityPriceType, isStayRequest, pickFacilityPrice, calculateIncludedTax, calculateTaxBreakdown, calculateReservationFee, formatYen
 } = logic;
 
 const toPlain = (value) => JSON.parse(JSON.stringify(value));
+// 夜ごとの宿泊人数（区分×性別のうち「高校生 男性」にまとめて入れる）
+const staysOf = (counts) => ({ hs_m: counts });
+// 区分×性別の6つの欄をすべて持つ宿泊人数（overrides に書いていない欄は毎晩0）
+const fullStays = (nights, overrides) => Object.fromEntries(['es_m', 'es_f', 'hs_m', 'hs_f', 'ad_m', 'ad_f']
+    .map((key) => [key, overrides[key] ?? Array.from({ length: nights }, () => 0)]));
 
 // 概算見積もりシステム（estimate/index.html）の料金表 categories を読み込む
 const loadEstimateCategories = () => {
@@ -36,12 +41,12 @@ const buildMeals = (dayCount, overrides) => Object.fromEntries(CATALOG.meals
 const buildSampleRequest = (overrides) => ({
     groupName: 'サンプル高校 陸上部', representative: '山田 太郎', phone: '0000000000', email: 'sample@example.com',
     purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 2, priceType: 'hs', people: 20,
-    stays: [20, 20], meals: buildMeals(3), slots: [], ...overrides
+    stays: staysOf([20, 20]), meals: buildMeals(3), slots: [], ...overrides
 });
 
 test('RESERVATION_CONFIG の既定値と、書き換えられないこと', () => {
     assert.deepStrictEqual(toPlain(RESERVATION_CONFIG), {
-        stayCapacity: 100, fewRatio: 0.3, maxNights: 6, maxPeople: 300, minLeadDays: 1, maxAdvanceDays: 365,
+        stayCapacity: 300, maxStayGroups: 6, fewRatio: 0.3, maxNights: 6, maxPeople: 300, minLeadDays: 1, maxAdvanceDays: 365,
         closedDates: ['12-29', '12-30', '12-31', '01-01', '01-02', '01-03'], staffEmail: 'reservation@example.com'
     });
     assert.ok(Object.isFrozen(RESERVATION_CONFIG) && Object.isFrozen(RESERVATION_CONFIG.closedDates));
@@ -55,7 +60,7 @@ test('resolveReservationConfig は設定がなければ既定値、書いたキ�
 });
 
 test('resolveReservationConfig は正しくない値と知らないキーを無視する', () => {
-    const custom = { stayCapacity: 0, fewRatio: 1, maxNights: 2.5, maxPeople: '50', minLeadDays: -1, maxAdvanceDays: null,
+    const custom = { stayCapacity: 0, maxStayGroups: 0, fewRatio: 1, maxNights: 2.5, maxPeople: '50', minLeadDays: -1, maxAdvanceDays: null,
         closedDates: ['11/3'], staffEmail: 'not-mail', unknownKey: 1 };
     assert.deepStrictEqual(toPlain(resolveReservationConfig(RESERVATION_CONFIG, custom)), toPlain(RESERVATION_CONFIG));
     assert.strictEqual(resolveReservationConfig(RESERVATION_CONFIG, { minLeadDays: 0 }).minLeadDays, 0, '0日（当日から）は認める');
@@ -166,22 +171,50 @@ test('sortUniqueSlots は重なりを除いて日付・施設・時間帯の順�
 
 test('buildRequest は入力値の前後の空白を除き、数を整数にし、全角の電話番号を半角にする', () => {
     const formValues = { groupName: ' サンプル高校 ', representative: '山田 太郎 ', phone: '０００－００００－００００', email: ' a@example.com ',
-        purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: '2', priceType: 'hs', people: '２０', stays: ['20', '１８'],
+        purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: '2', priceType: 'hs', people: '２０',
+        stays: { hs_m: ['12', '１０'], hs_f: ['8', ''], ad_m: ['1', '1', '1'] },
         meals: { bf: ['', '20', '18'], lu: ['20'], di: ['x', '', ''], te: ['5', '5', '5', '5'] } };
     assert.deepStrictEqual(toPlain(buildRequest(formValues, [], CATALOG)), {
         groupName: 'サンプル高校', representative: '山田 太郎', phone: '000-0000-0000', email: 'a@example.com',
-        purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 2, priceType: 'hs', people: 20, stays: [20, 18],
+        purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 2, priceType: 'hs', people: 20,
+        stays: fullStays(2, { hs_m: [12, 10], hs_f: [8, 0], ad_m: [1, 1] }),
         meals: buildMeals(3, { bf: [0, 20, 18], lu: [20, 0, 0], di: [null, 0, 0], te: [5, 5, 5] }), slots: []
     });
 });
 
-test('buildRequest は宿泊人数を泊まる夜の数、食事を利用日の数にそろえる（足りない日は0、余った日は捨てる）', () => {
-    const dayTrip = buildRequest({ nights: '0', stays: ['30', '30'], meals: { lu: ['10', '20'] } }, [], CATALOG);
-    assert.deepStrictEqual(toPlain([dayTrip.stays, dayTrip.meals.lu, dayTrip.meals.bf]), [[], [10], [0]]);
-    const threeNights = buildRequest({ nights: '3', stays: ['5'] }, [], CATALOG);
-    assert.deepStrictEqual(toPlain([threeNights.stays, threeNights.meals.di]), [[5, 0, 0], [0, 0, 0, 0]]);
+test('buildRequest は宿泊人数を区分×男女の6つの欄・泊まる夜の数、食事を利用日の数にそろえる（足りない日は0、余った日は捨てる）', () => {
+    const dayTrip = buildRequest({ nights: '0', stays: { es_m: ['30', '30'] }, meals: { lu: ['10', '20'] } }, [], CATALOG);
+    assert.deepStrictEqual(toPlain([dayTrip.stays, dayTrip.meals.lu, dayTrip.meals.bf]), [fullStays(0, {}), [10], [0]]);
+    const threeNights = buildRequest({ nights: '3', stays: { hs_f: ['5'] } }, [], CATALOG);
+    assert.deepStrictEqual(toPlain([threeNights.stays, threeNights.meals.di]), [fullStays(3, { hs_f: [5, 0, 0] }), [0, 0, 0, 0]]);
     const broken = buildRequest({ nights: 'x', stays: 'abc', meals: null }, [], CATALOG);
-    assert.deepStrictEqual(toPlain([broken.stays, broken.meals.bf]), [[], [0]]);
+    assert.deepStrictEqual(toPlain([broken.stays, broken.meals.bf]), [fullStays(0, {}), [0]]);
+    assert.deepStrictEqual(Object.keys(threeNights.stays), ['es_m', 'es_f', 'hs_m', 'hs_f', 'ad_m', 'ad_f']);
+});
+
+test('宿泊人数の欄は「小学生・中学生」「高校生」「大学生・一般」×「男性」「女性」の6つ', () => {
+    assert.deepStrictEqual(CATALOG.stayGuestTypes.map((type) => [type.key, type.priceType, type.gender, type.name]), [
+        ['es_m', 'es', 'm', '小学生・中学生 男性'], ['es_f', 'es', 'f', '小学生・中学生 女性'], ['hs_m', 'hs', 'm', '高校生 男性'],
+        ['hs_f', 'hs', 'f', '高校生 女性'], ['ad_m', 'ad', 'm', '大学生・一般 男性'], ['ad_f', 'ad', 'f', '大学生・一般 女性']
+    ]);
+    assert.ok(Object.isFrozen(CATALOG.stayGuestTypes[0]));
+});
+
+test('sumStayOnNight・listNightTotals・countStayOfPriceType は区分・男女をまたいで夜ごとに合計する', () => {
+    const stays = fullStays(2, { es_m: [3, 0], hs_m: [10, 9], hs_f: [8, NaN], ad_f: [1, 2] });
+    assert.deepStrictEqual([sumStayOnNight(stays, 0), sumStayOnNight(stays, 1), sumStayOnNight(stays, 2)], [22, 11, 0]);
+    assert.deepStrictEqual(listNightTotals({ nights: 2, stays }), [22, 11]);
+    assert.deepStrictEqual(listNightTotals({ nights: NaN, stays }), []);
+    assert.deepStrictEqual(['es', 'hs', 'ad'].map((key) => countStayOfPriceType(stays, key, 0, CATALOG)), [3, 18, 1]);
+    assert.strictEqual(sumStayOnNight(undefined, 0), 0);
+});
+
+test('resolveFacilityPriceType：宿泊者がいれば宿泊人数がいちばん多い区分（同数なら小中→高校→大学一般の順）、いなければ選んだ区分', () => {
+    const resolve = (stays, priceType) => resolveFacilityPriceType({ nights: 2, priceType, stays: fullStays(2, stays) }, CATALOG);
+    assert.strictEqual(resolve({ hs_m: [5, 5], ad_f: [9, 0] }, 'es'), 'hs', '高校生10人・大学生一般9人');
+    assert.strictEqual(resolve({ es_f: [5, 0], ad_m: [5, 0] }, 'hs'), 'es', '同数なら小中が先');
+    assert.strictEqual(resolve({ hs_m: [3, 3], ad_m: [3, 3] }, 'es'), 'hs', '同数なら高校が大学一般より先');
+    assert.strictEqual(resolve({}, 'ad'), 'ad', '宿泊者がいなければ選んだ料金区分');
 });
 
 test('sumCounts は日ごとの数を合計し、正しくない数は0として数える', () => {
@@ -190,10 +223,10 @@ test('sumCounts は日ごとの数を合計し、正しくない数は0として
 
 test('isStayRequest は宿泊人数が1人以上の夜があるときだけ宿泊利用にする', () => {
     assert.strictEqual(isStayRequest(buildSampleRequest({})), true);
-    assert.strictEqual(isStayRequest(buildSampleRequest({ stays: [0, 1] })), true);
-    assert.strictEqual(isStayRequest(buildSampleRequest({ stays: [0, 0] })), false, '2泊3日でも全員泊まらなければ日帰り専有料金');
-    assert.strictEqual(isStayRequest(buildSampleRequest({ nights: 0, stays: [] })), false);
-    assert.strictEqual(isStayRequest(buildSampleRequest({ stays: [NaN, -3] })), false);
+    assert.strictEqual(isStayRequest(buildSampleRequest({ stays: staysOf([0, 1]) })), true);
+    assert.strictEqual(isStayRequest(buildSampleRequest({ stays: staysOf([0, 0]) })), false, '2泊3日でも全員泊まらなければ日帰り専有料金');
+    assert.strictEqual(isStayRequest(buildSampleRequest({ nights: 0, stays: staysOf([]) })), false);
+    assert.strictEqual(isStayRequest(buildSampleRequest({ stays: staysOf([NaN, -3]) })), false);
 });
 
 test('calculateReservationFee：宿泊は夜ごとの人数、食事・弁当・お茶は日ごとの合計で計算する', () => {
@@ -201,7 +234,7 @@ test('calculateReservationFee：宿泊は夜ごとの人数、食事・弁当・
         { date: '2026-11-03', facilityKey: 'kL', timeKey: 'h13' }, { date: '2026-11-03', facilityKey: 'kL', timeKey: 'h14' },
         { date: '2026-11-04', facilityKey: 'kL', timeKey: 'h09' }];
     const meals = buildMeals(3, { bf: [0, 20, 18], di: [20, 18, 0], be_maku: [0, 0, 18], te: [20, 20, 18] });
-    const fee = calculateReservationFee(buildSampleRequest({ stays: [20, 18], meals, slots }), CATALOG);
+    const fee = calculateReservationFee(buildSampleRequest({ stays: staysOf([20, 18]), meals, slots }), CATALOG);
     assert.deepStrictEqual(toPlain(fee.lines), [
         { label: '宿泊料（高校生） 11/2(月)泊', unitPrice: 2500, quantity: 20, unit: '人／泊', isReducedTax: false, amount: 50000 },
         { label: '宿泊料（高校生） 11/3(火)泊', unitPrice: 2500, quantity: 18, unit: '人／泊', isReducedTax: false, amount: 45000 },
@@ -220,10 +253,23 @@ test('calculateReservationFee：宿泊は夜ごとの人数、食事・弁当・
     assert.strictEqual(fee.isStay, true);
 });
 
+test('calculateReservationFee：宿泊料は夜ごと・区分ごとに男女を合わせた人数で計算し、施設は人数がいちばん多い区分の料金にする', () => {
+    const stays = fullStays(2, { es_m: [4, 4], es_f: [6, 6], ad_m: [1, 0], ad_f: [1, 1] });
+    const slots = [{ date: '2026-11-02', facilityKey: 'gym', timeKey: 'am' }];
+    const fee = calculateReservationFee(buildSampleRequest({ priceType: 'ad', stays, slots }), CATALOG);
+    assert.deepStrictEqual(toPlain(fee.lines.map((line) => [line.label, line.unitPrice, line.quantity, line.amount])), [
+        ['宿泊料（小学生・中学生） 11/2(月)泊', 2200, 10, 22000], ['宿泊料（大学生・一般） 11/2(月)泊', 3300, 2, 6600],
+        ['宿泊料（小学生・中学生） 11/3(火)泊', 2200, 10, 22000], ['宿泊料（大学生・一般） 11/3(火)泊', 3300, 1, 3300],
+        ['大体育館', 5370, 1, 5370]
+    ]);
+    assert.strictEqual(fee.facilityPriceType, 'es', '小中20人泊 ＞ 大学一般3人泊なので、施設は小中高の料金');
+    assert.strictEqual(fee.total, 59270);
+});
+
 test('calculateReservationFee：宿泊0人なら日帰り専有料金（大学・一般）になる', () => {
     const slots = [{ date: '2026-11-02', facilityKey: 'field', timeKey: 'am' },
         { date: '2026-11-02', facilityKey: 'mr', timeKey: 'h13' }, { date: '2026-11-02', facilityKey: 'mr', timeKey: 'h14' }];
-    const fee = calculateReservationFee(buildSampleRequest({ nights: 0, stays: [], meals: buildMeals(1), priceType: 'ad', slots }), CATALOG);
+    const fee = calculateReservationFee(buildSampleRequest({ nights: 0, stays: staysOf([]), meals: buildMeals(1), priceType: 'ad', slots }), CATALOG);
     assert.deepStrictEqual(toPlain(fee.lines.map((line) => [line.label, line.quantity, line.unit, line.amount])),
         [['陸上/球技場', 1, '区分', 6600], ['ミーティングルーム', 2, '時間', 1320]]);
     assert.strictEqual(fee.total, 7920);
@@ -231,9 +277,9 @@ test('calculateReservationFee：宿泊0人なら日帰り専有料金（大学�
 });
 
 test('calculateReservationFee：何もない・正しくない数のときは0円で、明細を出さない', () => {
-    const fee = calculateReservationFee(buildSampleRequest({ stays: [NaN, -1], meals: buildMeals(3, { bf: [NaN, -1, 0] }) }), CATALOG);
+    const fee = calculateReservationFee(buildSampleRequest({ stays: staysOf([NaN, -1]), meals: buildMeals(3, { bf: [NaN, -1, 0] }) }), CATALOG);
     assert.deepStrictEqual(toPlain(fee), {
-        lines: [], total: 0, tax: 0, isStay: false,
+        lines: [], total: 0, tax: 0, isStay: false, facilityPriceType: 'hs',
         taxBreakdown: { standard: { rate: 0.10, taxIncluded: 0, tax: 0 }, reduced: { rate: 0.08, taxIncluded: 0, tax: 0 } }
     });
 });
@@ -246,7 +292,7 @@ test('calculateTaxBreakdown は軽減税率の行と標準税率の行に分け�
 });
 
 test('宿泊料の明細は、日付が正しくないときは「1日目」のように表示する', () => {
-    const fee = calculateReservationFee(buildSampleRequest({ startDate: '', stays: [3, 0] }), CATALOG);
+    const fee = calculateReservationFee(buildSampleRequest({ startDate: '', stays: staysOf([3, 0]) }), CATALOG);
     assert.deepStrictEqual(fee.lines.map((line) => line.label), ['宿泊料（高校生） 1日目泊']);
 });
 
