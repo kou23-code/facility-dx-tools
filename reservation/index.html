@@ -80,7 +80,7 @@
                             <ol class="list-decimal pl-5 space-y-1 text-gray-800">
                                 <li><b>申込者</b>：団体名・代表者名・連絡先・利用目的を入力します。</li>
                                 <li><b>日程・人数</b>：利用開始日・利用日数を選ぶと、右側に<b>空き状況（◎/△/×）</b>が表示されます。</li>
-                                <li><b>宿泊・食事</b>：表に<b>日ごと</b>の宿泊人数（泊まる夜の日付）と、食事・弁当・お茶などの数を入れます。</li>
+                                <li><b>人数・食事</b>：表に<b>日ごと</b>の宿泊人数（泊まる夜の日付）・日帰り参加人数と、食事・弁当・お茶などの数を入れます。</li>
                                 <li><b>施設コマ・確定</b>：使いたい施設の時間帯を押して選び、概算料金を確認して「予約内容を確定する」を押し、次の画面の「施設へ予約データを送信する」でメールを送信すると申込が完了します。</li>
                             </ol>
                             <div class="mt-2 text-xs text-gray-600">※宿泊は1日あたり全団体で<span class="stay-limit-text"></span>までです。上限を超える日や予約済みのコマがあるときは、赤い警告が出て確定できません。</div>
@@ -130,10 +130,11 @@
                             <div class="text-xs text-gray-500">※施設料金は、宿泊人数がいちばん多い区分で計算します（宿泊者がいないとき（日帰り）は大学生・一般の料金）。</div>
                         </section>
 
-                        <!-- STEP3 日ごとの宿泊人数・食事 -->
+                        <!-- STEP3 日ごとの人数・食事 -->
                         <section class="bg-gray-50 p-3 rounded border">
-                            <div class="flex items-center gap-2 mb-1"><span class="step-badge">3</span><span class="font-bold text-base">日ごとの宿泊人数・食事</span></div>
+                            <div class="flex items-center gap-2 mb-1"><span class="step-badge">3</span><span class="font-bold text-base">日ごとの人数・食事</span></div>
                             <p class="text-xs text-gray-500 mb-1 ml-8">宿泊は「泊まる夜の日付」に、区分（小学生・中学生／高校生／大学生・一般）×男女の人数を入れます（最終日の夜は泊まりません）。空欄は0。「全日」で1日目の数を他の日にもコピーできます。</p>
+                            <p class="text-xs text-gray-500 mb-1 ml-8">泊まらずに日帰りで合流する人は「日帰り参加」の行に、参加する日ごと・区分ごとの人数を入れます（男女別は不要です）。体育館・競技場を使う日に、1人あたりの日帰り参加料を概算料金に加えます。</p>
                             <p id="stayPlanNote" class="text-sm font-bold text-blue-800 mb-2 ml-8">※現時点での予定人数で構いません（後日変更可能です）</p>
                             <div id="dailyTable" class="overflow-x-auto"></div>
                         </section>
@@ -259,7 +260,7 @@
             byId('in_purpose').innerHTML = buildOptionsHtml(buildPurposeOptions(catalog.purposes), '');
         };
 
-        // ---------- 日ごとの宿泊人数・食事の表（行のキー：宿泊は "stay_区分_性別"（例：stay_hs_m）、食事などは "meal_品目キー"） ----------
+        // ---------- 日ごとの人数・食事の表（行のキー：宿泊は "stay_区分_性別"（例：stay_hs_m）、日帰り参加は "day_区分"、食事などは "meal_品目キー"） ----------
         const STAY_PLAN_NOTE = '※現時点での予定人数で構いません（後日変更可能です）';
         const buildDailyHeadHtml = (dates) => `<thead><tr><th class="text-left">項目</th>${dates
             .map((date, dayIndex) => `<th><div class="font-normal text-gray-300">${dayIndex + 1}日目</div>${formatDateLabel(date)}</th>`).join('')}<th>合計</th></tr></thead>`;
@@ -283,6 +284,24 @@
         const buildStayRowsHtml = (dates, nights, formValues, catalog) => catalog.stayGuestTypes
             .map((guestType) => buildStayRowHtml(guestType, dates, nights, formValues.stays?.[guestType.key] ?? [], catalog)).join('')
             + buildStayTotalRowHtml(dates, nights);
+        // 日帰り参加人数の行（行のキー："day_区分"（例：day_hs）。区分ごとで男女別なし。日帰りの日程では合流する宿泊団体がいないので「—」）
+        const DAY_GUEST_GROUP_TITLE = '日帰り参加（泊まらずに宿泊団体へ合流する人の人数。区分ごと・男女別なし。体育館・競技場を使う日に日帰り参加料がかかります）';
+        const DAY_TRIP_LOCKED_CELL_HTML = '<td class="text-gray-400" title="日帰りのため、合流する宿泊団体がいません">—</td>';
+        // 日帰り参加料の単価の表示（"210〜220円/人"。施設によって単価が違うときは範囲で出す）
+        const buildJoinPriceNote = (priceTypeKey, catalog) => {
+            const group = catalog.joinPriceGroups.find((entry) => entry.priceTypes.includes(priceTypeKey));
+            const prices = catalog.facilities.filter((facility) => facility.joinPrices).map((facility) => facility.joinPrices[group.key]);
+            const [lowest, highest] = [Math.min(...prices), Math.max(...prices)];
+            return `${formatNumber(lowest)}${lowest === highest ? '' : `〜${formatNumber(highest)}`}円/人`;
+        };
+        const buildDayGuestRowHtml = (priceType, dates, nights, values, catalog) => {
+            const rowKey = `day_${priceType.key}`;
+            return `<tr>${buildRowLabelHtml(`日帰り ${priceType.name}`, buildJoinPriceNote(priceType.key, catalog), rowKey, nights > 0)}${dates.map((date, dayIndex) => (nights > 0
+                ? buildCountInputHtml(rowKey, dayIndex, values[dayIndex], `${formatDateLabel(date)} 日帰り参加人数 ${priceType.name}`) : DAY_TRIP_LOCKED_CELL_HTML)).join('')}`
+                + `<td id="total_${rowKey}" class="text-right"></td></tr>`;
+        };
+        const buildDayGuestRowsHtml = (dates, nights, formValues, catalog) => buildGroupRowHtml(DAY_GUEST_GROUP_TITLE, dates.length + 2) + catalog.priceTypes
+            .map((priceType) => buildDayGuestRowHtml(priceType, dates, nights, formValues.dayGuests?.[priceType.key] ?? [], catalog)).join('');
         const buildMealRowHtml = (meal, dates, values) => `<tr>${buildRowLabelHtml(meal.name, `${formatNumber(meal.price)}円/${meal.unit}`, `meal_${meal.key}`, dates.length > 1)}${dates
             .map((date, dayIndex) => buildCountInputHtml(`meal_${meal.key}`, dayIndex, values[dayIndex], `${formatDateLabel(date)} ${meal.name}`)).join('')}<td id="total_meal_${meal.key}" class="text-right"></td></tr>`;
         // 食事などの行（品目のグループが変わるところに見出しの行を入れる）
@@ -292,7 +311,8 @@
         }).join('');
         const buildDailyTableHtml = (dates, nights, formValues, catalog) => `<table class="grid-table daily-table w-full text-xs">${buildDailyHeadHtml(dates)}<tbody>`
             + `${buildGroupRowHtml(`宿泊（泊まる夜の日付に、区分・男女別の人数）　${STAY_PLAN_NOTE}`, dates.length + 2)}`
-            + `${buildStayRowsHtml(dates, nights, formValues, catalog)}${buildMealRowsHtml(dates, formValues, catalog)}</tbody></table>`;
+            + `${buildStayRowsHtml(dates, nights, formValues, catalog)}${buildDayGuestRowsHtml(dates, nights, formValues, catalog)}`
+            + `${buildMealRowsHtml(dates, formValues, catalog)}</tbody></table>`;
         // formValues の入力中の値を残したまま作り直す（日数を減らした日の値は消える）
         const renderDailyTable = (request, formValues, context) => {
             if (!canCheckSchedule(request, context.config)) { byId('dailyTable').innerHTML = SCHEDULE_PLACEHOLDER_HTML; return; }
@@ -307,6 +327,7 @@
             catalog.stayGuestTypes.forEach((type) => setTextIfExists(`total_stay_${type.key}`, `${sumCounts(request.stays[type.key])}人`));
             listNightTotals(request).forEach((total, nightIndex) => setTextIfExists(`total_stay_night_${nightIndex}`, `${total}人`));
             setTextIfExists('total_stay', `${listNightTotals(request).reduce((sum, total) => sum + total, 0)}人`);
+            catalog.priceTypes.forEach((type) => setTextIfExists(`total_day_${type.key}`, `${sumCounts(request.dayGuests[type.key])}人`));
             catalog.meals.forEach((meal) => setTextIfExists(`total_meal_${meal.key}`, `${sumCounts(request.meals[meal.key])}${meal.unit}`));
         };
         // 1日目の数を、同じ行の他の日にもコピーする
@@ -343,7 +364,8 @@
             email: byId('in_email').value, purpose: byId('in_purpose').value, startDate: byId('in_start').value,
             nights: byId('in_nights').value,
             stays: Object.fromEntries(CATALOG.stayGuestTypes.map((type) => [type.key, readRowValues(`stay_${type.key}`)])),
-            meals: Object.fromEntries(CATALOG.meals.map((meal) => [meal.key, readRowValues(`meal_${meal.key}`)]))
+            meals: Object.fromEntries(CATALOG.meals.map((meal) => [meal.key, readRowValues(`meal_${meal.key}`)])),
+            dayGuests: Object.fromEntries(CATALOG.priceTypes.map((type) => [type.key, readRowValues(`day_${type.key}`)]))
         });
         // 日ごとの表の1行分の入力値（1日目から順に）
         const readRowValues = (rowKey) => Array.from(document.querySelectorAll(`input[data-row="${rowKey}"]`), (input) => input.value);

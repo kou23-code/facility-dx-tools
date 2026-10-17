@@ -20,6 +20,7 @@ const REQUEST = Object.freeze({
     purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 1, priceType: 'hs', people: 20,
     stays: Object.fromEntries(CATALOG.stayGuestTypes.map((type) => [type.key, ({ hs_m: [12], hs_f: [8] })[type.key] ?? [0]])),
     meals: Object.fromEntries(CATALOG.meals.map((meal) => [meal.key, ({ bf: [0, 20], di: [20, 0], te: [20, 0] })[meal.key] ?? [0, 0]])),
+    dayGuests: { es: [0, 0], hs: [0, 0], ad: [0, 0] },
     slots: [{ date: '2026-11-02', facilityKey: 'gym', timeKey: 'pm' }, { date: '2026-11-03', facilityKey: 'gym', timeKey: 'am' }]
 });
 const RESERVATION = createReservation(REQUEST, [], '2026-10-17T14:05', CATALOG);
@@ -47,8 +48,16 @@ test('isValidReservation は空き状況の計算に使う項目がそろった�
     [null, 'text', [], {}, { ...RESERVATION, id: '' }, { ...RESERVATION, startDate: '2026-02-30' }, { ...RESERVATION, nights: -1 },
         { ...RESERVATION, people: 1.5 }, { ...RESERVATION, slots: 'gym' }, { ...RESERVATION, slots: [{ date: 'x', facilityKey: 'gym', timeKey: 'am' }] },
         { ...RESERVATION, groupName: undefined }, { ...RESERVATION, stays: undefined }, { ...RESERVATION, stays: [20, 20] },
-        { ...RESERVATION, stays: [-1] }, { ...RESERVATION, stays: { hs_m: [20, 20] } }, { ...RESERVATION, stays: { hs_m: [-1] } }, { ...RESERVATION, meals: { bf: [1] } }, { ...RESERVATION, meals: { bf: 20 } }, { ...RESERVATION, meals: [] }
+        { ...RESERVATION, stays: [-1] }, { ...RESERVATION, stays: { hs_m: [20, 20] } }, { ...RESERVATION, stays: { hs_m: [-1] } }, { ...RESERVATION, meals: { bf: [1] } }, { ...RESERVATION, meals: { bf: 20 } }, { ...RESERVATION, meals: [] },
+        { ...RESERVATION, dayGuests: { hs: [5] } }, { ...RESERVATION, dayGuests: { hs: [5, -1] } }, { ...RESERVATION, dayGuests: [5, 5] }, { ...RESERVATION, dayGuests: null }
     ].forEach((value, index) => assert.strictEqual(isValidReservation(value), false, `${index}番目`));
+});
+
+test('isValidReservation は日帰り参加人数（dayGuests）がない、この項目ができる前の予約も認める', () => {
+    const { dayGuests, ...oldReservation } = RESERVATION;
+    assert.deepStrictEqual(toPlain(dayGuests), { es: [0, 0], hs: [0, 0], ad: [0, 0] });
+    assert.strictEqual(isValidReservation(oldReservation), true);
+    assert.strictEqual(isValidReservation({ ...RESERVATION, dayGuests: { hs: [5, 3] } }), true);
 });
 
 test('parseStoredReservations は保存データがない・壊れているときは空にし、形の違う予約を除く', () => {
@@ -99,7 +108,7 @@ test('buildReservationSummary は控えとメールに載せる見出しと内�
     assert.deepStrictEqual(buildReservationSummary(RESERVATION, CATALOG), [
         ['予約番号', 'R20261017-001'], ['申込日時', '2026-10-17 14:05'], ['団体名', 'サンプル高校 陸上部'], ['代表者名', '山田 太郎'],
         ['電話番号', '000-0000-0000'], ['メールアドレス', 'sample@example.com'], ['利用目的', 'スポーツ合宿'],
-        ['日程', '2026年11月2日(月)〜11月3日(火) 1泊2日'], ['利用人数', '20人（高校生）'], ['宿泊人数', '11/2(月) 20人（高校生 男12・女8）'],
+        ['日程', '2026年11月2日(月)〜11月3日(火) 1泊2日'], ['利用人数', '20人（高校生）'], ['宿泊人数', '11/2(月) 20人（高校生 男12・女8）'], ['日帰り参加人数', 'なし'],
         ['施設コマ', '11/2(月) 大体育館 PM ／ 11/3(火) 大体育館 AM'],
         ['食事など', '朝食 20食（11/3(火) 20） ／ 夕食 20食（11/2(月) 20） ／ お茶 20本（11/2(月) 20）']
     ]);
@@ -113,6 +122,9 @@ test('buildReservationSummary は控えとメールに載せる見出しと内�
     assert.strictEqual(summaryOf({ nights: 2, people: 1, priceType: 'ad', stays: { es_m: [3, 5], ad_f: [1, 2] } })['利用人数'], '7人（小学生・中学生）',
         '利用人数と料金区分は、保存した people・priceType ではなく宿泊人数から出す');
     assert.strictEqual(summaryOf({ nights: 0, stays: {} })['利用人数'], '宿泊者なし');
+    assert.strictEqual(summaryOf({ dayGuests: { es: [0, 0], hs: [5, 0], ad: [3, 2] } })['日帰り参加人数'],
+        '11/2(月) 8人（高校生 5、大学生・一般 3） ／ 11/3(火) 2人（大学生・一般 2）', '人数が0人の日・区分は出さない');
+    assert.strictEqual(summaryOf({ dayGuests: undefined })['日帰り参加人数'], 'なし', '日帰り参加人数がない古い予約');
 });
 
 test('職員宛てメールの件名・本文・mailto の URL', () => {
