@@ -52,13 +52,14 @@ const CAPTURE_SOURCE = `const capture = () => ({
     feeTax: document.getElementById('fee_tax').textContent,
     hourHeaders: Array.from(document.querySelectorAll('#slotGrid table:last-of-type thead th'), (cell) => cell.textContent).slice(2),
     feeQuantities: Array.from(document.querySelectorAll('#feeTable tbody tr'), (row) => row.cells[2].textContent),
-    extraFeeNotes: Array.from(document.querySelectorAll('.extra-fee-note'), (element) => element.textContent)
+    extraFeeNotes: Array.from(document.querySelectorAll('.extra-fee-note'), (element) => element.textContent),
+    removedInputCount: document.querySelectorAll('#in_price_type, #in_people').length
 });
 const setValue = (id, value) => { document.getElementById(id).value = value; };
-// 利用人数10人、宿泊は2泊とも10人、朝食は2日目・3日目に10食ずつ、幕の内弁当は1日目に10食
+// 宿泊は2泊とも10人（大学生・一般。利用人数10人）、朝食は2日目・3日目に10食ずつ、幕の内弁当は1日目に10食
 const fillApplicant = () => {
     [['in_group', 'テスト団体'], ['in_representative', '山田 太郎'], ['in_phone', '000-0000-0000'],
-     ['in_email', 'test@example.com'], ['in_purpose', 'スポーツ合宿'], ['in_price_type', 'ad'], ['in_people', '10'],
+     ['in_email', 'test@example.com'], ['in_purpose', 'スポーツ合宿'],
      ['in_stay_ad_m_0', '6'], ['in_stay_ad_f_0', '4'], ['in_stay_ad_m_1', '6'], ['in_stay_ad_f_1', '4'], ['in_meal_bf_1', '10'], ['in_meal_bf_2', '10'], ['in_meal_be_maku_0', '10']]
         .forEach(([id, value]) => setValue(id, value));
 };`;
@@ -110,11 +111,9 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
         ['h09', 'h10'].forEach((hourKey) => { document.querySelector('input.slot-check[data-facility="kL"][data-time="' + hourKey + '"]').checked = true; });
         refreshSlots();
         states.push(capture());
-        setValue('in_people', '100');
         setValue('in_stay_ad_m_0', '96');
         refreshSummary();
         states.push(capture());
-        setValue('in_people', '10');
         setValue('in_stay_ad_m_0', '6');
         refreshSummary();
         confirmReservation();
@@ -131,6 +130,7 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.ok(initial.blockers.includes('団体名が未入力です'));
     assert.deepStrictEqual(initial.staySymbols, ['◎', '◎']);
     assert.strictEqual(initial.storage, null);
+    assert.strictEqual(initial.removedInputCount, 0, '料金区分・利用人数の入力欄はない（宿泊人数の内訳から自動で計算する）');
     assert.deepStrictEqual(initial.hourHeaders, ['9-10時', '10-11時', '11-12時', '12-13時', '13-14時', '14-15時', '15-16時', '16-17時',
         '17-18時', '18-19時', '19-20時', '20-21時'], '研修室・ミーティングルームの見出しは1時間の枠がわかる表記');
     assert.deepStrictEqual(initial.dailyHead.slice(1, 4).map((text) => text.slice(0, 3)), ['1日目', '2日目', '3日目']);
@@ -153,7 +153,7 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.strictEqual(ready.total, '96,150', '宿泊 3,300円×(10＋10)人＋大体育館 8,050円＋大研修室 950円×2時間＋朝食 660円×20食＋幕の内弁当 700円×10食');
     assert.strictEqual(ready.feeTax, '（うち消費税 10%：8,104円 ／ 8%：518円）', '弁当は軽減税率');
     assert.deepStrictEqual(ready.feeQuantities, ['10（人／泊）', '10（人／泊）', '20（食）', '10（食）', '1（区分）', '2（時間）']);
-    assert.deepStrictEqual(ready.extraFeeNotes, Array(2).fill('※体育館の照明代金、研修室の冷暖房代などは別途料金がかかります'),
+    assert.deepStrictEqual(ready.extraFeeNotes, Array(2).fill('※体育館の照明代金、研修室の冷暖房代、および宿泊を伴わない日帰り参加者の施設利用料などは別途料金がかかります'),
         '施設コマの下と概算料金の下に、別途料金の案内を出す');
 
     assert.strictEqual(overCapacity.buttonDisabled, true, '定員超過では確定できない');
@@ -170,6 +170,7 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.deepStrictEqual(parsed.reservation, stored[11], '1行コードは保存した予約と同じ内容');
     assert.match(parsed.reservation.id, /^R\d{8}-001$/);
     assert.strictEqual(parsed.reservation.estimatedTotal, 96150);
+    assert.deepStrictEqual([parsed.reservation.people, parsed.reservation.priceType], [10, 'ad'], '利用人数と料金区分は宿泊人数から決める');
     assert.deepStrictEqual(parsed.reservation.stays, { es_m: [0, 0], es_f: [0, 0], hs_m: [0, 0], hs_f: [0, 0], ad_m: [6, 6], ad_f: [4, 4] });
     assert.deepStrictEqual([parsed.reservation.meals.bf, parsed.reservation.meals.be_maku], [[0, 10, 10], [10, 0, 0]]);
     const firstDay = addDaysToDateString(today, 3);
@@ -180,7 +181,7 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.ok(completed.receiptText.includes('予約申込控え') && completed.receiptText.includes('テスト団体'));
     assert.ok(completed.receiptText.includes('合計（税込） 96,150円'));
     assert.ok(completed.receiptText.includes('朝食 20食（'));
-    assert.ok(completed.receiptText.includes('※体育館の照明代金、研修室の冷暖房代などは別途料金がかかります'), '控えにも別途料金の案内');
+    assert.ok(completed.receiptText.includes('※体育館の照明代金、研修室の冷暖房代、および宿泊を伴わない日帰り参加者の施設利用料などは別途料金がかかります'), '控えにも別途料金の案内');
     assert.ok(completed.receiptText.includes('10（人／泊）'));
     assert.ok(completed.receiptText.includes(`${CATALOG.facilities[0].name} AM、大研修室(1･3研) 9:00~11:00`));
 });

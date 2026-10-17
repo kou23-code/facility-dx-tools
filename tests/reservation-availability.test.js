@@ -20,10 +20,10 @@ const buildReservation = (id, overrides) => ({
     email: 'booked@example.com', purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 1, priceType: 'ad', people: 0,
     stays: staysOf([0]), meals: {}, slots: [], ...overrides
 });
-// 申込（11/2 から2泊3日、利用人数20人、宿泊は毎晩20人。食事は書いた品目だけ）
+// 申込（11/2 から2泊3日、宿泊は毎晩20人。食事は書いた品目だけ）
 const buildRequest = (overrides) => ({
     groupName: 'サンプル高校 陸上部', representative: '山田 太郎', phone: '000-0000-0000', email: 'sample@example.com',
-    purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 2, priceType: 'hs', people: 20,
+    purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 2,
     stays: staysOf([20, 20]), meals: {}, slots: [], ...overrides
 });
 
@@ -179,20 +179,24 @@ test('findInputMessages：必須の項目が空・空白だけなら未入力に
         ['団体名が未入力です', '代表者名が未入力です', '電話番号が未入力です', 'メールアドレスが未入力です', '利用目的が未入力です']);
 });
 
-test('findInputMessages：電話番号・メール・利用目的・日付・泊数・人数・料金区分の形をチェックする', () => {
-    const request = buildRequest({ phone: '123', email: 'a@b', purpose: '旅行', startDate: '2026-02-30', nights: 7, people: 301, priceType: 'zz' });
+test('findInputMessages：電話番号・メール・利用目的・日付・泊数の形をチェックする（利用人数・料金区分の入力欄はない）', () => {
+    const request = buildRequest({ phone: '123', email: 'a@b', purpose: '旅行', startDate: '2026-02-30', nights: 7 });
     assert.deepStrictEqual(findInputMessages(request, CONFIG, CATALOG), [
         '電話番号は数字とハイフンで10〜11桁を入力してください', 'メールアドレスの形が正しくありません', '利用目的を一覧から選んでください',
-        '利用開始日を選んでください', '利用日数は1〜7日から選んでください', '利用人数は1〜300人で入力してください', '料金区分を選んでください'
+        '利用開始日を選んでください', '利用日数は1〜7日から選んでください'
     ]);
-    assert.deepStrictEqual(findInputMessages(buildRequest({ people: 0, stays: staysOf([0, 0]), slots: [slotOf('2026-11-02', 'gym', 'am')] }), CONFIG, CATALOG),
-        ['利用人数は1〜300人で入力してください']);
+    assert.deepStrictEqual(findInputMessages(buildRequest({ stays: staysOf([0, 0]), slots: [slotOf('2026-11-02', 'gym', 'am')] }), CONFIG, CATALOG), [],
+        '宿泊0人（利用人数0人）でも、施設コマがあれば申し込める');
+    assert.deepStrictEqual(findInputMessages(buildRequest({ people: 999, priceType: 'zz' }), CONFIG, CATALOG), [],
+        '古い形の people・priceType は判定に使わない');
 });
 
-test('findInputMessages：宿泊人数の夜ごとの合計（区分・男女の合計）は利用人数まで（ちょうどは可）', () => {
-    assert.deepStrictEqual(findInputMessages(buildRequest({ stays: { hs_m: [10, 0], hs_f: [8, 0], ad_m: [2, 0] } }), CONFIG, CATALOG), []);
-    assert.deepStrictEqual(findInputMessages(buildRequest({ stays: { hs_m: [10, 20], hs_f: [11, 0] } }), CONFIG, CATALOG),
-        ['11/2(月)の宿泊人数の合計（21人）が利用人数（20人）を超えています']);
+test('findInputMessages：宿泊人数の夜ごとの合計（区分・男女の合計）は1件の予約の上限人数（300人）まで（ちょうどは可）', () => {
+    assert.deepStrictEqual(findInputMessages(buildRequest({ stays: { hs_m: [150, 0], hs_f: [100, 0], ad_m: [50, 0] } }), CONFIG, CATALOG), []);
+    assert.deepStrictEqual(findInputMessages(buildRequest({ stays: { hs_m: [150, 20], hs_f: [151, 0] } }), CONFIG, CATALOG),
+        ['11/2(月)の宿泊人数の合計（301人）が1件の予約の上限（300人）を超えています']);
+    assert.deepStrictEqual(findInputMessages(buildRequest({ stays: staysOf([21, 0]) }), { ...CONFIG, maxPeople: 20 }, CATALOG),
+        ['11/2(月)の宿泊人数の合計（21人）が1件の予約の上限（20人）を超えています'], '上限は設定の maxPeople に従う');
 });
 
 test('findInputMessages：宿泊人数の欄が正しくない数（小数・マイナス・文字）なら、区分と男女を示してエラー', () => {
@@ -201,12 +205,14 @@ test('findInputMessages：宿泊人数の欄が正しくない数（小数・マ
     ]);
 });
 
-test('findInputMessages：食堂の食事は日ごとに利用人数まで、弁当・お茶などは999まで（ちょうどは可）', () => {
-    const meals = { bf: [21, 20, 0], di: [0, NaN, 0], te: [0, 0, 1000], be_oni: [999, 0, 0] };
+test('findInputMessages：食堂の食事は日ごとに1件の予約の上限人数まで、弁当・お茶などは999まで（ちょうどは可）', () => {
+    const meals = { bf: [301, 300, 0], di: [0, NaN, 0], te: [0, 0, 1000], be_oni: [999, 0, 0] };
     assert.deepStrictEqual(findInputMessages(buildRequest({ meals }), CONFIG, CATALOG), [
-        '11/2(月)の朝食は0〜20食（利用人数まで）で入力してください', '11/3(火)の夕食は0〜20食（利用人数まで）で入力してください',
+        '11/2(月)の朝食は0〜300食（1件の予約の上限人数まで）で入力してください', '11/3(火)の夕食は0〜300食（1件の予約の上限人数まで）で入力してください',
         '11/4(水)のお茶は0〜999本で入力してください'
     ]);
+    assert.deepStrictEqual(findInputMessages(buildRequest({ nights: 0, stays: staysOf([]), meals: { lu: [30] } }), CONFIG, CATALOG), [],
+        '宿泊者がいない日帰りでも、食堂の食事を申し込める');
 });
 
 test('findInputMessages：宿泊・施設コマ・食事がどれもないときと、日程の外のコマを止める', () => {
@@ -238,7 +244,7 @@ test('findReservationBlockers は入力の不備・受付期間・空き状況�
     assert.deepStrictEqual(findReservationBlockers(buildRequest({ stays: staysOf([15, 15]) }), CONTEXT), []);
     const blockers = findReservationBlockers(buildRequest({ groupName: '', startDate: '2026-10-17' }), { ...CONTEXT, reservations: [] });
     assert.deepStrictEqual(blockers, ['団体名が未入力です', '利用開始日は2026年10月18日(日)以降を選んでください']);
-    assert.strictEqual(findReservationBlockers(buildRequest({ people: 50, stays: staysOf([50, 50]) }), CONTEXT).length, 2, '2泊とも定員超過');
+    assert.strictEqual(findReservationBlockers(buildRequest({ stays: staysOf([50, 50]) }), CONTEXT).length, 2, '2泊とも定員超過');
 });
 
 test('countStayGroups はその夜に1人以上泊まる予約（団体）の数を数える', () => {
@@ -259,8 +265,8 @@ test('findGroupLimitOverflows：5団体までなら6団体目を受け入れ、6
 
 test('findAvailabilityConflicts：既定の上限（全団体で300人・6団体）を超える夜はエラーにする（ちょうどは可）', () => {
     const context = { reservations: [buildReservation('B1', { stays: staysOf([280]) })], config: CONFIG, catalog: CATALOG };
-    assert.deepStrictEqual(findAvailabilityConflicts(buildRequest({ people: 20, stays: staysOf([20, 20]) }), context), [], '280＋20＝300人はちょうど');
-    assert.deepStrictEqual(findAvailabilityConflicts(buildRequest({ people: 21, stays: staysOf([21, 21]) }), context),
+    assert.deepStrictEqual(findAvailabilityConflicts(buildRequest({ stays: staysOf([20, 20]) }), context), [], '280＋20＝300人はちょうど');
+    assert.deepStrictEqual(findAvailabilityConflicts(buildRequest({ stays: staysOf([21, 21]) }), context),
         ['11/2(月)の夜は、1日あたりの宿泊人数の上限（全団体で300人）を超えます（ご希望 21人 ／ 残り 20人）。人数か日程を変更してください。']);
     const groupContext = { ...context, reservations: buildGroups(6) };
     assert.deepStrictEqual(findAvailabilityConflicts(buildRequest({ stays: staysOf([1, 1]) }), groupContext),
