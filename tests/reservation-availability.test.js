@@ -20,10 +20,10 @@ const buildReservation = (id, overrides) => ({
     email: 'booked@example.com', purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 1, priceType: 'ad', people: 0,
     stays: staysOf([0]), meals: {}, slots: [], ...overrides
 });
-// 申込（11/2 から2泊3日、宿泊は毎晩20人。食事は書いた品目だけ）
+// 申込（11/2 から2泊3日、宿泊は毎晩20人。食事は書いた品目だけ。日帰りにしたときの料金区分は大学生・一般）
 const buildRequest = (overrides) => ({
     groupName: 'サンプル高校 陸上部', representative: '山田 太郎', phone: '000-0000-0000', email: 'sample@example.com',
-    purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 2,
+    purpose: 'スポーツ合宿', startDate: '2026-11-02', nights: 2, priceType: 'ad',
     stays: staysOf([20, 20]), meals: {}, slots: [], ...overrides
 });
 
@@ -232,6 +232,14 @@ test('findInputMessages：宿泊人数が0人なのに日帰り参加人数が�
     assert.deepStrictEqual(findInputMessages(buildRequest({ nights: 0, stays: staysOf([]), dayGuests: { ad: [3] }, slots }), CONFIG, CATALOG), [message], '日帰り');
     assert.deepStrictEqual(findInputMessages(buildRequest({ stays: staysOf([0, 1]), dayGuests: { hs: [5, 0, 0] }, slots }), CONFIG, CATALOG), [], '1泊でも宿泊があればよい');
     assert.deepStrictEqual(findInputMessages(buildRequest({ stays: staysOf([0, 0]), dayGuests: { hs: [0, 0, 0] }, slots }), CONFIG, CATALOG), []);
+});
+
+test('findInputMessages：日帰り（1日）のときだけ、選んだ料金区分が一覧にあるかを確かめる', () => {
+    const slots = [slotOf('2026-11-02', 'gym', 'am')];
+    const dayTrip = (priceType) => findInputMessages(buildRequest({ nights: 0, stays: staysOf([]), priceType, slots }), CONFIG, CATALOG);
+    assert.deepStrictEqual(['es', 'hs', 'ad'].map(dayTrip), [[], [], []]);
+    ['', 'zz', undefined].forEach((priceType) => assert.deepStrictEqual(dayTrip(priceType), ['日帰りの料金区分を選んでください'], String(priceType)));
+    assert.deepStrictEqual(findInputMessages(buildRequest({ priceType: '', slots }), CONFIG, CATALOG), [], '2日以上は宿泊人数から決めるので確かめない');
 });
 
 test('findInputMessages：宿泊・施設コマ・食事がどれもないときと、日程の外のコマを止める', () => {

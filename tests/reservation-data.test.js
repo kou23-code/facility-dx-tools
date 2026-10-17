@@ -121,7 +121,8 @@ test('buildReservationSummary は控えとメールに載せる見出しと内�
     assert.strictEqual(summaryOf({ meals: {} })['食事など'], 'なし');
     assert.strictEqual(summaryOf({ nights: 2, people: 1, priceType: 'ad', stays: { es_m: [3, 5], ad_f: [1, 2] } })['利用人数'], '7人（小学生・中学生）',
         '利用人数と料金区分は、保存した people・priceType ではなく宿泊人数から出す');
-    assert.strictEqual(summaryOf({ nights: 0, stays: {} })['利用人数'], '宿泊者なし');
+    assert.strictEqual(summaryOf({ nights: 0, stays: {}, priceType: 'es' })['利用人数'], '宿泊者なし（日帰りの料金区分：小学生・中学生）', '日帰りは選んだ料金区分も出す');
+    assert.strictEqual(summaryOf({ stays: { hs_m: [0] } })['利用人数'], '宿泊者なし', '2日以上で全員泊まらないとき');
     assert.strictEqual(summaryOf({ dayGuests: { es: [0, 0], hs: [5, 0], ad: [3, 2] } })['日帰り参加人数'],
         '11/2(月) 8人（高校生 5、大学生・一般 3） ／ 11/3(火) 2人（大学生・一般 2）', '人数が0人の日・区分は出さない');
     assert.strictEqual(summaryOf({ dayGuests: undefined })['日帰り参加人数'], 'なし', '日帰り参加人数がない古い予約');

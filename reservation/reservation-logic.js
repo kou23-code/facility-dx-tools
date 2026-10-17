@@ -129,7 +129,7 @@ const RESERVATION_CATALOG = deepFreeze({
     ],
     // 日帰り参加料の単価のグループ（日帰り参加人数は priceTypes の3区分で入力し、小中高は同じ単価）
     joinPriceGroups: [{ key: 'youth', name: '小中高', priceTypes: ['es', 'hs'] }, { key: 'adult', name: '大学・一般', priceTypes: ['ad'] }],
-    dayTripPriceType: 'ad', // 宿泊者がいないとき（日帰り）の施設料金の区分
+    dayTripPriceType: 'ad', // 日帰り（0泊）の料金区分の初期値。2日以上で宿泊者がいないときの施設料金の区分にも使う
     purposes: ['スポーツ合宿', '大会・試合', '研修・会議', '学校行事', 'サークル・クラブ活動', 'その他'],
     standardTaxRate: 0.10, // 宿泊・食堂の食事・施設使用料
     reducedTaxRate: 0.08   // 弁当・お茶・おにぎり（meals の reducedTax: true）
@@ -225,14 +225,17 @@ const buildUsagePart = (formValues, catalog) => {
     const dayCount = toSafeCount(nights) + 1;
     const stays = fitCountTable(formValues.stays, catalog.stayGuestTypes, dayCount - 1);
     return {
-        startDate: trimText(formValues.startDate), nights, ...buildDerivedStayPart(nights, stays, catalog),
+        startDate: trimText(formValues.startDate), nights, ...buildDerivedStayPart(nights, stays, formValues.priceType, catalog),
         meals: fitCountTable(formValues.meals, catalog.meals, dayCount),
         dayGuests: fitCountTable(formValues.dayGuests, catalog.priceTypes, dayCount)
     };
 };
-// 宿泊人数と、そこから自動で決める料金区分（priceType）・利用人数（people）。どちらも画面に入力欄はない
-const buildDerivedStayPart = (nights, stays, catalog) => ({
-    priceType: resolveFacilityPriceType({ nights, stays }, catalog), people: countRequestPeople({ nights, stays }), stays
+// 料金区分：日帰り（0泊）は画面で選んだ区分（selectedPriceType）、泊まりがある日程は宿泊人数から自動で決める
+const pickRequestPriceType = (nights, stays, selectedPriceType, catalog) => (nights === 0
+    ? trimText(selectedPriceType) : resolveFacilityPriceType({ nights, stays }, catalog));
+// 宿泊人数と、料金区分（priceType）・宿泊人数から自動で決める利用人数（people。画面に入力欄はない）
+const buildDerivedStayPart = (nights, stays, selectedPriceType, catalog) => ({
+    priceType: pickRequestPriceType(nights, stays, selectedPriceType, catalog), people: countRequestPeople({ nights, stays }), stays
 });
 // 予約申込の内容（formValues：画面の入力値の文字列。stays は区分×性別ごとに泊まる夜ごと、meals は品目ごとに利用日ごとの配列、
 // dayGuests は日帰り参加人数で、区分（男女別なし）ごとに利用日ごとの配列。slots：選んだ施設コマ）
@@ -260,9 +263,12 @@ const sumStayOfPriceType = (stays, priceTypeKey, catalog) => catalog.stayGuestTy
     .filter((type) => type.priceType === priceTypeKey).reduce((total, type) => total + sumCounts(stays?.[type.key]), 0);
 // 宿泊者がいるか（いれば施設は「宿泊利用料金」、いなければ「日帰り専有料金」）
 const isStayRequest = (request) => Object.values(request.stays ?? {}).some((counts) => sumCounts(counts) > 0);
-// 料金区分：宿泊者がいれば宿泊人数がいちばん多い区分（同じ人数なら 小中→高校→大学一般 の順で先のほう）、いなければ日帰りの区分（大学生・一般）
+// 日帰り（0泊）で、画面で選んだ料金区分が一覧にあるか
+const hasSelectedDayTripPriceType = (request, catalog) => request.nights === 0 && Boolean(findByKey(catalog.priceTypes, request.priceType));
+// 料金区分：宿泊者がいれば宿泊人数がいちばん多い区分（同じ人数なら 小中→高校→大学一般 の順で先のほう）。
+// いなければ、日帰り（0泊）は選んだ区分、2日以上（全員泊まらない）は大学生・一般
 const resolveFacilityPriceType = (request, catalog) => {
-    if (!isStayRequest(request)) return catalog.dayTripPriceType;
+    if (!isStayRequest(request)) return hasSelectedDayTripPriceType(request, catalog) ? request.priceType : catalog.dayTripPriceType;
     return catalog.priceTypes.map((type) => ({ key: type.key, total: sumStayOfPriceType(request.stays, type.key, catalog) }))
         .reduce((best, entry) => (entry.total > best.total ? entry : best)).key;
 };
@@ -440,9 +446,10 @@ const findFormatMessages = (request, catalog) => [
     request.email !== '' && !isEmailAddress(request.email) && 'メールアドレスの形が正しくありません',
     request.purpose !== '' && !catalog.purposes.includes(request.purpose) && '利用目的を一覧から選んでください'
 ].filter(Boolean);
-const findCountMessages = (request, config) => [
+const findCountMessages = (request, config, catalog) => [
     !isValidDateString(request.startDate) && '利用開始日を選んでください',
-    !(isNonNegativeInteger(request.nights) && request.nights <= config.maxNights) && `利用日数は1〜${config.maxNights + 1}日から選んでください`
+    !(isNonNegativeInteger(request.nights) && request.nights <= config.maxNights) && `利用日数は1〜${config.maxNights + 1}日から選んでください`,
+    request.nights === 0 && !hasSelectedDayTripPriceType(request, catalog) && '日帰りの料金区分を選んでください'
 ].filter(Boolean);
 // 日ごとの数のうち、0〜上限の整数でない日のインデックス
 const findInvalidDayIndexes = (counts, limit) => (Array.isArray(counts) ? counts : [])
@@ -476,7 +483,7 @@ const findEmptyRequestMessages = (request) => (!isStayRequest(request) && reques
     ? ['宿泊人数・施設コマ・食事のどれかを入力してください'] : []);
 // 入力の不備の一覧
 const findInputMessages = (request, config, catalog) => [
-    ...findMissingFieldMessages(request), ...findFormatMessages(request, catalog), ...findCountMessages(request, config),
+    ...findMissingFieldMessages(request), ...findFormatMessages(request, catalog), ...findCountMessages(request, config, catalog),
     ...findStayMessages(request, config, catalog), ...findDayGuestMessages(request, config, catalog),
     ...findMealMessages(request, config, catalog), ...findEmptyRequestMessages(request),
     ...(canCheckSchedule(request, config) ? findInvalidSlots(request, catalog) : []).map((slot) => `${formatDateLabel(slot.date)}の施設コマは選べません`)
@@ -610,9 +617,12 @@ const formatDayGuestCounts = (reservation, catalog) => Array.from({ length: toSa
     .map((dayIndex) => ({ dayIndex, parts: listDayGuestParts(reservation.dayGuests, dayIndex, catalog) })).filter(({ parts }) => parts.length > 0)
     .map(({ dayIndex, parts }) => `${formatDayOfRequest(reservation, dayIndex)} ${parts.reduce((total, { count }) => total + count, 0)}人`
         + `（${parts.map(({ type, count }) => `${type.name} ${count}`).join('、')}）`).join(' ／ ') || 'なし';
-// "38人（高校生）"（宿泊人数から決めた利用人数と料金区分。宿泊者がいなければ「宿泊者なし」）
-const formatPeopleSummary = (reservation, catalog) => (isStayRequest(reservation)
-    ? `${countRequestPeople(reservation)}人（${findByKey(catalog.priceTypes, resolveFacilityPriceType(reservation, catalog)).name}）` : '宿泊者なし');
+// "38人（高校生）"（宿泊人数から決めた利用人数と料金区分。宿泊者がいなければ「宿泊者なし」、日帰りは「宿泊者なし（日帰りの料金区分：高校生）」）
+const formatPeopleSummary = (reservation, catalog) => {
+    const priceTypeName = findByKey(catalog.priceTypes, resolveFacilityPriceType(reservation, catalog)).name;
+    if (isStayRequest(reservation)) return `${countRequestPeople(reservation)}人（${priceTypeName}）`;
+    return reservation.nights === 0 ? `宿泊者なし（日帰りの料金区分：${priceTypeName}）` : '宿泊者なし';
+};
 // 控えとメールに載せる [見出し, 内容] の一覧
 const buildReservationSummary = (reservation, catalog) => [
     ['予約番号', reservation.id], ['申込日時', reservation.createdAt.replace('T', ' ')],
@@ -641,6 +651,7 @@ const escapeHtml = (text) => String(text).replace(/[&<>"']/g, (char) => ({ '&': 
 const buildSampleHours = (day, facilityKey, startHour, endHour) => Array.from({ length: endHour - startHour },
     (_, index) => [day, facilityKey, toHourKey(startHour + index)]);
 // stays は区分×性別ごとに泊まる夜ごと、meals は品目ごとに、dayGuests は区分ごとに利用日ごとの数（書いていないキーは毎日0）。slots は [何日目(0始まり), 施設, コマ]
+// priceType は日帰り（0泊）のサンプルの料金区分（泊まりがあるサンプルは宿泊人数から決める）
 const SAMPLE_SPECS = deepFreeze([
     { offset: 3, nights: 2, groupName: 'サンプル高校 陸上部', representative: '佐藤 花子', purpose: 'スポーツ合宿',
         stays: { hs_m: [20, 19], hs_f: [20, 19] }, meals: { bf: [0, 40, 38], lu: [40, 40, 38], di: [40, 38, 0] }, dayGuests: { hs: [5, 5, 0] },
@@ -648,7 +659,7 @@ const SAMPLE_SPECS = deepFreeze([
     { offset: 3, nights: 1, groupName: 'みどりスポーツクラブ', representative: '鈴木 一郎', purpose: 'サークル・クラブ活動',
         stays: { ad_m: [25], ad_f: [20] }, meals: { bf: [0, 45], di: [45, 0], te: [45, 0] },
         slots: [...buildSampleHours(0, 'kL', 17, 21), [1, 'gym', 'am'], [1, 'gym', 'pm'], [1, 'gym', 'ev']] },
-    { offset: 5, nights: 0, groupName: 'やまびこスポーツ少年団', representative: '高橋 次郎', purpose: '大会・試合',
+    { offset: 5, nights: 0, priceType: 'es', groupName: 'やまびこスポーツ少年団', representative: '高橋 次郎', purpose: '大会・試合',
         stays: {}, meals: { be_oni: [30], te: [30] }, slots: [[0, 'gym_s', 'am'], [0, 'gym_s', 'pm'], ...buildSampleHours(0, 'mr', 13, 17)] },
     { offset: 10, nights: 3, groupName: 'あおぞら大学 バレーボール部', representative: '田中 三郎', purpose: 'スポーツ合宿',
         stays: { ad_m: [60, 60, 60], ad_f: [40, 40, 40] }, meals: { bf: [0, 100, 100, 100], lu: [100, 100, 100, 0], di: [100, 100, 100, 0] },
@@ -669,7 +680,7 @@ const fillCountTable = (specTable, keyedList, length) => Object.fromEntries(keye
 const buildSampleRequest = (spec, startDate, index, catalog) => ({
     groupName: spec.groupName, representative: spec.representative, phone: `000000000${index + 1}`,
     email: `sample${index + 1}@example.com`, purpose: spec.purpose, startDate, nights: spec.nights,
-    ...buildDerivedStayPart(spec.nights, fillCountTable(spec.stays, catalog.stayGuestTypes, spec.nights), catalog),
+    ...buildDerivedStayPart(spec.nights, fillCountTable(spec.stays, catalog.stayGuestTypes, spec.nights), spec.priceType, catalog),
     meals: fillCountTable(spec.meals, catalog.meals, spec.nights + 1), dayGuests: fillCountTable(spec.dayGuests, catalog.priceTypes, spec.nights + 1),
     slots: spec.slots.map(([day, facilityKey, timeKey]) => ({ date: addDaysToDateString(startDate, day), facilityKey, timeKey }))
 });
