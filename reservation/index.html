@@ -390,7 +390,7 @@
                 buildFacilityTogglesHtml(row, facility, selectedSlots, context).join('')}</div></td>`).join('')}</tr>`).join('')}</tbody></table>`;
         // 研修室・ミーティングルームの表（行：日付×部屋、列：9時〜20時台の1時間ずつ）
         const buildHourHeadHtml = (catalog) => `<thead><tr><th>日付</th><th>部屋</th>${catalog.hourSlots
-            .map((unit) => `<th title="${unit.label}">${unit.name}時</th>`).join('')}</tr></thead>`;
+            .map((unit) => `<th title="${unit.label}">${formatHourHeader(unit)}</th>`).join('')}</tr></thead>`;
         const buildHourRowHtml = (row, facility, index, facilities, selectedSlots, context) => `<tr>${index === 0 ? buildDateHeaderHtml(row, facilities.length) : ''}`
             + `<th class="text-left">${escapeHtml(facility.name)}</th>${buildFacilityTogglesHtml(row, facility, selectedSlots, context).map((toggle) => `<td>${toggle}</td>`).join('')}</tr>`;
         const buildHourGridHtml = (rows, selectedSlots, context, facilities) => `<table class="grid-table w-full text-xs">${buildHourHeadHtml(context.catalog)}<tbody>${rows

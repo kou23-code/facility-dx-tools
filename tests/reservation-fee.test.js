@@ -320,3 +320,11 @@ test('formatQuantity は数量の単位を「20（人／泊）」のように括
 test('別途料金の案内の文言', () => {
     assert.strictEqual(logic.EXTRA_FEE_NOTE, '※体育館の照明代金、研修室の冷暖房代などは別途料金がかかります');
 });
+
+test('formatHourHeader は1時間のコマの見出しを「9-10時」の形にする（9時〜20時台の12コマ）', () => {
+    const { formatHourHeader } = logic;
+    assert.strictEqual(formatHourHeader(CATALOG.hourSlots[0]), '9-10時');
+    assert.strictEqual(formatHourHeader(CATALOG.hourSlots[11]), '20-21時');
+    assert.deepStrictEqual(CATALOG.hourSlots.map(formatHourHeader), ['9-10時', '10-11時', '11-12時', '12-13時', '13-14時', '14-15時',
+        '15-16時', '16-17時', '17-18時', '18-19時', '19-20時', '20-21時']);
+});

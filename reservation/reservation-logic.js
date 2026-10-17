@@ -80,6 +80,9 @@ const buildHourSlots = (startHour, endHour) => Array.from({ length: Math.max(end
     return { key: toHourKey(hour), name: String(hour), label: `${hour}:00~${hour + 1}:00`, startHour: hour };
 });
 
+// 1時間のコマの表の見出し（9時のコマ → "9-10時"。1時間の枠であることがわかるようにする）
+const formatHourHeader = (hourSlot) => `${hourSlot.startHour}-${hourSlot.startHour + 1}時`;
+
 // 料金区分と性別の組み合わせ（宿泊人数の入力欄。キーは "es_m" のように 料金区分_性別）
 const buildStayGuestTypes = (priceTypes, genders) => priceTypes.flatMap((priceType) => genders.map((gender) => ({
     key: `${priceType.key}_${gender.key}`, priceType: priceType.key, gender: gender.key, name: `${priceType.name} ${gender.name}`
@@ -630,7 +633,7 @@ if (typeof module !== 'undefined') {
         RESERVATION_CONFIG, resolveReservationConfig, RESERVATION_CATALOG,
         parseDateString, isValidDateString, addDaysToDateString, countDaysBetween, formatDateLabel, formatDateJapanese,
         toLocalDateString, toLocalDateTimeString, listUsageDates, listStayNights, formatScheduleLabel,
-        toHourKey, buildHourSlots, listTimeUnits, mergeHourRanges, formatSlotList,
+        toHourKey, buildHourSlots, formatHourHeader, listTimeUnits, mergeHourRanges, formatSlotList,
         toHalfWidthDigits, parseCount, isSameSlot, sortUniqueSlots, buildRequest,
         sumCounts, sumStayOnNight, listNightTotals, countStayOfPriceType, resolveFacilityPriceType, isStayRequest, pickFacilityPrice, calculateIncludedTax, calculateTaxBreakdown, calculateReservationFee, formatYen, formatQuantity, EXTRA_FEE_NOTE,
         isClosedDate, getStayCountOnDate, countStayGuests, countStayGroups, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,
