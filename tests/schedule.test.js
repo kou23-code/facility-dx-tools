@@ -15,7 +15,9 @@ const {
     SCHEDULE_CODE_TYPE, SCHEDULE_CODE_VERSION, STAY_THRESHOLDS, STAY_LIMITS, MEAL_SUMMARY_ITEMS, findNightIndex, findDayIndex, countStayOnDate,
     countStayGuests, countStayGroups, summarizeDailyReservations, judgeStaySymbol, mapFacilitySchedule,
     isImportableReservation, parseScheduleCode, applyReservationCode, buildDeleteCode,
-    buildPublicSchedule
+    buildPublicSchedule,
+    PUBLIC_SCHEDULE_TYPE, serializePublicSchedule, parsePublicSchedule, findPublicDay, mapPublicFacilitySchedule,
+    judgeFacilityDaySymbol, summarizeFacilitySymbols
 } = ScheduleLogic;
 
 // キーごとの日ごとの数の表を、keyedList のすべてのキー・日数分にそろえる（書いていないキーは毎日0）
@@ -321,4 +323,76 @@ test('buildPublicSchedule の1日分は date・stayGuests・stayGroups・bookedS
     assert.ok(days.length > 0);
     days.forEach((day) => assert.deepStrictEqual(Object.keys(day), ['date', 'stayGuests', 'stayGroups', 'bookedSlots']));
     days.flatMap((day) => day.bookedSlots).forEach((slot) => assert.deepStrictEqual(Object.keys(slot), ['facilityKey', 'timeKey']));
+});
+
+// ---------- 公開用データの JSON（出力と読み込み） ----------
+const PUBLIC_JSON = serializePublicSchedule(RESERVATION_LIST, CATALOG, '2026-10-18T09:30');
+
+test('serializePublicSchedule は種類・版・作成日時と日別のデータを JSON にし、parsePublicSchedule でそのまま読める', () => {
+    const parsed = JSON.parse(PUBLIC_JSON);
+    assert.deepStrictEqual(Object.keys(parsed), ['type', 'version', 'generatedAt', 'days']);
+    assert.strictEqual(parsed.type, PUBLIC_SCHEDULE_TYPE);
+    assert.deepStrictEqual(parsePublicSchedule(PUBLIC_JSON, CATALOG),
+        { ok: true, schedule: { generatedAt: '2026-10-18T09:30', ...buildPublicSchedule(RESERVATION_LIST, CATALOG) } });
+});
+
+test('parsePublicSchedule は決まった項目以外（団体名など）が混ざっていても捨てて読む', () => {
+    const parsed = JSON.parse(PUBLIC_JSON);
+    const tampered = JSON.stringify({ ...parsed, generatedAt: '山田 太郎', groupName: 'X',
+        days: parsed.days.map((day) => ({ ...day, groupName: 'サンプル高校', bookedSlots: day.bookedSlots.map((slot) => ({ ...slot, phone: '0000' })) })) });
+    const result = parsePublicSchedule(tampered, CATALOG);
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.schedule.generatedAt, '');
+    ['サンプル高校', '0000', '山田 太郎'].forEach((text) => assert.strictEqual(JSON.stringify(result.schedule).includes(text), false, text));
+});
+
+test('parsePublicSchedule は公開用データでないもの・違う版・形の正しくない日をエラーにする', () => {
+    const parsed = JSON.parse(PUBLIC_JSON);
+    assert.deepStrictEqual(parsePublicSchedule('', CATALOG), { ok: false, errors: ['公開用スケジュールデータではありません'] });
+    assert.deepStrictEqual(parsePublicSchedule(buildReservationCode(HIGH_SCHOOL), CATALOG), { ok: false, errors: ['公開用スケジュールデータではありません'] });
+    assert.deepStrictEqual(parsePublicSchedule(JSON.stringify({ ...parsed, version: 9 }), CATALOG),
+        { ok: false, errors: ['対応していない版の公開用データです（version 9）'] });
+    [{ days: null }, { days: [null] }, { days: [{ ...parsed.days[0], date: '2026-13-01' }] }, { days: [{ ...parsed.days[0], stayGuests: -1 }] },
+        { days: [{ ...parsed.days[0], stayGroups: 1.5 }] }, { days: [{ ...parsed.days[0], bookedSlots: [{ facilityKey: 'pool', timeKey: 'am' }] }] },
+        { days: [{ ...parsed.days[0], bookedSlots: [{ facilityKey: 'kL', timeKey: 'am' }] }] }
+    ].forEach((patch, index) => assert.deepStrictEqual(parsePublicSchedule(JSON.stringify({ ...parsed, ...patch }), CATALOG),
+        { ok: false, errors: ['公開用データの内容が正しくありません'] }, `${index}番目`));
+});
+
+test('parsePublicSchedule は日が1つもない公開用データも読める（予約なし）', () => {
+    assert.deepStrictEqual(parsePublicSchedule(serializePublicSchedule([], CATALOG, '2026-10-18T09:30'), CATALOG),
+        { ok: true, schedule: { generatedAt: '2026-10-18T09:30', days: [] } });
+});
+
+// ---------- 公開用データからの表示 ----------
+const PUBLIC_SCHEDULE = buildPublicSchedule(RESERVATION_LIST, CATALOG);
+
+test('findPublicDay はその日のデータを返し、記録のない日は宿泊0人・施設コマなしにする', () => {
+    assert.strictEqual(findPublicDay(PUBLIC_SCHEDULE, '2026-11-03').stayGuests, 77);
+    assert.deepStrictEqual(findPublicDay(PUBLIC_SCHEDULE, '2026-12-01'), { date: '2026-12-01', stayGuests: 0, stayGroups: 0, bookedSlots: [] });
+});
+
+test('mapPublicFacilitySchedule は公開用データだけで、予約データから作るのと同じ○/×を出し、団体の詳細は空にする', () => {
+    ['2026-11-02', '2026-11-03', '2026-11-04'].forEach((date) => {
+        const fromPublic = mapPublicFacilitySchedule(findPublicDay(PUBLIC_SCHEDULE, date), CATALOG);
+        const fromReservations = mapFacilitySchedule(RESERVATION_LIST, date, CATALOG)
+            .map((facility) => ({ ...facility, units: facility.units.map((unit) => ({ ...unit, bookings: [] })) }));
+        assert.deepStrictEqual(toPlain(fromPublic), toPlain(fromReservations), date);
+    });
+});
+
+test('judgeFacilityDaySymbol はすべて空き◎・一部予約△・すべて予約×（境界：0コマ・1コマ・全コマ）', () => {
+    const buildUnits = (bookedCount, total) => Array.from({ length: total }, (_, index) => ({ symbol: index < bookedCount ? '×' : '○' }));
+    assert.deepStrictEqual([0, 1, 2, 3].map((bookedCount) => judgeFacilityDaySymbol(buildUnits(bookedCount, 3))), ['◎', '△', '△', '×']);
+    assert.deepStrictEqual([0, 11, 12].map((bookedCount) => judgeFacilityDaySymbol(buildUnits(bookedCount, 12))), ['◎', '△', '×']);
+});
+
+test('summarizeFacilitySymbols は施設ごとの略称と記号を、施設の順に返す', () => {
+    const gymFull = buildReservation({ id: 'R20261001-080', startDate: '2026-11-03', nights: 0,
+        slots: ['pm', 'ev'].map((timeKey) => ({ date: '2026-11-03', facilityKey: 'gym', timeKey })) });
+    assert.deepStrictEqual(summarizeFacilitySymbols(mapFacilitySchedule([...RESERVATION_LIST, gymFull], '2026-11-03', CATALOG)), [
+        { facilityKey: 'gym', shortName: '大体', symbol: '×' }, { facilityKey: 'gym_s', shortName: '小体', symbol: '△' },
+        { facilityKey: 'field', shortName: '陸上', symbol: '◎' }, { facilityKey: 'kL', shortName: '大研', symbol: '△' },
+        { facilityKey: 'kS', shortName: '小研', symbol: '◎' }, { facilityKey: 'mr', shortName: 'MR', symbol: '△' }
+    ]);
 });

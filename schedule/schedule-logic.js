@@ -11,6 +11,12 @@
     const SCHEDULE_CODE_TYPE = 'facility_dx_reservation'; // 職員取込用コードの種類（予約システムの1行コードと同じ）
     const SCHEDULE_CODE_VERSION = 3;                      // 職員取込用コードの版（予約システムの1行コードと同じ）
 
+    const PUBLIC_SCHEDULE_TYPE = 'facility_dx_public_schedule'; // 公開用データ（JSON）の種類
+    const PUBLIC_SCHEDULE_VERSION = 1;                          // 公開用データ（JSON）の版
+
+    // カレンダーのマスに出す施設の略称（catalog.facilities のキーごと。ないときは施設名を出す）
+    const FACILITY_SHORT_NAMES = Object.freeze({ gym: '大体', gym_s: '小体', field: '陸上', kL: '大研', kS: '小研', mr: 'MR' });
+
     // 取り込むときの1日（1泊）あたりの上限（全団体の合計宿泊人数・宿泊団体数）
     const STAY_LIMITS = Object.freeze({ stayCapacity: 300, maxStayGroups: 6 });
 
@@ -242,6 +248,51 @@
     const buildPublicSchedule = (reservationList, catalog) => ({
         days: listScheduleDates(reservationList).map((date) => buildPublicDay(reservationList, date, catalog))
     });
+    // 公開用データの JSON 文字列（generatedAt：作成日時 "YYYY-MM-DDTHH:mm"）
+    const serializePublicSchedule = (reservationList, catalog, generatedAt) => JSON.stringify({
+        type: PUBLIC_SCHEDULE_TYPE, version: PUBLIC_SCHEDULE_VERSION, generatedAt, ...buildPublicSchedule(reservationList, catalog)
+    });
+    const isPublicDay = (day, catalog) => typeof day === 'object' && day !== null && isValidDateString(day.date)
+        && isNonNegativeInteger(day.stayGuests) && isNonNegativeInteger(day.stayGroups)
+        && Array.isArray(day.bookedSlots) && day.bookedSlots.every((slot) => isKnownSlot(slot, catalog));
+    // 決まった項目だけを写す（ほかの項目が入っていても捨て、個人情報を画面に出さない）
+    const pickPublicDay = (day) => ({
+        date: day.date, stayGuests: day.stayGuests, stayGroups: day.stayGroups,
+        bookedSlots: day.bookedSlots.map((slot) => ({ facilityKey: slot.facilityKey, timeKey: slot.timeKey }))
+    });
+    const pickGeneratedAt = (value) => (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? value : '');
+    // 公開用データの JSON を読み取る（{ ok: true, schedule: { generatedAt, days } } または { ok: false, errors }）
+    const parsePublicSchedule = (text, catalog) => {
+        const parsed = safeParseJson(typeof text === 'string' ? text.trim() : '');
+        if (parsed?.type !== PUBLIC_SCHEDULE_TYPE) return { ok: false, errors: ['公開用スケジュールデータではありません'] };
+        if (parsed.version !== PUBLIC_SCHEDULE_VERSION) return { ok: false, errors: [`対応していない版の公開用データです（version ${parsed.version}）`] };
+        if (!Array.isArray(parsed.days) || !parsed.days.every((day) => isPublicDay(day, catalog))) return { ok: false, errors: ['公開用データの内容が正しくありません'] };
+        return { ok: true, schedule: { generatedAt: pickGeneratedAt(parsed.generatedAt), days: parsed.days.map(pickPublicDay) } };
+    };
+    // 公開用データの1日分（その日の記録がなければ、宿泊0人・施設コマなし）
+    const findPublicDay = (publicSchedule, date) => publicSchedule.days.find((day) => day.date === date)
+        ?? { date, stayGuests: 0, stayGroups: 0, bookedSlots: [] };
+    const isPublicSlotBooked = (publicDay, facilityKey, timeKey) => publicDay.bookedSlots
+        .some((slot) => slot.facilityKey === facilityKey && slot.timeKey === timeKey);
+    // 公開用データの1日分から作る、施設ごとのコマの空き状況（mapFacilitySchedule と同じ形。団体の詳細 bookings は常に空）
+    const mapPublicFacilitySchedule = (publicDay, catalog) => catalog.facilities.map((facility) => ({
+        facilityKey: facility.key, name: facility.name,
+        units: listTimeUnits(facility, catalog).map((timeUnit) => ({
+            timeKey: timeUnit.key, label: timeUnit.label, bookings: [],
+            symbol: isPublicSlotBooked(publicDay, facility.key, timeUnit.key) ? '×' : '○'
+        }))
+    }));
+    // 施設1日分の記号（すべて空き ◎ ／ 一部予約済み △ ／ すべて予約済み ×）
+    const judgeFacilityDaySymbol = (units) => {
+        const bookedCount = units.filter((unit) => unit.symbol === '×').length;
+        if (bookedCount === 0) return '◎';
+        return bookedCount >= units.length ? '×' : '△';
+    };
+    // カレンダーのマスに出す、施設ごとの略称と記号
+    const summarizeFacilitySymbols = (facilitySchedules) => facilitySchedules.map((facilitySchedule) => ({
+        facilityKey: facilitySchedule.facilityKey, shortName: FACILITY_SHORT_NAMES[facilitySchedule.facilityKey] ?? facilitySchedule.name,
+        symbol: judgeFacilityDaySymbol(facilitySchedule.units)
+    }));
 
     // SCHEDULE_EXPORTS:start
     // ブラウザでは window.ScheduleLogic、Node.js（テスト）では module.exports から使う
@@ -251,7 +302,9 @@
         countStayGuests, countStayGroups, buildStayBreakdown, buildMealTotals, summarizeDailyReservations, judgeStaySymbol,
         listTimeUnits, isSameSlot, mapFacilitySchedule,
         isImportableReservation, upsertReservation, parseScheduleCode, applyReservationCode, buildDeleteCode,
-        buildPublicSchedule
+        buildPublicSchedule,
+        PUBLIC_SCHEDULE_TYPE, PUBLIC_SCHEDULE_VERSION, FACILITY_SHORT_NAMES, serializePublicSchedule, parsePublicSchedule,
+        findPublicDay, mapPublicFacilitySchedule, judgeFacilityDaySymbol, summarizeFacilitySymbols
     });
     if (typeof module !== 'undefined') module.exports = ScheduleLogic;
     if (typeof window !== 'undefined') window.ScheduleLogic = ScheduleLogic;
