@@ -334,7 +334,7 @@ test('formatQuantity は数量の単位を「20（人／泊）」のように括
 });
 
 test('別途料金の案内の文言', () => {
-    assert.strictEqual(logic.EXTRA_FEE_NOTE, '※体育館の照明代金、研修室の冷暖房代などは別途料金がかかります');
+    assert.strictEqual(logic.EXTRA_FEE_NOTE, '※体育館の照明代金、研修室の冷暖房代、および宿泊を伴わない日帰り参加者の施設利用料などは別途料金がかかります');
 });
 
 test('formatHourHeader は1時間のコマの見出しを「9-10時」の形にする（9時〜20時台の12コマ）', () => {

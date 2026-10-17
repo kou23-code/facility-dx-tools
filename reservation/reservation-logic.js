@@ -306,7 +306,7 @@ const formatYen = (amount) => `${amount.toLocaleString('ja-JP')}円`;
 // 明細の数量の表示（"20（人／泊）" ／ "3（時間）" ／ "40（食）"）
 const formatQuantity = (quantity, unit) => `${quantity.toLocaleString('ja-JP')}（${unit}）`;
 // 概算料金に含めない料金の案内（画面と予約申込控えに出す）
-const EXTRA_FEE_NOTE = '※体育館の照明代金、研修室の冷暖房代などは別途料金がかかります';
+const EXTRA_FEE_NOTE = '※体育館の照明代金、研修室の冷暖房代、および宿泊を伴わない日帰り参加者の施設利用料などは別途料金がかかります';
 
 // ---------- 空き状況（◎：空きあり ／ △：残りわずか・一部予約あり ／ ×：満室・予約済み） ----------
 // 休館日か（closedDates の "MM-DD" は毎年、"YYYY-MM-DD" はその日だけ）

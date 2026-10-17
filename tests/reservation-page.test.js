@@ -153,7 +153,7 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.strictEqual(ready.total, '96,150', '宿泊 3,300円×(10＋10)人＋大体育館 8,050円＋大研修室 950円×2時間＋朝食 660円×20食＋幕の内弁当 700円×10食');
     assert.strictEqual(ready.feeTax, '（うち消費税 10%：8,104円 ／ 8%：518円）', '弁当は軽減税率');
     assert.deepStrictEqual(ready.feeQuantities, ['10（人／泊）', '10（人／泊）', '20（食）', '10（食）', '1（区分）', '2（時間）']);
-    assert.deepStrictEqual(ready.extraFeeNotes, Array(2).fill('※体育館の照明代金、研修室の冷暖房代などは別途料金がかかります'),
+    assert.deepStrictEqual(ready.extraFeeNotes, Array(2).fill('※体育館の照明代金、研修室の冷暖房代、および宿泊を伴わない日帰り参加者の施設利用料などは別途料金がかかります'),
         '施設コマの下と概算料金の下に、別途料金の案内を出す');
 
     assert.strictEqual(overCapacity.buttonDisabled, true, '定員超過では確定できない');
@@ -181,7 +181,7 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.ok(completed.receiptText.includes('予約申込控え') && completed.receiptText.includes('テスト団体'));
     assert.ok(completed.receiptText.includes('合計（税込） 96,150円'));
     assert.ok(completed.receiptText.includes('朝食 20食（'));
-    assert.ok(completed.receiptText.includes('※体育館の照明代金、研修室の冷暖房代などは別途料金がかかります'), '控えにも別途料金の案内');
+    assert.ok(completed.receiptText.includes('※体育館の照明代金、研修室の冷暖房代、および宿泊を伴わない日帰り参加者の施設利用料などは別途料金がかかります'), '控えにも別途料金の案内');
     assert.ok(completed.receiptText.includes('10（人／泊）'));
     assert.ok(completed.receiptText.includes(`${CATALOG.facilities[0].name} AM、大研修室(1･3研) 9:00~11:00`));
 });
