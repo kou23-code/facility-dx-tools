@@ -19,6 +19,10 @@ const BROWSER_CANDIDATES = [
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 ];
 
+// ヘッドレスブラウザ1回分の待ち時間の上限（ミリ秒）。テストを並列で動かすと多数のブラウザが同時に起動して
+// 1回に60秒以上かかることがあるため、余裕をもたせている（ブラウザが固まったときは、この時間で打ち切る）
+const BROWSER_TIMEOUT_MS = 180000;
+
 const readHtml = () => fs.readFileSync(HTML_PATH, 'utf8');
 
 const findBrowser = (candidates) => candidates.find((p) => fs.existsSync(p));
@@ -33,7 +37,7 @@ const buildBrowserArgs = (profileDir, fileUrl) => [
 const renderDom = (browserPath, htmlPath, search = '') => {
     const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'estimate-test-'));
     const args = buildBrowserArgs(profileDir, `${pathToFileURL(htmlPath).href}${search}`);
-    return execFileSync(browserPath, args, { encoding: 'utf8', timeout: 60000 });
+    return execFileSync(browserPath, args, { encoding: 'utf8', timeout: BROWSER_TIMEOUT_MS });
 };
 
 const findById = (dom, id) => {
