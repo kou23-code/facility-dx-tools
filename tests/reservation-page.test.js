@@ -84,18 +84,24 @@ window.addEventListener('load', () => {
 });
 </script>`;
 
-const renderStates = (steps, configSource) => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reservation-test-'));
+// 一時フォルダの中の reservation/ にページを置いて開く（configSource：reservation/facility-config.js、rootConfigSource：ルートの facility-config.js）
+const renderStates = (steps, configSource, rootConfigSource) => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reservation-test-'));
+    const dir = path.join(rootDir, 'reservation');
+    fs.mkdirSync(dir);
     const htmlPath = path.join(dir, 'index.html');
     fs.writeFileSync(htmlPath, readPage().replace('</body>', `${buildScript(steps)}\n</body>`), 'utf8');
     fs.copyFileSync(RESERVATION_LOGIC_PATH, path.join(dir, 'reservation-logic.js'));
     if (configSource) fs.writeFileSync(path.join(dir, 'facility-config.js'), configSource, 'utf8');
+    if (rootConfigSource) fs.writeFileSync(path.join(rootDir, 'facility-config.js'), rootConfigSource, 'utf8');
     return JSON.parse(decodeURIComponent(findById(renderDom(BROWSER, htmlPath), 'test_dump')));
 };
 
-test('予約画面は reservation-logic.js と facility-config.js を読み込み、let・var を使っていない', () => {
+test('予約画面は facility-config.js（このフォルダ → ルートの順）と reservation-logic.js を読み込み、let・var を使っていない', () => {
     const html = readPage();
-    assert.ok(html.indexOf('<script src="facility-config.js">') < html.indexOf('<script src="reservation-logic.js">'));
+    const order = ['<script src="facility-config.js">', '<script src="../facility-config.js">', '<script src="reservation-logic.js">'].map((tag) => html.indexOf(tag));
+    assert.ok(order.every((index) => index >= 0), String(order));
+    assert.deepStrictEqual([...order].sort((first, second) => first - second), order);
     assert.doesNotMatch(readInlineScript(html), /\b(let|var)\s/);
     assert.doesNotMatch(fs.readFileSync(RESERVATION_LOGIC_PATH, 'utf8'), /\b(let|var)\s/);
 });
@@ -339,6 +345,21 @@ test('画面：facility-config.js で施設名と宿泊の上限（人数・団�
     assert.strictEqual(state.title, 'みどり研修センター Web予約システム');
     assert.deepStrictEqual(state.staySymbols, ['×', '◎'], '上限4団体なら4団体泊まる1泊目は×、2団体の2泊目は◎');
     assert.deepStrictEqual(state.stayLimitTexts, ['250人・4団体', '250人・4団体']);
+});
+
+test('画面：ルートの facility-config.js だけを置いても、施設名と受付ルールが反映される', { skip: !BROWSER }, () => {
+    const rootConfigSource = 'window.CUSTOM_FACILITY_INFO = { facilityName: "ひかり研修センター" };\n'
+        + 'window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 4 };';
+    const [state] = renderStates('insertSampleReservations(); states.push(capture());', null, rootConfigSource);
+    assert.strictEqual(state.title, 'ひかり研修センター Web予約システム');
+    assert.deepStrictEqual(state.stayLimitTexts, ['250人・4団体', '250人・4団体']);
+});
+
+test('画面：ルートとこのフォルダの両方に facility-config.js があるときは、ルートの設定を使う', { skip: !BROWSER }, () => {
+    const folderConfigSource = 'window.CUSTOM_FACILITY_INFO = { facilityName: "みどり研修センター" };';
+    const rootConfigSource = 'window.CUSTOM_FACILITY_INFO = { facilityName: "ひかり研修センター" };';
+    const [state] = renderStates('states.push(capture());', folderConfigSource, rootConfigSource);
+    assert.strictEqual(state.title, 'ひかり研修センター Web予約システム');
 });
 
 test('画面：宿泊の受け入れ団体数が上限（6団体）の夜は、人数に余裕があっても警告を出して確定できない', { skip: !BROWSER }, () => {

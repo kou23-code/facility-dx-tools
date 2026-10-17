@@ -37,14 +37,20 @@ const removeFacilityBlock = (html) => html.replace(BLOCK_PATTERN, '');
 
 const toPlain = (obj) => JSON.parse(JSON.stringify(obj));
 
-// HTML を一時フォルダにコピーし、必要なら facility-config.js も置く
-const preparePage = (configSource) => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'facility-test-'));
+// HTML を一時フォルダの中の estimate/ にコピーし、必要なら facility-config.js も置く
+// （configSource：estimate/facility-config.js、rootConfigSource：ルートの facility-config.js）
+const preparePage = (configSource, rootConfigSource) => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'facility-test-'));
+    const dir = path.join(rootDir, 'estimate');
+    fs.mkdirSync(dir);
     const htmlPath = path.join(dir, path.basename(HTML_PATH));
     fs.copyFileSync(HTML_PATH, htmlPath);
     if (configSource) fs.writeFileSync(path.join(dir, 'facility-config.js'), configSource, 'utf8');
+    if (rootConfigSource) fs.writeFileSync(path.join(rootDir, 'facility-config.js'), rootConfigSource, 'utf8');
     return htmlPath;
 };
+// ルートの facility-config.js の確認に使う、CUSTOM_INFO とは別の架空の施設名
+const ROOT_CUSTOM_INFO = { ...CUSTOM_INFO, facilityName: 'ひかり研修センター' };
 
 const assertIssuerShown = (dom, info, blocks) => {
     Object.entries(blocks.buildIssuerLines(info)).forEach(([id, text]) => {
@@ -117,4 +123,23 @@ test('facility-config.js があるときはその設定で上書き表示され�
     const blocks = loadFacilityBlock(readHtml());
     const configSource = `window.CUSTOM_FACILITY_INFO = ${JSON.stringify(CUSTOM_INFO)};`;
     assertIssuerShown(renderDom(BROWSER, preparePage(configSource)), CUSTOM_INFO, blocks);
+});
+
+test('見積もりツールは facility-config.js をこのフォルダ → ルート（../facility-config.js）の順に読み込む', () => {
+    const html = readHtml();
+    const order = ['<script src="facility-config.js">', '<script src="../facility-config.js">'].map((tag) => html.indexOf(tag));
+    assert.ok(order[0] >= 0 && order[0] < order[1], String(order));
+});
+
+test('ルートの facility-config.js だけを置いても、その設定で上書き表示される', { skip: !BROWSER }, () => {
+    const blocks = loadFacilityBlock(readHtml());
+    const rootConfigSource = `window.CUSTOM_FACILITY_INFO = ${JSON.stringify(ROOT_CUSTOM_INFO)};`;
+    assertIssuerShown(renderDom(BROWSER, preparePage(null, rootConfigSource)), ROOT_CUSTOM_INFO, blocks);
+});
+
+test('ルートとこのフォルダの両方に facility-config.js があるときは、ルートの設定で表示される', { skip: !BROWSER }, () => {
+    const blocks = loadFacilityBlock(readHtml());
+    const folderConfigSource = `window.CUSTOM_FACILITY_INFO = ${JSON.stringify(CUSTOM_INFO)};`;
+    const rootConfigSource = `window.CUSTOM_FACILITY_INFO = ${JSON.stringify(ROOT_CUSTOM_INFO)};`;
+    assertIssuerShown(renderDom(BROWSER, preparePage(folderConfigSource, rootConfigSource)), ROOT_CUSTOM_INFO, blocks);
 });

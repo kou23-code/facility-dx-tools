@@ -222,8 +222,11 @@
     <!-- お知らせ表示 -->
     <div id="toast" class="no-print hidden fixed top-6 left-1/2 -translate-x-1/2 z-50 max-w-[90vw] bg-gray-900 text-white rounded-lg shadow-xl px-6 py-3 text-center cursor-pointer" onclick="this.classList.add('hidden')"></div>
 
-    <!-- ローカル専用の実名・受付ルールの設定（Git管理外）。ファイルがなければダミー表記と既定のルールで動く -->
+    <!-- ローカル専用の実名・受付ルールの設定（Git管理外）。ファイルがなければダミー表記と既定のルールで動く
+         ルートの ../facility-config.js（全ツール共通）を優先し、このフォルダの facility-config.js は、ルートに同じ設定がないときに使う
+         （あとから読み込んだほうの window.CUSTOM_〇〇 が使われるため、このフォルダ → ルートの順に読み込む） -->
     <script src="facility-config.js"></script>
+    <script src="../facility-config.js"></script>
     <!-- 計算・判定の純粋関数（テストからも読み込む） -->
     <script src="reservation-logic.js"></script>
     <script>

@@ -5,7 +5,7 @@
 // ======================================================
 
 // FACILITY_INFO:start
-// 発行元の情報（ダミー表記）。実名は同じフォルダの facility-config.js（Git管理外）の
+// 発行元の情報（ダミー表記）。実名はルートの facility-config.js（全ツール共通・Git管理外。同じフォルダのものでもよい）の
 // window.CUSTOM_FACILITY_INFO に書く。テストがこのブロックを読み込むため、目印のコメントは消さない
 const FACILITY_INFO = Object.freeze({
     organization: '株式会社サンプルリゾート',
