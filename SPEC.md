@@ -12,13 +12,13 @@ GitHub Pages で、複数のツールを一覧で公開できる構成にして�
 |---|---|---|
 | `index.html` | ポータル画面「あおぞらセミナーハウス 業務DXツール集」 | `https://<ユーザー名>.github.io/<リポジトリ名>/` |
 | `estimate/index.html` | 概算見積もりシステム（この仕様書の対象） | `…/<リポジトリ名>/estimate/` |
-| `estimate/facility-config.js` | 実名設定（ローカル専用・Git管理外。10.1章を参照） | 公開されない |
+| `estimate/facility-config.js` | 見積もりツールだけの実名設定（ローカル専用・Git管理外。ルートの `facility-config.js` にない設定のときに使う。10.1章を参照） | 公開されない |
 | `reservation/index.html` | Web予約システムの画面（13章を参照） | `…/<リポジトリ名>/reservation/` |
 | `reservation/reservation-logic.js` | Web予約システムの計算・判定の純粋関数（画面とテストの両方から読み込む） | `…/reservation/reservation-logic.js` |
-| `reservation/facility-config.js` | 実名・受付ルールの設定（ローカル専用・Git管理外。13.9を参照） | 公開されない |
+| `reservation/facility-config.js` | 予約システムだけの実名・受付ルールの設定（ローカル専用・Git管理外。ルートの `facility-config.js` にない設定のときに使う。13.9を参照） | 公開されない |
 | `schedule/index.html` | スケジュール管理表の画面（14章を参照） | `…/<リポジトリ名>/schedule/` |
 | `schedule/schedule-logic.js` | スケジュール管理表の集計・判定の純粋関数（画面とテストの両方から読み込む） | `…/schedule/schedule-logic.js` |
-| `facility-config.js` | スケジュール管理表の実名設定（ローカル専用・Git管理外。14.9を参照） | 公開されない |
+| `facility-config.js` | 全ツール共通の実名・受付ルールの設定（ローカル専用・Git管理外。見積もり・予約・スケジュール管理表のすべてが読み込む。10.1章を参照） | 公開されない |
 | `tests/` | 動作確認テスト（11章を参照） | — |
 
 ### ポータル画面（`index.html`）
@@ -278,10 +278,13 @@ GitHub Pages で、複数のツールを一覧で公開できる構成にして�
 | `address` | 住所 | 東京都千代田区千代田1-1-1 | 発行元欄 |
 | `tel` | 電話番号（TELは付けない） | 03-0000-0000 | 「TEL 03-0000-0000」と表示 |
 
-**実名で表示したいとき**は、`FACILITY_INFO` は書き換えず、`estimate/index.html` と同じフォルダ（`estimate/facility-config.js`）に作ります（`.gitignore` で除外済みなので Git には入りません）。
+**実名で表示したいとき**は、`FACILITY_INFO` は書き換えず、リポジトリのルート（`index.html` と同じフォルダ）に `facility-config.js` を1つ作ります（`.gitignore` で除外済みなので Git には入りません）。この1ファイルが、見積もり・予約・スケジュール管理表のすべてに反映されます。
+
+- 見積もりツール・予約システムは、そのフォルダの `facility-config.js` → ルートの `../facility-config.js` の順に読み込む。両方に同じ設定（`window.CUSTOM_FACILITY_INFO` など）があるときは、あとから読み込むルートの設定を使う（設定はオブジェクトごと置き換わり、キーごとには混ざらない）。そのフォルダの `facility-config.js` は、ルートにその設定がないときだけ使われる（以前の置き方のままでも動く）
+- スケジュール管理表は、ルートの `facility-config.js` だけを読み込む
 
 ```js
-// facility-config.js（ローカル専用・Git管理外）
+// facility-config.js（ルートに置く。ローカル専用・Git管理外）
 window.CUSTOM_FACILITY_INFO = {
     organization: '会社名',
     facilityName: '施設名',
@@ -336,7 +339,7 @@ window.CUSTOM_TAX_CONFIG = {
 
 実行方法：`node --test "tests/**/*.test.js"`（すべてのテストを実行する。Node.js 21 以上が必要。Chrome も Edge もない環境では、ブラウザを使うテストを飛ばす）
 
-- `tests/helpers.js`：テストで共通して使う関数（ファイルの場所、HTMLの読み込み、ヘッドレスブラウザでの表示など）。見積もりツールの場所は `estimate/index.html`、ポータルは `index.html`、予約システムは `reservation/index.html` と `reservation/reservation-logic.js`、スケジュール管理表は `schedule/index.html` と `schedule/schedule-logic.js` として定義している。`renderDom` は URL の検索部分（例：`?mode=staff`）を付けて開ける
+- `tests/helpers.js`：テストで共通して使う関数（ファイルの場所、HTMLの読み込み、ヘッドレスブラウザでの表示など）。見積もりツールの場所は `estimate/index.html`、ポータルは `index.html`、予約システムは `reservation/index.html` と `reservation/reservation-logic.js`、スケジュール管理表は `schedule/index.html` と `schedule/schedule-logic.js` として定義している。`renderDom` は URL の検索部分（例：`?mode=staff`）を付けて開ける。ヘッドレスブラウザ1回の待ち時間の上限は180秒（`BROWSER_TIMEOUT_MS`。テストを並列で動かすと多数のブラウザが同時に起動して遅くなるため）
 - Web予約システムのテスト（`tests/reservation-*.test.js`）は13.10を参照
 - スケジュール管理表のテスト（`tests/schedule*.test.js`）は14.10を参照
 - `tests/remove-remarks.test.js`：備考欄を削除したことを確認するテスト
@@ -348,7 +351,7 @@ window.CUSTOM_TAX_CONFIG = {
   - `resolveFacilityInfo` が、設定なし・一部だけ上書き・知らないキーや文字列以外の値、の各場合に正しく動き、元の値を書き換えないこと
   - `buildIssuerLines`・`buildPageTitle` が、渡された情報から正しい文字列を作ること
   - 自動保存のキーが `reservation_estimate_v1` であること、`facility-config.js` が `.gitignore` で除外されていること
-  - ページを一時フォルダにコピーして開き、`facility-config.js` がないときはダミー表記、あるときはその設定で表示されること
+  - ページを一時フォルダの `estimate/` にコピーして開き、`facility-config.js` がないときはダミー表記、あるときはその設定で表示されること。ルートの `facility-config.js` だけでも反映され、両方あるときはルートの設定で表示されること。このフォルダ → ルートの順に読み込むこと
 - `tests/portal.test.js`：ポータル画面とフォルダ構成を確認するテスト
   - タイトルと見出しが「あおぞらセミナーハウス 業務DXツール集」であること
   - カードが3枚、決められた順番で並び、見積もり・予約・スケジュール管理表がリンク付き（公開中）であること
@@ -408,7 +411,7 @@ window.CUSTOM_TAX_CONFIG = {
 - 画面（`reservation/index.html`）と、計算・判定の純粋関数（`reservation/reservation-logic.js`）に分けている。純粋関数は DOM や localStorage に触らず、必要な値はすべて引数で受け取る。画面の処理は入力の読み取り・表示・保存だけを行う
 - 予約データはブラウザの localStorage（キー：`facility_dx_reservations`。今後のツールと共通）に保存する。サーバーはないため、データはそのパソコンのそのブラウザの中だけにある。施設の職員には、利用者が完了画面から送るメールで伝える（職員取込用1行コードはメールの本文にだけ入り、画面には出さない）
 - 料金は概算見積もりシステム（4章）と同じ金額を使う（テストで一致を確認している）。使っている外部ライブラリ：Tailwind CSS（CDN）
-- 特定防止のため、発行元はダミー表記（10.1と同じ）。実名は Git管理外の `reservation/facility-config.js` で上書きする（13.9）
+- 特定防止のため、発行元はダミー表記（10.1と同じ）。実名は Git管理外のルートの `facility-config.js`（または `reservation/facility-config.js`）で上書きする（13.9）
 
 ### 13.2 画面の構成
 
@@ -546,10 +549,10 @@ window.CUSTOM_TAX_CONFIG = {
 | `closedDates` | 休館日（`"MM-DD"` は毎年、`"YYYY-MM-DD"` はその日だけ） | `['12-29', '12-30', '12-31', '01-01', '01-02', '01-03']` |
 | `staffEmail` | 予約の連絡を受ける職員のメールアドレス | `reservation@example.com` |
 
-コードを直さずに変えたいときは、`reservation/facility-config.js`（Git管理外）に書く（書いたキーだけ上書き。正しくない値は無視する。`resolveReservationConfig`）。
+コードを直さずに変えたいときは、ルートの `facility-config.js`（全ツール共通・Git管理外）に書く（書いたキーだけ上書き。正しくない値は無視する。`resolveReservationConfig`）。`reservation/facility-config.js` に書いてもよいが、両方にあるときはルートの設定を使う（10.1）。
 
 ```js
-// reservation/facility-config.js（ローカル専用・Git管理外）
+// facility-config.js（ルートに置く。ローカル専用・Git管理外）
 window.CUSTOM_FACILITY_INFO = { facilityName: '施設名', tel: '00-0000-0000' };
 window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closedDates: ['12-29', '2027-02-10'], staffEmail: 'staff@example.com' };
 ```
@@ -595,7 +598,7 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
   - 「全日」でコピーでき、利用日数を変えても入力中の値が残ること。日帰りでは宿泊人数を入力できないこと
   - 料金区分のプルダウンが日帰り（1日）のときだけ表示され（初期値は大学生・一般）、選んだ区分の日帰り専有料金で計算され、確定した予約と控えに載ること。2日以上では隠れ、選んだ区分を使わないこと
   - 選んでいたコマが予約済みになると赤くなって確定できないこと、リセットで予約データが消えること
-  - `facility-config.js` で施設名と宿泊の上限（人数・団体数）を上書きでき、画面の上限の表示も変わること
+  - `facility-config.js` で施設名と宿泊の上限（人数・団体数）を上書きでき、画面の上限の表示も変わること。ルートの `facility-config.js` だけでも反映され、両方あるときはルートの設定を使うこと（一時フォルダの `reservation/` にページを置いて確認する）
   - 宿泊する団体がすでに6団体の夜は、人数に余裕があっても×・「残り○人・0団体」になり、警告が出て確定できないこと
 
 ## 14. スケジュール管理表（`schedule/index.html`）
@@ -701,7 +704,7 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
 
 - 施設名を実名で表示したいときは、ルートの `facility-config.js`（Git管理外。`.gitignore` で除外済み）に `window.CUSTOM_FACILITY_INFO` を書く（10.1・13.9 と同じキー）。見出しとタイトルが「施設名 スケジュール管理表」になる
 - 休館日はルートの `facility-config.js` の `window.CUSTOM_RESERVATION_CONFIG.closedDates` で上書きできる（`resolveReservationConfig`）
-  - ※Web予約システムは `reservation/facility-config.js` を読む。両方の画面で同じ休館日にしたいときは、両方のファイルに同じ設定を書く
+  - ルートの `facility-config.js` は見積もり・予約システムも読み込むため、休館日・施設名は全ツールで同じになる（10.1）
 - 宿泊の△/×のしきい値（`STAY_THRESHOLDS`）と取込の上限（`STAY_LIMITS`）は `schedule-logic.js` の定数。`CUSTOM_RESERVATION_CONFIG` の `stayCapacity`・`maxStayGroups` とは連動しない
 - 施設・コマ・食事を変えるときは `RESERVATION_CATALOG`（13.9）を直す。カレンダーの略称は `FACILITY_SHORT_NAMES`（ない施設は施設名を出す）
 
