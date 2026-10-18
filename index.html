@@ -54,7 +54,7 @@
         .btn-primary:hover, .btn-primary:focus-visible { background: var(--accent-dark); color: #fff; }
         .btn-solid { background: var(--primary); color: #fff; }
         .btn-solid:hover, .btn-solid:focus-visible { background: var(--primary-dark); }
-        .btn-ghost { background: rgba(255, 255, 255, .12); color: #fff; border-color: rgba(255, 255, 255, .7); }
+        .btn-ghost { background: rgba(6, 40, 72, .28); color: #fff; border-color: rgba(255, 255, 255, .85); backdrop-filter: blur(4px); }
         .btn-ghost:hover, .btn-ghost:focus-visible { background: #fff; color: var(--primary-dark); }
 
         /* ---------- 固定ヘッダー ---------- */
@@ -91,9 +91,9 @@
         /* ---------- ヒーロー ---------- */
         .hero {
             position: relative; overflow: hidden; padding: calc(var(--header-height) + 72px) 0 96px;
-            background: radial-gradient(circle at 85% 15%, rgba(56, 189, 248, .35), transparent 45%),
-                        radial-gradient(circle at 10% 90%, rgba(16, 185, 129, .25), transparent 45%),
-                        linear-gradient(135deg, #0b3d66 0%, #0f5e9c 55%, #1789b8 100%);
+            background: radial-gradient(circle at 85% 15%, rgba(125, 211, 252, .45), transparent 45%),
+                        radial-gradient(circle at 10% 90%, rgba(52, 211, 153, .35), transparent 45%),
+                        linear-gradient(135deg, #0a5a92 0%, #0e86c4 55%, #1aa7c9 100%);
             color: #fff;
         }
         .hero-deco { position: absolute; z-index: 1; right: -60px; bottom: -40px; width: min(520px, 70vw); opacity: .16; pointer-events: none; }
@@ -106,12 +106,15 @@
             opacity: 0; transform: scale(1); transition: opacity 1.6s ease-in-out, transform 7s ease-out;
         }
         .hero-slide.is-loaded.is-active { opacity: 1; transform: scale(1.08); }
-        /* 白い文字がどの写真の上でも読めるよう、ネイビー〜ブルーの半透明グラデーションを重ねる */
+        /* 写真の色味（芝生の緑・トラックやコートの色）が見えるよう、オーバーレイは薄くする。
+           文字が乗る左側と上下の端だけを少し濃くし、文字の影で読みやすさを補う */
+        .hero-slide { filter: saturate(1.15) brightness(1.04); }
         .hero-slide::after {
             content: ""; position: absolute; inset: 0;
-            background: linear-gradient(135deg, rgba(6, 27, 52, .9) 0%, rgba(11, 61, 102, .78) 50%, rgba(23, 137, 184, .55) 100%);
+            background: linear-gradient(90deg, rgba(6, 40, 72, .5) 0%, rgba(6, 40, 72, .28) 45%, rgba(6, 40, 72, 0) 80%),
+                        linear-gradient(180deg, rgba(6, 40, 72, .25) 0%, rgba(6, 40, 72, 0) 30%, rgba(6, 40, 72, 0) 70%, rgba(6, 40, 72, .3) 100%);
         }
-        .hero h1, .hero-lead { text-shadow: 0 2px 14px rgba(4, 20, 40, .35); }
+        .hero h1, .hero-lead, .hero-eyebrow, .hero-tags li { text-shadow: 0 1px 3px rgba(0, 20, 40, .55), 0 3px 18px rgba(0, 20, 40, .45); }
         .hero-dots { position: absolute; z-index: 2; right: 28px; bottom: 22px; display: flex; gap: 10px; }
         .hero-dot {
             width: 10px; height: 10px; padding: 0; border: 1px solid rgba(255, 255, 255, .75); border-radius: 999px;
@@ -124,12 +127,12 @@
             .hero-slide { transition: opacity .4s linear; }
             .hero-slide.is-loaded.is-active { transform: none; }
         }
-        .hero-eyebrow { display: inline-block; margin: 0 0 18px; padding: 4px 14px; border-radius: 999px; background: rgba(255, 255, 255, .16); font-size: .85rem; font-weight: 700; letter-spacing: .08em; }
+        .hero-eyebrow { display: inline-block; margin: 0 0 18px; padding: 4px 14px; border-radius: 999px; background: rgba(14, 165, 233, .55); font-size: .85rem; font-weight: 700; letter-spacing: .08em; }
         .hero h1 { margin: 0; font-size: clamp(1.9rem, 5vw, 3.1rem); line-height: 1.35; letter-spacing: .02em; }
-        .hero h1 .hero-accent { color: #fde68a; }
-        .hero-lead { margin: 20px 0 0; font-size: clamp(.95rem, 2vw, 1.1rem); color: rgba(255, 255, 255, .9); }
+        .hero h1 .hero-accent { color: #ffd166; }
+        .hero-lead { margin: 20px 0 0; font-size: clamp(.95rem, 2vw, 1.1rem); color: #fff; font-weight: 500; }
         .hero-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 0; padding: 0; list-style: none; }
-        .hero-tags li { padding: 4px 12px; border-radius: 8px; background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .25); font-size: .85rem; }
+        .hero-tags li { padding: 4px 12px; border-radius: 999px; background: rgba(6, 40, 72, .35); border: 1px solid rgba(255, 255, 255, .55); font-size: .85rem; font-weight: 600; backdrop-filter: blur(4px); }
         .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px; }
 
         /* ---------- セクション共通 ---------- */

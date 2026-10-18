@@ -179,10 +179,18 @@ test('ヒーローに背景写真の層（#heroSlides）とドット（#heroDots
     const hero = sliceBlock(html, /<section class="hero"/, '</section>');
     assert.match(findTagById(hero, 'heroSlides'), /class="hero-slides"[^>]*aria-hidden="true"/);
     assert.match(findTagById(hero, 'heroDots'), /class="hero-dots"[^>]*aria-label="背景写真の切り替え"/);
-    assert.match(sliceBlock(html, /\.hero \{/, '}'), /linear-gradient\(135deg, #0b3d66/);
-    assert.match(sliceBlock(html, /\.hero-slide::after \{/, '}'), /linear-gradient\(135deg, rgba\(6, 27, 52/);
+    assert.match(sliceBlock(html, /\.hero \{/, '}'), /linear-gradient\(135deg, #0a5a92/);
+    assert.match(sliceBlock(html, /\.hero-slide::after \{/, '}'), /linear-gradient\(90deg, rgba\(6, 40, 72/);
     assert.match(html, /\.hero-slide\.is-loaded\.is-active \{ opacity: 1; transform: scale\(1\.08\); \}/);
     assert.match(html, /startHeroSlideshow\(Portal\.resolveHeroImages\(Portal\.DEFAULT_HERO_IMAGES, window\.CUSTOM_FACILITY_INFO\?\.heroImages\)\)/);
+});
+
+test('写真の色味が見えるよう、オーバーレイの濃さ（不透明度）は 0.5 以下で、白い文字には影が付いている', () => {
+    const html = readPortal();
+    const alphas = [...sliceBlock(html, /\.hero-slide::after \{/, '}').matchAll(/rgba\([^)]*,\s*([\d.]+)\)/g)].map(([, alpha]) => Number(alpha));
+    assert.ok(alphas.length > 0);
+    assert.ok(Math.max(...alphas) <= 0.5, `オーバーレイの不透明度が濃すぎます（最大 ${Math.max(...alphas)}）`);
+    assert.match(html, /\.hero h1, \.hero-lead[^{]*\{ text-shadow: [^}]+\}/);
 });
 
 test('既定の背景写真は4枚（陸上競技場・体育館・球技場・研修室）で、すべて https の画像URL、切り替えは5秒ごと', () => {
