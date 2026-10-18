@@ -14,9 +14,6 @@
     const PUBLIC_SCHEDULE_TYPE = 'facility_dx_public_schedule'; // 公開用データ（JSON）の種類
     const PUBLIC_SCHEDULE_VERSION = 1;                          // 公開用データ（JSON）の版
 
-    // カレンダーのマスに出す施設の略称（catalog.facilities のキーごと。ないときは施設名を出す）
-    const FACILITY_SHORT_NAMES = Object.freeze({ gym: '大体', gym_s: '小体', field: '陸上', kL: '大研', kS: '小研', mr: 'MR' });
-
     // 取り込むときの1日（1泊）あたりの上限（全団体の合計宿泊人数・宿泊団体数）
     const STAY_LIMITS = Object.freeze({ stayCapacity: 300, maxStayGroups: 6 });
 
@@ -288,9 +285,12 @@
         if (bookedCount === 0) return '◎';
         return bookedCount >= units.length ? '×' : '△';
     };
+    // カレンダーのマスに出す施設の略称（catalog.facilities の shortName。ないときは施設名を出す）
+    const findFacilityShortName = (facilitySchedule, catalog) => catalog.facilities
+        .find((facility) => facility.key === facilitySchedule.facilityKey)?.shortName ?? facilitySchedule.name;
     // カレンダーのマスに出す、施設ごとの略称と記号
-    const summarizeFacilitySymbols = (facilitySchedules) => facilitySchedules.map((facilitySchedule) => ({
-        facilityKey: facilitySchedule.facilityKey, shortName: FACILITY_SHORT_NAMES[facilitySchedule.facilityKey] ?? facilitySchedule.name,
+    const summarizeFacilitySymbols = (facilitySchedules, catalog) => facilitySchedules.map((facilitySchedule) => ({
+        facilityKey: facilitySchedule.facilityKey, shortName: findFacilityShortName(facilitySchedule, catalog),
         symbol: judgeFacilityDaySymbol(facilitySchedule.units)
     }));
 
@@ -365,7 +365,7 @@
         listTimeUnits, isSameSlot, mapFacilitySchedule,
         isImportableReservation, upsertReservation, parseScheduleCode, applyReservationCode, buildDeleteCode,
         buildPublicSchedule,
-        PUBLIC_SCHEDULE_TYPE, PUBLIC_SCHEDULE_VERSION, FACILITY_SHORT_NAMES, serializePublicSchedule, parsePublicSchedule,
+        PUBLIC_SCHEDULE_TYPE, PUBLIC_SCHEDULE_VERSION, serializePublicSchedule, parsePublicSchedule,
         findPublicDay, mapPublicFacilitySchedule, judgeFacilityDaySymbol, summarizeFacilitySymbols,
         toMonthKey, parseMonthKey, toMonthKeyOfDate, shiftMonthKey, formatMonthLabel, buildCalendarWeeks,
         resolveInitialMode, buildModeSearch, listReservationsOnDate, listGroupBadges, buildGroupDailyRows, mergeBookedUnits

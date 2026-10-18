@@ -78,8 +78,8 @@ test('buildAvailabilityRows は日ごとに宿泊と施設の空き状況を作�
         { booked: 60, remaining: 40, groups: 1, remainingGroups: 5, symbol: '◎' }, { booked: 85, remaining: 15, groups: 2, remainingGroups: 4, symbol: '△' }, null
     ]);
     const symbolsOf = (row) => Object.fromEntries(row.facilities.map((status) => [status.facilityKey, status.symbol]));
-    assert.deepStrictEqual(symbolsOf(rows[0]), { gym: '◎', gym_s: '△', field: '◎', kL: '◎', kS: '◎', mr: '◎' });
-    assert.deepStrictEqual(symbolsOf(rows[1]), { gym: '×', gym_s: '◎', field: '◎', kL: '◎', kS: '◎', mr: '◎' });
+    assert.deepStrictEqual(symbolsOf(rows[0]), { gym: '◎', gym_s: '△', track: '◎', court: '◎', kL1: '◎', kL3: '◎', kS: '◎', mr: '◎' });
+    assert.deepStrictEqual(symbolsOf(rows[1]), { gym: '×', gym_s: '◎', track: '◎', court: '◎', kL1: '◎', kL3: '◎', kS: '◎', mr: '◎' });
     assert.deepStrictEqual(toPlain(rows[0].facilities[1].bookedTimeKeys), ['am']);
 });
 
@@ -95,18 +95,43 @@ test('buildAvailabilityRows：予約がなければすべて◎、休館日は�
 
 test('buildAvailabilityRows：研修室・ミーティングルームは12コマのうち一部が予約済みなら△、すべてなら×', () => {
     const hourSlots = (facilityKey, hours) => hours.map((hour) => slotOf('2026-11-02', facilityKey, `h${String(hour).padStart(2, '0')}`));
-    const reservations = [buildReservation('H1', { slots: [...hourSlots('kL', [9, 10]), ...hourSlots('mr', [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])] })];
+    const reservations = [buildReservation('H1', { slots: [...hourSlots('kL1', [9, 10]), ...hourSlots('mr', [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])] })];
     const statusOf = (key) => buildAvailabilityRows(reservations, '2026-11-02', 0, CONTEXT)[0].facilities.find((status) => status.facilityKey === key);
-    assert.deepStrictEqual(toPlain(statusOf('kL')), { facilityKey: 'kL', bookedTimeKeys: ['h09', 'h10'], symbol: '△' });
+    assert.deepStrictEqual(toPlain(statusOf('kL1')), { facilityKey: 'kL1', bookedTimeKeys: ['h09', 'h10'], symbol: '△' });
     assert.strictEqual(statusOf('mr').symbol, '×');
     assert.strictEqual(statusOf('kS').symbol, '◎');
 });
 
 test('研修室の1時間のコマは、同じ部屋・同じ時間だけが重複になる', () => {
-    const reservations = [buildReservation('H2', { slots: [slotOf('2026-11-02', 'kL', 'h13')] })];
-    const request = buildRequest({ slots: [slotOf('2026-11-02', 'kL', 'h13'), slotOf('2026-11-02', 'kL', 'h14'), slotOf('2026-11-02', 'kS', 'h13')] });
+    const reservations = [buildReservation('H2', { slots: [slotOf('2026-11-02', 'kL1', 'h13')] })];
+    const request = buildRequest({ slots: [slotOf('2026-11-02', 'kL1', 'h13'), slotOf('2026-11-02', 'kL1', 'h14'), slotOf('2026-11-02', 'kS', 'h13')] });
     assert.deepStrictEqual(findAvailabilityConflicts(request, { ...CONTEXT, reservations }),
-        ['11/2(月)の「大研修室(1･3研) 13:00~14:00」はすでに予約が入っています。別の時間帯か日程を選んでください。']);
+        ['11/2(月)の「大研修室（第１研修室） 13:00~14:00」はすでに予約が入っています。別の時間帯か日程を選んでください。']);
+});
+
+test('陸上グラウンドと球技場は別の施設として、空き状況・重複を別々に判定する', () => {
+    const reservations = [buildReservation('S1', { slots: [slotOf('2026-11-02', 'track', 'am'), slotOf('2026-11-02', 'track', 'pm'), slotOf('2026-11-02', 'track', 'ev')] })];
+    const statusOf = (key) => buildAvailabilityRows(reservations, '2026-11-02', 0, CONTEXT)[0].facilities.find((status) => status.facilityKey === key);
+    assert.deepStrictEqual([statusOf('track').symbol, statusOf('court').symbol], ['×', '◎'], '陸上グラウンドが埋まっても球技場は空き');
+    const request = buildRequest({ slots: [slotOf('2026-11-02', 'track', 'am'), slotOf('2026-11-02', 'court', 'am')] });
+    assert.deepStrictEqual(findAvailabilityConflicts(request, { ...CONTEXT, reservations }),
+        ['11/2(月)の「陸上グラウンド AM」はすでに予約が入っています。別の時間帯か日程を選んでください。'], '球技場の AM は予約できる');
+});
+
+test('大研修室の第１研修室と第３研修室は別の部屋として、空き状況・重複を別々に判定する', () => {
+    const reservations = [buildReservation('S2', { slots: [slotOf('2026-11-02', 'kL3', 'h09')] })];
+    const statusOf = (key) => buildAvailabilityRows(reservations, '2026-11-02', 0, CONTEXT)[0].facilities.find((status) => status.facilityKey === key);
+    assert.deepStrictEqual([statusOf('kL1').symbol, statusOf('kL3').symbol], ['◎', '△']);
+    const request = buildRequest({ slots: [slotOf('2026-11-02', 'kL1', 'h09'), slotOf('2026-11-02', 'kL3', 'h09')] });
+    assert.deepStrictEqual(findAvailabilityConflicts(request, { ...CONTEXT, reservations }),
+        ['11/2(月)の「大研修室（第３研修室） 9:00~10:00」はすでに予約が入っています。別の時間帯か日程を選んでください。']);
+    assert.deepStrictEqual(findInputMessages(buildRequest({ slots: [slotOf('2026-11-02', 'kL3', 'am'), slotOf('2026-11-02', 'court', 'h09')] }), CONFIG, CATALOG),
+        ['11/2(月)の施設コマは選べません', '11/2(月)の施設コマは選べません'], '第３研修室は区分、球技場は1時間では選べない');
+});
+
+test('分割前の施設キー（field・kL）は、今の施設一覧にはないので施設コマとして選べない', () => {
+    assert.deepStrictEqual(findInputMessages(buildRequest({ slots: [slotOf('2026-11-02', 'field', 'am'), slotOf('2026-11-02', 'kL', 'h09')] }), CONFIG, CATALOG),
+        ['11/2(月)の施設コマは選べません', '11/2(月)の施設コマは選べません']);
 });
 
 test('findSlotConflicts・findDuplicateSlots は予約済みのコマと、申込の中の重なりを見つける', () => {
@@ -141,8 +166,8 @@ test('getStayCountOnDate は予約のその夜の宿泊人数を返し、泊ま�
 
 test('formatSlotName は施設名と時間帯名を出し、知らないキーはそのまま出す', () => {
     assert.strictEqual(formatSlotName(slotOf('2026-11-02', 'gym', 'ev'), CATALOG), '大体育館 夜');
-    assert.strictEqual(formatSlotName(slotOf('2026-11-02', 'kL', 'h09'), CATALOG), '大研修室(1･3研) 9:00~10:00');
-    assert.strictEqual(formatSlotName(slotOf('2026-11-02', 'kL', 'ev'), CATALOG), '大研修室(1･3研) ev', '研修室に区分のキーは使えない');
+    assert.strictEqual(formatSlotName(slotOf('2026-11-02', 'kL1', 'h09'), CATALOG), '大研修室（第１研修室） 9:00~10:00');
+    assert.strictEqual(formatSlotName(slotOf('2026-11-02', 'kL1', 'ev'), CATALOG), '大研修室（第１研修室） ev', '研修室に区分のキーは使えない');
     assert.strictEqual(formatSlotName(slotOf('2026-11-02', 'pool', 'xx'), CATALOG), 'pool xx');
 });
 
@@ -250,11 +275,11 @@ test('findInputMessages：宿泊・施設コマ・食事がどれもないとき
     assert.deepStrictEqual(findInputMessages(buildRequest({ nights: 0, stays: staysOf([]), slots: [slotOf('2026-11-02', 'gym', 'am')] }), CONFIG, CATALOG), []);
     assert.deepStrictEqual(findInputMessages(buildRequest({ slots: [slotOf('2026-11-05', 'gym', 'am')] }), CONFIG, CATALOG), ['11/5(木)の施設コマは選べません']);
     assert.deepStrictEqual(findInputMessages(buildRequest({ slots: [slotOf('2026-11-02', 'pool', 'am')] }), CONFIG, CATALOG), ['11/2(月)の施設コマは選べません']);
-    assert.deepStrictEqual(findInputMessages(buildRequest({ slots: [slotOf('2026-11-02', 'kL', 'am')] }), CONFIG, CATALOG), ['11/2(月)の施設コマは選べません'], '研修室は区分では選べない');
+    assert.deepStrictEqual(findInputMessages(buildRequest({ slots: [slotOf('2026-11-02', 'kL1', 'am')] }), CONFIG, CATALOG), ['11/2(月)の施設コマは選べません'], '研修室は区分では選べない');
     assert.deepStrictEqual(findInputMessages(buildRequest({ slots: [slotOf('2026-11-02', 'gym', 'h09')] }), CONFIG, CATALOG), ['11/2(月)の施設コマは選べません'], '体育館は1時間では選べない');
-    assert.deepStrictEqual(findInputMessages(buildRequest({ slots: [slotOf('2026-11-02', 'kL', 'h08'), slotOf('2026-11-02', 'kL', 'h21')] }), CONFIG, CATALOG),
+    assert.deepStrictEqual(findInputMessages(buildRequest({ slots: [slotOf('2026-11-02', 'kL1', 'h08'), slotOf('2026-11-02', 'kL1', 'h21')] }), CONFIG, CATALOG),
         ['11/2(月)の施設コマは選べません', '11/2(月)の施設コマは選べません'], '9時より前・21時以降は選べない');
-    assert.deepStrictEqual(findInputMessages(buildRequest({ slots: [slotOf('2026-11-02', 'kL', 'h20')] }), CONFIG, CATALOG), []);
+    assert.deepStrictEqual(findInputMessages(buildRequest({ slots: [slotOf('2026-11-02', 'kL1', 'h20')] }), CONFIG, CATALOG), []);
 });
 
 test('findScheduleMessages は今日・過去の日と、受付期間より先の日を止める（境界は可）', () => {

@@ -126,14 +126,15 @@ test('画面：公開用モードで始まり、サンプル投入で◎/△/×�
     assert.strictEqual(initial.selectedDate, dates.today);
     assert.strictEqual(initial.title, 'あおぞらセミナーハウス スケジュール管理表');
     assert.strictEqual(afterSample.emptyHidden, true);
-    // 3日後の夜は4団体・225人で△、施設は陸上（AM・PM予約）と大研（17〜21時）が△
+    // 3日後の夜は4団体・225人で△、施設は陸上グラウンド（AM・PM予約）と大研修室の第１研修室（17〜21時）が△。
+    // 球技場と第３研修室は別の施設なので◎のまま
     assert.strictEqual(afterSample.cells[dates.day3].stay, '△');
-    assert.match(afterSample.cells[dates.day3].facilities, /陸上△/);
-    assert.match(afterSample.cells[dates.day3].facilities, /大研△/);
+    assert.strictEqual(afterSample.cells[dates.day3].facilities, '大体◎ 小体◎ 陸上△ 球技◎ 大研1△ 大研3◎ 小研2◎ MR◎');
     assert.strictEqual(afterSample.cells[dates.day3].isSelected, true);
     assert.strictEqual(afterSample.detailStay, '△');
-    assert.deepStrictEqual([afterSample.units['field:am'].text, afterSample.units['field:ev'].text, afterSample.units['kL:h17'].text, afterSample.units['kL:h09'].text], ['×', '○', '×', '○']);
-    assert.strictEqual(afterSample.unitCount, 3 * 3 + 12 * 3);
+    assert.deepStrictEqual([afterSample.units['track:am'].text, afterSample.units['track:ev'].text, afterSample.units['kL1:h17'].text, afterSample.units['kL1:h09'].text], ['×', '○', '×', '○']);
+    assert.deepStrictEqual([afterSample.units['court:am'].text, afterSample.units['kL3:h17'].text], ['○', '○'], '分割した施設は別々に表示する');
+    assert.strictEqual(afterSample.unitCount, 3 * 4 + 12 * 4, '区分の4施設×3区分と、1時間の4施設×12コマ');
     assert.strictEqual(afterSample.detailStayCount, null);
     assert.deepStrictEqual(afterSample.groupRows, []);
     // 10日後の夜は6団体で×（人数に余裕があっても団体数の上限）
@@ -162,10 +163,10 @@ test('画面：職員用モードに切り替えると、人数/団体数・団�
     assert.match(staff.cells[dates.day3].text, /サンプル高校 陸上部/);
     assert.match(staff.detailStayCount, /^225人 \/ 4団体$/);
     // 施設コマ表：予約済みのコマに「団体名（代表者名・TEL）」。同じ団体の続いた時間は1つのマスにまとめる
-    assert.match(staff.units['field:am'].text, /サンプル高校 陸上部（佐藤 花子・TEL 0000000001）/);
-    assert.deepStrictEqual([staff.units['kL:h17'].colspan, staff.units['kL:h18']], [4, undefined]);
-    assert.match(staff.units['kL:h17'].text, /みどりスポーツクラブ（鈴木 一郎・TEL 0000000002）/);
-    assert.strictEqual(staff.units['kL:h09'].text, '○');
+    assert.match(staff.units['track:am'].text, /サンプル高校 陸上部（佐藤 花子・TEL 0000000001）/);
+    assert.deepStrictEqual([staff.units['kL1:h17'].colspan, staff.units['kL1:h18']], [4, undefined]);
+    assert.match(staff.units['kL1:h17'].text, /みどりスポーツクラブ（鈴木 一郎・TEL 0000000002）/);
+    assert.strictEqual(staff.units['kL1:h09'].text, '○');
     // 宿泊人数の内訳（小中・高校・大学一般 × 男女）と食事の合計（朝食・昼食・夕食・弁当・お茶・おにぎり）
     assert.deepStrictEqual(staff.stayBreakdown, ['小学生・中学生30人30人60人', '高校生20人20人40人', '大学生・一般105人20人125人']);
     assert.deepStrictEqual(staff.mealTotals, ['0食', '40食', '85食', '0食', '45本', '0食']);
@@ -252,7 +253,7 @@ test('画面：公開用データを出力すると個人情報がなく、読�
     assert.strictEqual(loaded.units['mr:h10'].text, '○');
     // 読み込んだデータにない日は、このブラウザの予約があっても空きとして表示する
     assert.strictEqual(loadedOtherDay.detailStay, '◎');
-    assert.strictEqual(loadedOtherDay.units['field:am'].text, '○');
+    assert.strictEqual(loadedOtherDay.units['track:am'].text, '○');
     assert.match(cleared.publicSourceLabel, /このブラウザの予約データから作成/);
     assert.strictEqual(cleared.detailStay, '△');
 });

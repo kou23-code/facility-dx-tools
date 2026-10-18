@@ -120,7 +120,7 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
         states.push(capture());
         fillApplicant();
         document.querySelector('input.slot-check[data-facility="gym"]:not(:disabled)').checked = true;
-        ['h09', 'h10'].forEach((hourKey) => { document.querySelector('input.slot-check[data-facility="kL"][data-time="' + hourKey + '"]').checked = true; });
+        ['h09', 'h10'].forEach((hourKey) => { document.querySelector('input.slot-check[data-facility="kL1"][data-time="' + hourKey + '"]').checked = true; });
         refreshSlots();
         states.push(capture());
         setValue('in_stay_ad_m_0', '96');
@@ -189,7 +189,7 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.deepStrictEqual([parsed.reservation.meals.bf, parsed.reservation.meals.be_maku], [[0, 10, 10], [10, 0, 0]]);
     const firstDay = addDaysToDateString(today, 3);
     assert.deepStrictEqual(parsed.reservation.slots, [{ date: firstDay, facilityKey: 'gym', timeKey: 'am' },
-        { date: firstDay, facilityKey: 'kL', timeKey: 'h09' }, { date: firstDay, facilityKey: 'kL', timeKey: 'h10' }]);
+        { date: firstDay, facilityKey: 'kL1', timeKey: 'h09' }, { date: firstDay, facilityKey: 'kL1', timeKey: 'h10' }]);
     assert.ok(completed.mailHref.startsWith('mailto:reservation@example.com?subject='));
     assert.ok(decodeURIComponent(completed.mailHref).endsWith(completed.code), 'メール本文の最後に1行コード');
     assert.ok(completed.receiptText.includes('予約申込控え') && completed.receiptText.includes('テスト団体'));
@@ -197,14 +197,14 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.ok(completed.receiptText.includes('朝食 20食（'));
     assert.ok(completed.receiptText.includes('※体育館の照明代金、研修室の冷暖房代、および宿泊を伴わない日帰り参加者の施設利用料などは別途料金がかかります'), '控えにも別途料金の案内');
     assert.ok(completed.receiptText.includes('10（人／泊）'));
-    assert.ok(completed.receiptText.includes(`${CATALOG.facilities[0].name} AM、大研修室(1･3研) 9:00~11:00`));
+    assert.ok(completed.receiptText.includes(`${CATALOG.facilities[0].name} AM、大研修室（第１研修室） 9:00~11:00`));
 });
 
 test('画面：日帰り参加人数を区分ごとに入れると、日帰り参加料が概算料金に加わり、確定した予約と控えにも載る', { skip: !BROWSER }, () => {
     const [entered, completed] = renderStates(`
         fillApplicant();
         document.querySelector('input.slot-check[data-facility="gym"]:not(:disabled)').checked = true;
-        ['h09', 'h10'].forEach((hourKey) => { document.querySelector('input.slot-check[data-facility="kL"][data-time="' + hourKey + '"]').checked = true; });
+        ['h09', 'h10'].forEach((hourKey) => { document.querySelector('input.slot-check[data-facility="kL1"][data-time="' + hourKey + '"]').checked = true; });
         refreshSlots();
         setValue('in_day_hs_0', '5');
         setValue('in_day_ad_0', '2');
@@ -308,7 +308,7 @@ test('画面：日帰り（1日）のときだけ料金区分のプルダウン�
         [['in_group', 'テスト少年団'], ['in_representative', '山田 太郎'], ['in_phone', '000-0000-0000'],
          ['in_email', 'test@example.com'], ['in_purpose', '大会・試合'], ['in_nights', '0']].forEach(([id, value]) => setValue(id, value));
         refreshAll();
-        document.querySelector('input.slot-check[data-facility="field"][data-time="am"]').checked = true;
+        document.querySelector('input.slot-check[data-facility="track"][data-time="am"]').checked = true;
         refreshSlots();
         states.push(capture());
         setValue('in_price_type', 'es');

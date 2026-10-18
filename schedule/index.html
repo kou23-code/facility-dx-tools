@@ -179,7 +179,7 @@
 
         // ---------- データの読み書き（localStorage） ----------
         const loadReservations = () => {
-            try { return parseStoredReservations(localStorage.getItem(RESERVATION_STORAGE_KEY)); } catch (error) { return []; }
+            try { return parseStoredReservations(localStorage.getItem(RESERVATION_STORAGE_KEY), CATALOG); } catch (error) { return []; }
         };
         const saveReservations = (reservations) => {
             try { localStorage.setItem(RESERVATION_STORAGE_KEY, serializeReservations(reservations)); return true; } catch (error) { return false; }
@@ -241,7 +241,7 @@
         const buildPublicCellBodyHtml = (date, context) => {
             const publicDay = Schedule.findPublicDay(context.publicSource.schedule, date);
             const staySymbol = judgeStaySymbolOf(publicDay.stayGuests, publicDay.stayGroups);
-            const facilitySymbols = Schedule.summarizeFacilitySymbols(Schedule.mapPublicFacilitySchedule(publicDay, CATALOG));
+            const facilitySymbols = Schedule.summarizeFacilitySymbols(Schedule.mapPublicFacilitySchedule(publicDay, CATALOG), CATALOG);
             return `<div class="text-[11px] mt-0.5" data-stay-symbol="${staySymbol}"><span class="hidden sm:inline text-gray-600">宿泊</span>${buildSymbolHtml(staySymbol, 'text-sm')}</div>${buildFacilityMiniHtml(facilitySymbols)}`;
         };
         // 職員用：宿泊合計人数/団体数と、利用団体名のバッジ（青：その夜に宿泊 ／ 灰：日帰り・チェックアウト日）

@@ -247,7 +247,7 @@
 
         // ---------- 予約データの読み書き（localStorage） ----------
         const loadReservations = () => {
-            try { return parseStoredReservations(localStorage.getItem(RESERVATION_STORAGE_KEY)); } catch (error) { return []; }
+            try { return parseStoredReservations(localStorage.getItem(RESERVATION_STORAGE_KEY), CATALOG); } catch (error) { return []; }
         };
         const saveReservations = (reservations) => {
             try { localStorage.setItem(RESERVATION_STORAGE_KEY, serializeReservations(reservations)); return true; } catch (error) { return false; }

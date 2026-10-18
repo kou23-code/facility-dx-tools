@@ -8,7 +8,7 @@ const { ROOT_DIR, RESERVATION_LOGIC_PATH } = require('./helpers');
 const {
     RESERVATION_STORAGE_KEY, RESERVATION_CODE_TYPE, RESERVATION_CODE_VERSION, RESERVATION_CONFIG: CONFIG, RESERVATION_CATALOG: CATALOG,
     findReservationBlockers, buildAvailabilityRows,
-    isValidReservation, parseStoredReservations, serializeReservations, appendReservation, isSampleReservation, mergeSampleReservations,
+    isValidReservation, migrateLegacySlot, migrateLegacyReservation, parseStoredReservations, serializeReservations, appendReservation, isSampleReservation, mergeSampleReservations,
     createReservationId, createReservation, buildReservationCode, parseReservationCode, importReservationCode,
     buildReservationSummary, buildMailSubject, buildMailBody, buildStaffMailUrl, escapeHtml, createSampleReservations
 } = require(RESERVATION_LOGIC_PATH);
@@ -73,6 +73,47 @@ test('appendReservation・mergeSampleReservations は新しい配列を返し、
     const merged = mergeSampleReservations(withSamples, [{ id: 'SAMPLE-001' }]);
     assert.deepStrictEqual(merged.map((reservation) => reservation.id), ['R20261017-001', 'SAMPLE-001'], '前のサンプルは入れ直す');
     assert.deepStrictEqual([isSampleReservation({ id: 'SAMPLE-003' }), isSampleReservation(RESERVATION)], [true, false]);
+});
+
+// 分割前の施設キー（field：陸上/球技場、kL：大研修室(1･3研)）で保存された過去の予約
+const LEGACY_RESERVATION = Object.freeze({ ...toPlain(RESERVATION), id: 'R20261001-001', slots: [
+    { date: '2026-11-02', facilityKey: 'field', timeKey: 'am' }, { date: '2026-11-02', facilityKey: 'kL', timeKey: 'h09' },
+    { date: '2026-11-03', facilityKey: 'kS', timeKey: 'h10' }] });
+const MIGRATED_SLOTS = [
+    { date: '2026-11-02', facilityKey: 'track', timeKey: 'am' }, { date: '2026-11-02', facilityKey: 'court', timeKey: 'am' },
+    { date: '2026-11-02', facilityKey: 'kL1', timeKey: 'h09' }, { date: '2026-11-02', facilityKey: 'kL3', timeKey: 'h09' },
+    { date: '2026-11-03', facilityKey: 'kS', timeKey: 'h10' }];
+
+test('migrateLegacySlot は分割前の施設キーのコマを、分割後の両方の施設のコマにする（今のキー・知らないキーはそのまま）', () => {
+    assert.deepStrictEqual(toPlain(migrateLegacySlot({ date: '2026-11-02', facilityKey: 'field', timeKey: 'ev' }, CATALOG)),
+        [{ date: '2026-11-02', facilityKey: 'track', timeKey: 'ev' }, { date: '2026-11-02', facilityKey: 'court', timeKey: 'ev' }]);
+    assert.deepStrictEqual(toPlain(migrateLegacySlot({ date: '2026-11-02', facilityKey: 'kL', timeKey: 'h20' }, CATALOG)),
+        [{ date: '2026-11-02', facilityKey: 'kL1', timeKey: 'h20' }, { date: '2026-11-02', facilityKey: 'kL3', timeKey: 'h20' }]);
+    ['gym', 'track', 'kL3', 'pool'].forEach((facilityKey) => assert.deepStrictEqual(
+        toPlain(migrateLegacySlot({ date: '2026-11-02', facilityKey, timeKey: 'am' }, CATALOG)), [{ date: '2026-11-02', facilityKey, timeKey: 'am' }], facilityKey));
+    assert.deepStrictEqual(toPlain(migrateLegacySlot({ date: '2026-11-02', facilityKey: 'field', timeKey: 'am' }, undefined)),
+        [{ date: '2026-11-02', facilityKey: 'field', timeKey: 'am' }], 'catalog がなければそのまま');
+});
+
+test('migrateLegacyReservation は元の予約を書き換えず、施設コマだけを読み替えた新しい予約を返す', () => {
+    const migrated = migrateLegacyReservation(LEGACY_RESERVATION, CATALOG);
+    assert.deepStrictEqual(toPlain(migrated), { ...toPlain(LEGACY_RESERVATION), slots: MIGRATED_SLOTS });
+    assert.strictEqual(LEGACY_RESERVATION.slots[0].facilityKey, 'field');
+    assert.deepStrictEqual(toPlain(migrateLegacyReservation({ ...LEGACY_RESERVATION, slots: [] }, CATALOG).slots), []);
+});
+
+test('parseStoredReservations は分割前の施設キーで保存された予約を読み替え、空き状況の判定に使える', () => {
+    const [migrated] = parseStoredReservations(serializeReservations([LEGACY_RESERVATION]), CATALOG);
+    assert.deepStrictEqual(toPlain(migrated.slots), MIGRATED_SLOTS);
+    const rows = buildAvailabilityRows([migrated], '2026-11-02', 0, { config: CONFIG, catalog: CATALOG });
+    const symbolOf = (key) => rows[0].facilities.find((status) => status.facilityKey === key).symbol;
+    assert.deepStrictEqual(['track', 'court', 'kL1', 'kL3', 'gym'].map(symbolOf), ['△', '△', '△', '△', '◎'], '分割前の予約は両方の施設を使う');
+});
+
+test('parseReservationCode・importReservationCode は分割前の施設キーの1行コードも読み替えて取り込む', () => {
+    const code = buildReservationCode(LEGACY_RESERVATION);
+    assert.deepStrictEqual(toPlain(parseReservationCode(code, CATALOG).reservation.slots), MIGRATED_SLOTS);
+    assert.deepStrictEqual(toPlain(importReservationCode([], code, CATALOG).reservations[0].slots), MIGRATED_SLOTS);
 });
 
 test('buildReservationCode は改行を含まない1行の JSON を作り、parseReservationCode で元に戻せる', () => {
@@ -167,7 +208,8 @@ test('サンプル予約を入れると、既定の日程（3日後から2泊）
     const rows = buildAvailabilityRows(samples, '2026-10-20', 2, { config: CONFIG, catalog: CATALOG });
     assert.deepStrictEqual(rows.map((row) => row.stay?.symbol ?? null), ['△', '◎', null]);
     assert.deepStrictEqual(rows.map((row) => row.facilities.find((status) => status.facilityKey === 'gym').symbol), ['◎', '×', '◎']);
-    assert.deepStrictEqual(rows.map((row) => row.facilities.find((status) => status.facilityKey === 'field').symbol), ['△', '△', '◎']);
+    assert.deepStrictEqual(rows.map((row) => row.facilities.find((status) => status.facilityKey === 'track').symbol), ['△', '△', '◎']);
+    assert.deepStrictEqual(rows.map((row) => row.facilities.find((status) => status.facilityKey === 'court').symbol), ['◎', '◎', '◎'], '球技場は別の施設なので空き');
     assert.strictEqual(buildAvailabilityRows(samples, '2026-10-27', 1, { config: CONFIG, catalog: CATALOG })[0].stay.symbol, '×');
 });
 
@@ -201,11 +243,11 @@ test('formatSlotList は日付ごと・施設ごとにまとめ、研修室の�
     const { formatSlotList } = require(RESERVATION_LOGIC_PATH);
     const slots = [
         { date: '2026-11-02', facilityKey: 'gym', timeKey: 'am' }, { date: '2026-11-02', facilityKey: 'gym', timeKey: 'pm' },
-        { date: '2026-11-02', facilityKey: 'kL', timeKey: 'h09' }, { date: '2026-11-02', facilityKey: 'kL', timeKey: 'h10' },
-        { date: '2026-11-02', facilityKey: 'kL', timeKey: 'h13' }, { date: '2026-11-03', facilityKey: 'mr', timeKey: 'h20' }
+        { date: '2026-11-02', facilityKey: 'kL1', timeKey: 'h09' }, { date: '2026-11-02', facilityKey: 'kL1', timeKey: 'h10' },
+        { date: '2026-11-02', facilityKey: 'kL1', timeKey: 'h13' }, { date: '2026-11-03', facilityKey: 'mr', timeKey: 'h20' }
     ];
     assert.strictEqual(formatSlotList(slots, CATALOG),
-        '11/2(月) 大体育館 AM・PM、大研修室(1･3研) 9:00~11:00・13:00~14:00 ／ 11/3(火) ミーティングルーム 20:00~21:00');
+        '11/2(月) 大体育館 AM・PM、大研修室（第１研修室） 9:00~11:00・13:00~14:00 ／ 11/3(火) ミーティングルーム 20:00~21:00');
     assert.strictEqual(formatSlotList([{ date: '2026-11-02', facilityKey: 'pool', timeKey: 'x' }], CATALOG), '11/2(月) pool x', '知らないキーはそのまま');
     assert.strictEqual(formatSlotList([], CATALOG), '');
 });
@@ -214,6 +256,6 @@ test('サンプル予約の研修室・ミーティングルームは1時間単�
     const samples = createSampleReservations('2026-10-17', CATALOG);
     const rows = buildAvailabilityRows(samples, '2026-10-20', 2, { config: CONFIG, catalog: CATALOG });
     const symbolOf = (row, key) => row.facilities.find((status) => status.facilityKey === key).symbol;
-    assert.deepStrictEqual([symbolOf(rows[0], 'kL'), symbolOf(rows[2], 'mr'), symbolOf(rows[0], 'kS')], ['△', '△', '◎']);
-    assert.deepStrictEqual(samples[1].slots.filter((slot) => slot.facilityKey === 'kL').map((slot) => slot.timeKey), ['h17', 'h18', 'h19', 'h20']);
+    assert.deepStrictEqual([symbolOf(rows[0], 'kL1'), symbolOf(rows[2], 'mr'), symbolOf(rows[0], 'kS'), symbolOf(rows[0], 'kL3')], ['△', '△', '◎', '◎']);
+    assert.deepStrictEqual(samples[1].slots.filter((slot) => slot.facilityKey === 'kL1').map((slot) => slot.timeKey), ['h17', 'h18', 'h19', 'h20']);
 });
