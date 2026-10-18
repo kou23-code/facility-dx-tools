@@ -54,6 +54,11 @@ const CAPTURE_SOURCE = `const capture = () => ({
     lunchValues: Array.from(document.querySelectorAll('#dailyTable input[data-row="meal_lu"]'), (input) => input.value),
     feeTax: document.getElementById('fee_tax').textContent,
     hourHeaders: Array.from(document.querySelectorAll('#slotGrid table:last-of-type thead th'), (cell) => cell.textContent).slice(2),
+    slotGridTitles: Array.from(document.querySelectorAll('#slotGrid .slot-grid-title'), (element) => element.textContent),
+    periodGridHead: Array.from(document.querySelectorAll('#slotGrid table:first-of-type thead th'), (cell) => cell.textContent),
+    hourRoomNames: Array.from(document.querySelectorAll('#slotGrid table:last-of-type tbody th.text-left'), (cell) => cell.textContent),
+    availabilityHead: Array.from(document.querySelectorAll('#availabilityTable thead th'), (cell) => cell.textContent),
+    firstDaySlotDisabled: ['track:am', 'court:am', 'kL1:h17', 'kL3:h17'].map((pair) => document.querySelector('input.slot-check[data-facility="' + pair.split(':')[0] + '"][data-time="' + pair.split(':')[1] + '"]').disabled),
     feeQuantities: Array.from(document.querySelectorAll('#feeTable tbody tr'), (row) => row.cells[2].textContent),
     extraFeeNotes: Array.from(document.querySelectorAll('.extra-fee-note'), (element) => element.textContent),
     removedInputCount: document.querySelectorAll('#in_people').length,
@@ -301,6 +306,30 @@ test('画面：「全日」で1日目の数をコピーでき、利用日数を�
     assert.deepStrictEqual([dayTrip.lunchValues, dayTrip.stayInputs], [['7'], 0], '日帰りは宿泊人数を入力できない');
     assert.strictEqual(dayTrip.dayGuestInputs, 0, '日帰りは合流する宿泊団体がいないので、日帰り参加人数も入力できない');
     assert.deepStrictEqual(dayTrip.staySymbols, [], '日帰りは宿泊の空きを出さない');
+});
+
+test('画面：施設コマ表と空き状況は全8施設で、陸上グラウンドと球技場、第１研修室と第３研修室を別々に予約できる', { skip: !BROWSER }, () => {
+    const states = renderStates(`
+        insertSampleReservations();
+        fillApplicant();
+        states.push(capture());
+        document.querySelector('input.slot-check[data-facility="court"][data-time="am"]').checked = true;
+        document.querySelector('input.slot-check[data-facility="kL3"][data-time="h17"]').checked = true;
+        refreshSlots();
+        states.push(capture());
+    `);
+    const [withSamples, selected] = states;
+    const facilityNames = CATALOG.facilities.map((facility) => facility.name);
+    assert.deepStrictEqual(facilityNames, ['大体育館', '小体育館', '陸上グラウンド', '球技場', '大研修室（第１研修室）', '大研修室（第３研修室）', '小研修室（第２研修室）', 'ミーティングルーム']);
+    assert.deepStrictEqual(withSamples.slotGridTitles, ['区分単位（AM・PM・夜）：大体育館・小体育館・陸上グラウンド・球技場',
+        '1時間単位（9時〜21時）：大研修室（第１研修室）・大研修室（第３研修室）・小研修室（第２研修室）・ミーティングルーム']);
+    assert.deepStrictEqual(withSamples.periodGridHead, ['日付', ...facilityNames.slice(0, 4)]);
+    assert.deepStrictEqual(withSamples.hourRoomNames.slice(0, 4), facilityNames.slice(4), '1日分の部屋の行は4部屋');
+    assert.deepStrictEqual(withSamples.availabilityHead, ['日付', '宿泊', ...facilityNames], '空き状況の表は8施設の列');
+    assert.deepStrictEqual(withSamples.firstDaySlotDisabled, [true, false, true, false], 'サンプルが陸上グラウンドと第１研修室を予約していても、球技場と第３研修室は選べる');
+    assert.ok(['球技場', '大研修室（第３研修室）'].every((label) => selected.feeLabels.includes(label)), selected.feeLabels.join(','));
+    assert.ok(!selected.feeLabels.includes('陸上グラウンド') && !selected.feeLabels.includes('大研修室（第１研修室）'));
+    assert.ok(selected.blockers.every((blocker) => !blocker.includes('すでに予約が入っています')), selected.blockers.join(','));
 });
 
 test('画面：日帰り（1日）のときだけ料金区分のプルダウンが出て、選んだ区分で施設料金を計算する', { skip: !BROWSER }, () => {

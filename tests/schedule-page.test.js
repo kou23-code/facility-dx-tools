@@ -40,6 +40,9 @@ const CAPTURE_SOURCE = `const capture = () => ({
     mealTotals: Array.from(document.querySelectorAll('#mealTotalsTable tbody td'), (cell) => cell.textContent),
     groupRows: Array.from(document.querySelectorAll('#groupTable tbody tr'), (row) => row.dataset.reservationId),
     publicText: ['modeNotice', 'calendar', 'dayDetail', 'calendarLegend'].map((id) => document.getElementById(id).textContent).join(' '),
+    legend: document.getElementById('calendarLegend').textContent,
+    timetableHeadings: Array.from(document.querySelectorAll('#dayDetail .timetable-heading'), (element) => element.textContent),
+    timetableRows: Array.from(document.querySelectorAll('#dayDetail tbody th'), (cell) => cell.textContent),
     importResult: document.getElementById('importResult').textContent,
     publicLoadResult: document.getElementById('publicLoadResult').textContent,
     storageStatus: document.getElementById('storageStatus').textContent,
@@ -135,6 +138,13 @@ test('画面：公開用モードで始まり、サンプル投入で◎/△/×�
     assert.deepStrictEqual([afterSample.units['track:am'].text, afterSample.units['track:ev'].text, afterSample.units['kL1:h17'].text, afterSample.units['kL1:h09'].text], ['×', '○', '×', '○']);
     assert.deepStrictEqual([afterSample.units['court:am'].text, afterSample.units['kL3:h17'].text], ['○', '○'], '分割した施設は別々に表示する');
     assert.strictEqual(afterSample.unitCount, 3 * 4 + 12 * 4, '区分の4施設×3区分と、1時間の4施設×12コマ');
+    assert.deepStrictEqual(afterSample.timetableHeadings, ['区分単位（午前・午後・夜間の3区分）：大体育館・小体育館・陸上グラウンド・球技場',
+        '1時間単位（9-10時〜20-21時）：大研修室（第１研修室）・大研修室（第３研修室）・小研修室（第２研修室）・ミーティングルーム']);
+    assert.deepStrictEqual(afterSample.timetableRows, ['大体育館', '小体育館', '陸上グラウンド', '球技場',
+        '大研修室（第１研修室）', '大研修室（第３研修室）', '小研修室（第２研修室）', 'ミーティングルーム']);
+    assert.ok(afterSample.legend.includes('施設（大体：大体育館、小体：小体育館、陸上：陸上グラウンド、球技：球技場、大研1：大研修室（第１研修室）、'
+        + '大研3：大研修室（第３研修室）、小研2：小研修室（第２研修室）、MR：ミーティングルーム）'), afterSample.legend);
+    assert.strictEqual(afterSample.legend.includes('陸上/球技場'), false, '分割前の施設名は出さない');
     assert.strictEqual(afterSample.detailStayCount, null);
     assert.deepStrictEqual(afterSample.groupRows, []);
     // 10日後の夜は6団体で×（人数に余裕があっても団体数の上限）
