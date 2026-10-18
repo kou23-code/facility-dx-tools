@@ -71,6 +71,15 @@
         <!-- ===================== 申込画面 ===================== -->
         <div id="formView">
             <div class="print-only">予約申込控えは、予約を確定したあとの画面から印刷できます。</div>
+            <!-- 予約編集モード（職員がスケジュール管理表の「編集」から開いたとき。URL は ?edit=予約番号）だけ表示する -->
+            <div id="editBanner" class="no-print hidden mb-4 flex flex-wrap items-center justify-between gap-3 bg-amber-50 border-4 border-amber-500 rounded-lg px-5 py-3">
+                <div>
+                    <div class="text-xl font-bold text-amber-900">予約番号：<span id="editReservationId"></span> の内容を編集中</div>
+                    <div class="text-sm text-amber-900 mt-1">保存されている内容を入力欄に戻しています。直したい項目を変えて「変更を保存する」を押すと、同じ予約番号のまま上書きします。施設コマの重なりと宿泊の上限は、この予約の変更前の内容を除いて確認します。</div>
+                </div>
+                <a id="cancelEditLink" href="../schedule/index.html?mode=staff" class="shrink-0 px-4 py-2 rounded border border-amber-600 text-amber-900 font-bold hover:bg-amber-100">変更せずにスケジュール管理表へ戻る</a>
+            </div>
+            <div id="editNotFound" class="no-print hidden mb-4 bg-red-50 border-2 border-red-500 rounded-lg px-5 py-3 text-sm text-red-800"></div>
             <div class="no-print flex flex-col xl:flex-row gap-6">
                 <!-- 左側：入力パネル -->
                 <form id="reservationForm" class="w-full xl:w-[58%] bg-white rounded-lg shadow-md h-fit border-t-4 border-blue-600" onsubmit="return false" novalidate>
@@ -199,6 +208,12 @@
         <!-- ===================== 完了画面 ===================== -->
         <div id="completeView" class="hidden">
             <div class="no-print bg-white rounded-lg shadow-md p-5 mb-6 max-w-[210mm] mx-auto">
+                <!-- 予約編集モードで保存したときだけ表示する（職員の操作なので、メールの送信は不要） -->
+                <div id="editSavedBox" class="hidden bg-green-50 border-4 border-green-600 rounded-lg p-5 text-center">
+                    <div class="text-2xl font-bold text-green-800">変更を保存しました。</div>
+                    <div class="text-sm text-gray-700 mt-1">（予約番号 <span id="editSavedId" class="font-bold"></span> を同じ番号のまま上書きしました）</div>
+                    <a id="backToScheduleButton" href="../schedule/index.html?mode=staff" class="inline-block mt-4 bg-green-700 text-white text-xl font-bold py-3 px-10 rounded-lg shadow-lg hover:bg-green-800">スケジュール管理表へ戻る</a>
+                </div>
                 <!-- メールの送り忘れを防ぐため、送信が済むまで予約は完了していないことを強調する -->
                 <div id="sendAlert" class="bg-red-50 border-4 border-red-500 rounded-lg p-5 text-center">
                     <div class="text-2xl font-bold text-red-700">※まだ予約は完了していません！</div>
@@ -211,7 +226,7 @@
                 </div>
                 <div class="flex flex-wrap justify-between items-center gap-2 mt-4">
                     <button type="button" id="printButton" onclick="printReceipt()" class="text-sm px-4 py-2 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">予約申込控えを印刷・PDF保存（任意）</button>
-                    <button type="button" onclick="startNewReservation()" class="text-sm px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50">新しい予約を申し込む</button>
+                    <button type="button" id="newReservationButton" onclick="startNewReservation()" class="text-sm px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50">新しい予約を申し込む</button>
                 </div>
             </div>
             <!-- 予約申込控え（A4印刷エリア） -->
@@ -384,7 +399,13 @@
         const readSelectedSlots = () => Array.from(document.querySelectorAll('input.slot-check:checked'),
             (box) => ({ date: box.dataset.date, facilityKey: box.dataset.facility, timeKey: box.dataset.time }));
         const readRequest = () => buildRequest(readFormValues(), readSelectedSlots(), CATALOG);
-        const buildContext = () => ({ reservations: loadReservations(), config: ACTIVE_CONFIG, catalog: CATALOG, today: getToday() });
+        // 予約編集モードで編集中の予約番号（新規の申込なら空文字）
+        const readEditingId = () => byId('reservationForm').dataset.editingId ?? '';
+        // 編集中は、その予約の変更前の内容を除いた一覧で、施設コマの重なり・宿泊の上限を確認する
+        const buildContext = () => {
+            const editingId = readEditingId();
+            return { reservations: excludeReservationById(loadReservations(), editingId), config: ACTIVE_CONFIG, catalog: CATALOG, today: getToday(), editingId };
+        };
 
         // ---------- 施設コマの表 ----------
         // 予約済みで選んでいないコマは押せない。予約済みなのに選んでいるコマ（あとから埋まった）は赤くして外せるようにする
@@ -497,7 +518,7 @@
             renderFee(calculateReservationFee(request, context.catalog), context.catalog);
             renderGuard(request, context);
             renderDailyTotals(request, context.catalog);
-            renderStorageStatus(context.reservations);
+            renderStorageStatus(loadReservations());
         };
         // 申込者・人数・宿泊人数・食事が変わったとき
         const refreshSummary = () => refreshSummaryWith(readRequest(), buildContext());
@@ -518,16 +539,56 @@
             refreshSummaryWith(readRequest(), context);
         };
 
-        // ---------- 予約の確定 ----------
+        // ---------- 予約の確定（編集中は、同じ予約番号のまま上書きする） ----------
+        const buildConfirmedReservation = (request, context, now) => {
+            if (!context.editingId) return createReservation(request, context.reservations, now, context.catalog);
+            const original = findReservationById(loadReservations(), context.editingId) ?? { id: context.editingId, createdAt: now };
+            return updateReservation(original, request, now, context.catalog);
+        };
         const confirmReservation = () => {
             const context = buildContext();
             const request = readRequest();
             if (findReservationBlockers(request, context).length > 0) { refreshAll(); showToast('予約できない内容があります。画面の案内を確認してください。'); return; }
-            const reservation = createReservation(request, context.reservations, toLocalDateTimeString(new Date()), context.catalog);
-            const savedReservations = appendReservation(context.reservations, reservation);
+            const reservation = buildConfirmedReservation(request, context, toLocalDateTimeString(new Date()));
+            const savedReservations = context.editingId ? replaceReservation(loadReservations(), reservation) : appendReservation(context.reservations, reservation);
             if (!saveReservations(savedReservations)) { showToast('このブラウザでは予約を保存できませんでした。'); return; }
             renderStorageStatus(savedReservations);
-            showCompleteView(reservation);
+            showCompleteView(reservation, Boolean(context.editingId));
+        };
+
+        // ---------- 予約編集モード（?edit=予約番号） ----------
+        // formValues のキーと、入力欄の id
+        const SIMPLE_FIELD_IDS = Object.freeze([['groupName', 'in_group'], ['representative', 'in_representative'], ['phone', 'in_phone'], ['email', 'in_email'],
+            ['purpose', 'in_purpose'], ['startDate', 'in_start'], ['nights', 'in_nights'], ['priceType', 'in_price_type']]);
+        // 保存されている予約の内容を、すべての入力欄（日ごとの表・施設コマを含む）に戻す
+        const restoreFormValues = (formValues, slots) => {
+            SIMPLE_FIELD_IDS.forEach(([key, id]) => { byId(id).value = formValues[key]; });
+            const context = buildContext();
+            const request = buildRequest(formValues, slots, context.catalog);
+            renderPriceTypeField(request);
+            renderDailyTable(request, formValues, context);
+            renderSlotGrid(request, context);
+            refreshSummaryWith(readRequest(), context);
+        };
+        // 編集中の表示（画面上部の案内・確定ボタンの文言）。職員の操作なので、利用開始日は受付期間の外の日も選べるようにする
+        const renderEditMode = (id) => {
+            byId('editBanner').classList.remove('hidden');
+            byId('editReservationId').textContent = id;
+            byId('confirmButton').textContent = '変更を保存する';
+            byId('in_start').min = '';
+            byId('in_start').max = '';
+        };
+        const renderEditNotFound = (id) => {
+            byId('editNotFound').textContent = `予約番号 ${id} の予約が、このブラウザの予約データに見つかりません。スケジュール管理表で予約番号を確認してください（このまま入力すると、新しい予約として申し込みます）。`;
+            byId('editNotFound').classList.remove('hidden');
+        };
+        // 予約編集モードを始める（見つからなければ案内を出し、新しい予約の入力のままにする）
+        const openEditMode = (id) => {
+            const reservation = findReservationById(loadReservations(), id);
+            if (!reservation) { renderEditNotFound(id); return; }
+            byId('reservationForm').dataset.editingId = id;
+            renderEditMode(id);
+            restoreFormValues(buildFormValuesFromReservation(reservation, CATALOG), reservation.slots);
         };
 
         // ---------- 完了画面・予約申込控え ----------
@@ -555,7 +616,15 @@
             byId('completeView').classList.toggle('hidden', !isComplete);
             window.scrollTo(0, 0);
         };
-        const showCompleteView = (reservation) => {
+        // isEdit：予約編集モードで保存したとき（メールの送信案内の代わりに、スケジュール管理表へ戻るボタンを出す）
+        const renderCompleteMode = (reservation, isEdit) => {
+            byId('sendAlert').classList.toggle('hidden', isEdit);
+            byId('editSavedBox').classList.toggle('hidden', !isEdit);
+            byId('newReservationButton').classList.toggle('hidden', isEdit);
+            byId('editSavedId').textContent = reservation.id;
+        };
+        const showCompleteView = (reservation, isEdit) => {
+            renderCompleteMode(reservation, isEdit);
             byId('receipt').innerHTML = buildReceiptHtml(reservation, ACTIVE_FACILITY_INFO, CATALOG);
             byId('receipt').dataset.reservationId = reservation.id;
             byId('complete_id').textContent = reservation.id;
@@ -617,6 +686,8 @@
             renderFormParts(ACTIVE_CONFIG, CATALOG);
             setDefaultSchedule(getToday(), ACTIVE_CONFIG);
             refreshAll();
+            const editId = resolveEditReservationId(location.search);
+            if (editId) openEditMode(editId);
             // マウスホイールで数字が勝手に変わるのを防ぐ
             document.addEventListener('wheel', (event) => {
                 if (event.target.type === 'number' && document.activeElement === event.target) event.target.blur();
