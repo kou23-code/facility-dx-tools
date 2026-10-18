@@ -14,9 +14,6 @@
     const PUBLIC_SCHEDULE_TYPE = 'facility_dx_public_schedule'; // 公開用データ（JSON）の種類
     const PUBLIC_SCHEDULE_VERSION = 1;                          // 公開用データ（JSON）の版
 
-    // カレンダーのマスに出す施設の略称（catalog.facilities のキーごと。ないときは施設名を出す）
-    const FACILITY_SHORT_NAMES = Object.freeze({ gym: '大体', gym_s: '小体', field: '陸上', kL: '大研', kS: '小研', mr: 'MR' });
-
     // 取り込むときの1日（1泊）あたりの上限（全団体の合計宿泊人数・宿泊団体数）
     const STAY_LIMITS = Object.freeze({ stayCapacity: 300, maxStayGroups: 6 });
 
@@ -133,6 +130,16 @@
     const mapFacilitySchedule = (reservationList, date, catalog) => catalog.facilities
         .map((facility) => buildFacilitySchedule(reservationList, date, facility, catalog));
 
+    // ---------- 分割前の施設キーの読み替え（catalog.legacyFacilityKeys。陸上/球技場 → 陸上グラウンドと球技場 など） ----------
+    // 分割前の施設キーのコマを、分割後の施設ごとのコマの一覧にする（今の施設キー・知らないキーはそのまま1つ）
+    const migrateLegacySlot = (slot, catalog) => {
+        const facilityKeys = catalog.legacyFacilityKeys?.[slot?.facilityKey];
+        return facilityKeys ? facilityKeys.map((facilityKey) => ({ ...slot, facilityKey })) : [slot];
+    };
+    // listKey（予約は slots、公開用データの1日分は bookedSlots）の施設コマを読み替えた、新しいオブジェクト（配列がなければそのまま）
+    const migrateLegacySlotList = (value, listKey, catalog) => (Array.isArray(value?.[listKey])
+        ? { ...value, [listKey]: value[listKey].flatMap((slot) => migrateLegacySlot(slot, catalog)) } : value);
+
     // ---------- 職員取込用の1行コード（予約システムのメールに載る JSON。削除は action: 'delete' と予約番号 id） ----------
     // 取込のときの文言用の "2026-11-03 大体育館 AM"
     const formatSlotLabel = (slot, catalog) => {
@@ -216,14 +223,14 @@
         const operation = hasReservationId(reservationList, reservation.id) ? 'updated' : 'added';
         return { ok: true, operation, id: reservation.id, reservations: upsertReservation(reservationList, reservation) };
     };
-    // 1行コードを予約の一覧に反映する。新しい予約番号なら追加、同じ予約番号があれば更新、action: 'delete' なら削除
+    // 1行コードを予約の一覧に反映する。新しい予約番号なら追加、同じ予約番号があれば更新、action: 'delete' なら削除（分割前の施設キーは読み替える）
     // 成功：{ ok: true, operation: 'added' | 'updated' | 'deleted', id, reservations（新しい一覧） } ／ 失敗：{ ok: false, errors }
     // context：{ catalog, limits（STAY_LIMITS） }。元の一覧は書き換えない
     const applyReservationCode = (reservationList, codeText, context) => {
         const result = parseScheduleCode(codeText);
         if (!result.ok) return result;
         if (result.code.action === 'delete') return applyDeleteCode(reservationList, result.code.id);
-        return applyUpsertCode(reservationList, result.code.reservation, context);
+        return applyUpsertCode(reservationList, migrateLegacySlotList(result.code.reservation, 'slots', context.catalog), context);
     };
     // 予約を削除する1行コード
     const buildDeleteCode = (id) => JSON.stringify({ type: SCHEDULE_CODE_TYPE, version: SCHEDULE_CODE_VERSION, action: 'delete', id });
@@ -261,13 +268,14 @@
         bookedSlots: day.bookedSlots.map((slot) => ({ facilityKey: slot.facilityKey, timeKey: slot.timeKey }))
     });
     const pickGeneratedAt = (value) => (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? value : '');
-    // 公開用データの JSON を読み取る（{ ok: true, schedule: { generatedAt, days } } または { ok: false, errors }）
+    // 公開用データの JSON を読み取る（{ ok: true, schedule: { generatedAt, days } } または { ok: false, errors }。分割前の施設キーは読み替える）
     const parsePublicSchedule = (text, catalog) => {
         const parsed = safeParseJson(typeof text === 'string' ? text.trim() : '');
         if (parsed?.type !== PUBLIC_SCHEDULE_TYPE) return { ok: false, errors: ['公開用スケジュールデータではありません'] };
         if (parsed.version !== PUBLIC_SCHEDULE_VERSION) return { ok: false, errors: [`対応していない版の公開用データです（version ${parsed.version}）`] };
-        if (!Array.isArray(parsed.days) || !parsed.days.every((day) => isPublicDay(day, catalog))) return { ok: false, errors: ['公開用データの内容が正しくありません'] };
-        return { ok: true, schedule: { generatedAt: pickGeneratedAt(parsed.generatedAt), days: parsed.days.map(pickPublicDay) } };
+        const days = Array.isArray(parsed.days) ? parsed.days.map((day) => migrateLegacySlotList(day, 'bookedSlots', catalog)) : null;
+        if (!days || !days.every((day) => isPublicDay(day, catalog))) return { ok: false, errors: ['公開用データの内容が正しくありません'] };
+        return { ok: true, schedule: { generatedAt: pickGeneratedAt(parsed.generatedAt), days: days.map(pickPublicDay) } };
     };
     // 公開用データの1日分（その日の記録がなければ、宿泊0人・施設コマなし）
     const findPublicDay = (publicSchedule, date) => publicSchedule.days.find((day) => day.date === date)
@@ -288,9 +296,12 @@
         if (bookedCount === 0) return '◎';
         return bookedCount >= units.length ? '×' : '△';
     };
+    // カレンダーのマスに出す施設の略称（catalog.facilities の shortName。ないときは施設名を出す）
+    const findFacilityShortName = (facilitySchedule, catalog) => catalog.facilities
+        .find((facility) => facility.key === facilitySchedule.facilityKey)?.shortName ?? facilitySchedule.name;
     // カレンダーのマスに出す、施設ごとの略称と記号
-    const summarizeFacilitySymbols = (facilitySchedules) => facilitySchedules.map((facilitySchedule) => ({
-        facilityKey: facilitySchedule.facilityKey, shortName: FACILITY_SHORT_NAMES[facilitySchedule.facilityKey] ?? facilitySchedule.name,
+    const summarizeFacilitySymbols = (facilitySchedules, catalog) => facilitySchedules.map((facilitySchedule) => ({
+        facilityKey: facilitySchedule.facilityKey, shortName: findFacilityShortName(facilitySchedule, catalog),
         symbol: judgeFacilityDaySymbol(facilitySchedule.units)
     }));
 
@@ -362,10 +373,10 @@
         SCHEDULE_CODE_TYPE, SCHEDULE_CODE_VERSION, STAY_THRESHOLDS, STAY_LIMITS, MEAL_SUMMARY_ITEMS,
         isValidDateString, addDaysToDateString, countDaysBetween, findNightIndex, findDayIndex, countStayOnDate,
         countStayGuests, countStayGroups, buildStayBreakdown, buildMealTotals, summarizeDailyReservations, judgeStaySymbol,
-        listTimeUnits, isSameSlot, mapFacilitySchedule,
+        listTimeUnits, isSameSlot, mapFacilitySchedule, migrateLegacySlot, migrateLegacySlotList,
         isImportableReservation, upsertReservation, parseScheduleCode, applyReservationCode, buildDeleteCode,
         buildPublicSchedule,
-        PUBLIC_SCHEDULE_TYPE, PUBLIC_SCHEDULE_VERSION, FACILITY_SHORT_NAMES, serializePublicSchedule, parsePublicSchedule,
+        PUBLIC_SCHEDULE_TYPE, PUBLIC_SCHEDULE_VERSION, serializePublicSchedule, parsePublicSchedule,
         findPublicDay, mapPublicFacilitySchedule, judgeFacilityDaySymbol, summarizeFacilitySymbols,
         toMonthKey, parseMonthKey, toMonthKeyOfDate, shiftMonthKey, formatMonthLabel, buildCalendarWeeks,
         resolveInitialMode, buildModeSearch, listReservationsOnDate, listGroupBadges, buildGroupDailyRows, mergeBookedUnits

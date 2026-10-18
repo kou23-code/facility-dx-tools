@@ -54,6 +54,11 @@ const CAPTURE_SOURCE = `const capture = () => ({
     lunchValues: Array.from(document.querySelectorAll('#dailyTable input[data-row="meal_lu"]'), (input) => input.value),
     feeTax: document.getElementById('fee_tax').textContent,
     hourHeaders: Array.from(document.querySelectorAll('#slotGrid table:last-of-type thead th'), (cell) => cell.textContent).slice(2),
+    slotGridTitles: Array.from(document.querySelectorAll('#slotGrid .slot-grid-title'), (element) => element.textContent),
+    periodGridHead: Array.from(document.querySelectorAll('#slotGrid table:first-of-type thead th'), (cell) => cell.textContent),
+    hourRoomNames: Array.from(document.querySelectorAll('#slotGrid table:last-of-type tbody th.text-left'), (cell) => cell.textContent),
+    availabilityHead: Array.from(document.querySelectorAll('#availabilityTable thead th'), (cell) => cell.textContent),
+    firstDaySlotDisabled: ['track:am', 'court:am', 'kL1:h17', 'kL3:h17'].map((pair) => document.querySelector('input.slot-check[data-facility="' + pair.split(':')[0] + '"][data-time="' + pair.split(':')[1] + '"]').disabled),
     feeQuantities: Array.from(document.querySelectorAll('#feeTable tbody tr'), (row) => row.cells[2].textContent),
     extraFeeNotes: Array.from(document.querySelectorAll('.extra-fee-note'), (element) => element.textContent),
     removedInputCount: document.querySelectorAll('#in_people').length,
@@ -120,7 +125,7 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
         states.push(capture());
         fillApplicant();
         document.querySelector('input.slot-check[data-facility="gym"]:not(:disabled)').checked = true;
-        ['h09', 'h10'].forEach((hourKey) => { document.querySelector('input.slot-check[data-facility="kL"][data-time="' + hourKey + '"]').checked = true; });
+        ['h09', 'h10'].forEach((hourKey) => { document.querySelector('input.slot-check[data-facility="kL1"][data-time="' + hourKey + '"]').checked = true; });
         refreshSlots();
         states.push(capture());
         setValue('in_stay_ad_m_0', '96');
@@ -189,7 +194,7 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.deepStrictEqual([parsed.reservation.meals.bf, parsed.reservation.meals.be_maku], [[0, 10, 10], [10, 0, 0]]);
     const firstDay = addDaysToDateString(today, 3);
     assert.deepStrictEqual(parsed.reservation.slots, [{ date: firstDay, facilityKey: 'gym', timeKey: 'am' },
-        { date: firstDay, facilityKey: 'kL', timeKey: 'h09' }, { date: firstDay, facilityKey: 'kL', timeKey: 'h10' }]);
+        { date: firstDay, facilityKey: 'kL1', timeKey: 'h09' }, { date: firstDay, facilityKey: 'kL1', timeKey: 'h10' }]);
     assert.ok(completed.mailHref.startsWith('mailto:reservation@example.com?subject='));
     assert.ok(decodeURIComponent(completed.mailHref).endsWith(completed.code), 'メール本文の最後に1行コード');
     assert.ok(completed.receiptText.includes('予約申込控え') && completed.receiptText.includes('テスト団体'));
@@ -197,14 +202,14 @@ test('画面：サンプル投入で◎/△/×が出て、定員超過は確定�
     assert.ok(completed.receiptText.includes('朝食 20食（'));
     assert.ok(completed.receiptText.includes('※体育館の照明代金、研修室の冷暖房代、および宿泊を伴わない日帰り参加者の施設利用料などは別途料金がかかります'), '控えにも別途料金の案内');
     assert.ok(completed.receiptText.includes('10（人／泊）'));
-    assert.ok(completed.receiptText.includes(`${CATALOG.facilities[0].name} AM、大研修室(1･3研) 9:00~11:00`));
+    assert.ok(completed.receiptText.includes(`${CATALOG.facilities[0].name} AM、大研修室（第１研修室） 9:00~11:00`));
 });
 
 test('画面：日帰り参加人数を区分ごとに入れると、日帰り参加料が概算料金に加わり、確定した予約と控えにも載る', { skip: !BROWSER }, () => {
     const [entered, completed] = renderStates(`
         fillApplicant();
         document.querySelector('input.slot-check[data-facility="gym"]:not(:disabled)').checked = true;
-        ['h09', 'h10'].forEach((hourKey) => { document.querySelector('input.slot-check[data-facility="kL"][data-time="' + hourKey + '"]').checked = true; });
+        ['h09', 'h10'].forEach((hourKey) => { document.querySelector('input.slot-check[data-facility="kL1"][data-time="' + hourKey + '"]').checked = true; });
         refreshSlots();
         setValue('in_day_hs_0', '5');
         setValue('in_day_ad_0', '2');
@@ -303,12 +308,36 @@ test('画面：「全日」で1日目の数をコピーでき、利用日数を�
     assert.deepStrictEqual(dayTrip.staySymbols, [], '日帰りは宿泊の空きを出さない');
 });
 
+test('画面：施設コマ表と空き状況は全8施設で、陸上グラウンドと球技場、第１研修室と第３研修室を別々に予約できる', { skip: !BROWSER }, () => {
+    const states = renderStates(`
+        insertSampleReservations();
+        fillApplicant();
+        states.push(capture());
+        document.querySelector('input.slot-check[data-facility="court"][data-time="am"]').checked = true;
+        document.querySelector('input.slot-check[data-facility="kL3"][data-time="h17"]').checked = true;
+        refreshSlots();
+        states.push(capture());
+    `);
+    const [withSamples, selected] = states;
+    const facilityNames = CATALOG.facilities.map((facility) => facility.name);
+    assert.deepStrictEqual(facilityNames, ['大体育館', '小体育館', '陸上グラウンド', '球技場', '大研修室（第１研修室）', '大研修室（第３研修室）', '小研修室（第２研修室）', 'ミーティングルーム']);
+    assert.deepStrictEqual(withSamples.slotGridTitles, ['区分単位（AM・PM・夜）：大体育館・小体育館・陸上グラウンド・球技場',
+        '1時間単位（9時〜21時）：大研修室（第１研修室）・大研修室（第３研修室）・小研修室（第２研修室）・ミーティングルーム']);
+    assert.deepStrictEqual(withSamples.periodGridHead, ['日付', ...facilityNames.slice(0, 4)]);
+    assert.deepStrictEqual(withSamples.hourRoomNames.slice(0, 4), facilityNames.slice(4), '1日分の部屋の行は4部屋');
+    assert.deepStrictEqual(withSamples.availabilityHead, ['日付', '宿泊', ...facilityNames], '空き状況の表は8施設の列');
+    assert.deepStrictEqual(withSamples.firstDaySlotDisabled, [true, false, true, false], 'サンプルが陸上グラウンドと第１研修室を予約していても、球技場と第３研修室は選べる');
+    assert.ok(['球技場', '大研修室（第３研修室）'].every((label) => selected.feeLabels.includes(label)), selected.feeLabels.join(','));
+    assert.ok(!selected.feeLabels.includes('陸上グラウンド') && !selected.feeLabels.includes('大研修室（第１研修室）'));
+    assert.ok(selected.blockers.every((blocker) => !blocker.includes('すでに予約が入っています')), selected.blockers.join(','));
+});
+
 test('画面：日帰り（1日）のときだけ料金区分のプルダウンが出て、選んだ区分で施設料金を計算する', { skip: !BROWSER }, () => {
     const states = renderStates(`
         [['in_group', 'テスト少年団'], ['in_representative', '山田 太郎'], ['in_phone', '000-0000-0000'],
          ['in_email', 'test@example.com'], ['in_purpose', '大会・試合'], ['in_nights', '0']].forEach(([id, value]) => setValue(id, value));
         refreshAll();
-        document.querySelector('input.slot-check[data-facility="field"][data-time="am"]').checked = true;
+        document.querySelector('input.slot-check[data-facility="track"][data-time="am"]').checked = true;
         refreshSlots();
         states.push(capture());
         setValue('in_price_type', 'es');

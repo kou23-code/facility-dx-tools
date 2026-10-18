@@ -119,14 +119,20 @@ const RESERVATION_CATALOG = deepFreeze({
     // billing：'period' は区分（periods）ごと、'hour' は1時間（hourSlots）ごとの料金
     // prices：stay = 宿泊利用料金、day = 日帰り専有料金 ／ Adult = 大学・一般、Youth = 小中高
     // joinPrices：日帰り参加料（宿泊団体に日帰りで合流する人の、その施設を使う日1日あたりの料金。adult = 大学・一般、youth = 小中高）
+    // shortName：スケジュール管理表の月間カレンダーのマスに出す略称
+    // 陸上グラウンドと球技場、大研修室の第１研修室と第３研修室は、それぞれ別に予約でき、料金の単価は分割前と同じ
     facilities: [
-        { key: 'gym', name: '大体育館', billing: 'period', prices: { stayAdult: 8050, stayYouth: 5370, dayAdult: 10060, dayYouth: 6710 }, joinPrices: { adult: 320, youth: 220 } },
-        { key: 'gym_s', name: '小体育館', billing: 'period', prices: { stayAdult: 4030, stayYouth: 2690, dayAdult: 5030, dayYouth: 3360 }, joinPrices: { adult: 320, youth: 210 } },
-        { key: 'field', name: '陸上/球技場', billing: 'period', prices: { stayAdult: 5280, stayYouth: 3520, dayAdult: 6600, dayYouth: 4400 }, joinPrices: { adult: 320, youth: 220 } },
-        { key: 'kL', name: '大研修室(1･3研)', billing: 'hour', prices: { stayAdult: 950, stayYouth: 950, dayAdult: 1890, dayYouth: 1890 } },
-        { key: 'kS', name: '小研修室(2研)', billing: 'hour', prices: { stayAdult: 630, stayYouth: 630, dayAdult: 1260, dayYouth: 1260 } },
-        { key: 'mr', name: 'ミーティングルーム', billing: 'hour', prices: { stayAdult: 330, stayYouth: 330, dayAdult: 660, dayYouth: 660 } }
+        { key: 'gym', name: '大体育館', shortName: '大体', billing: 'period', prices: { stayAdult: 8050, stayYouth: 5370, dayAdult: 10060, dayYouth: 6710 }, joinPrices: { adult: 320, youth: 220 } },
+        { key: 'gym_s', name: '小体育館', shortName: '小体', billing: 'period', prices: { stayAdult: 4030, stayYouth: 2690, dayAdult: 5030, dayYouth: 3360 }, joinPrices: { adult: 320, youth: 210 } },
+        { key: 'track', name: '陸上グラウンド', shortName: '陸上', billing: 'period', prices: { stayAdult: 5280, stayYouth: 3520, dayAdult: 6600, dayYouth: 4400 }, joinPrices: { adult: 320, youth: 220 } },
+        { key: 'court', name: '球技場', shortName: '球技', billing: 'period', prices: { stayAdult: 5280, stayYouth: 3520, dayAdult: 6600, dayYouth: 4400 }, joinPrices: { adult: 320, youth: 220 } },
+        { key: 'kL1', name: '大研修室（第１研修室）', shortName: '大研1', billing: 'hour', prices: { stayAdult: 950, stayYouth: 950, dayAdult: 1890, dayYouth: 1890 } },
+        { key: 'kL3', name: '大研修室（第３研修室）', shortName: '大研3', billing: 'hour', prices: { stayAdult: 950, stayYouth: 950, dayAdult: 1890, dayYouth: 1890 } },
+        { key: 'kS', name: '小研修室（第２研修室）', shortName: '小研2', billing: 'hour', prices: { stayAdult: 630, stayYouth: 630, dayAdult: 1260, dayYouth: 1260 } },
+        { key: 'mr', name: 'ミーティングルーム', shortName: 'MR', billing: 'hour', prices: { stayAdult: 330, stayYouth: 330, dayAdult: 660, dayYouth: 660 } }
     ],
+    // 分割前の施設キー → 分割後の施設キー（分割前の「陸上/球技場」「大研修室(1･3研)」は両方の施設を使う予約として読み替える）
+    legacyFacilityKeys: { field: ['track', 'court'], kL: ['kL1', 'kL3'] },
     // 日帰り参加料の単価のグループ（日帰り参加人数は priceTypes の3区分で入力し、小中高は同じ単価）
     joinPriceGroups: [{ key: 'youth', name: '小中高', priceTypes: ['es', 'hs'] }, { key: 'adult', name: '大学・一般', priceTypes: ['ad'] }],
     dayTripPriceType: 'ad', // 日帰り（0泊）の料金区分の初期値。2日以上で宿泊者がいないときの施設料金の区分にも使う
@@ -401,7 +407,7 @@ const findCapacityOverflows = (reservations, request, capacity) => listStayNight
 // 日程の外の日、または知らない施設・その施設で選べない時間の施設コマ
 const findInvalidSlots = (request, catalog) => request.slots.filter((slot) => !listUsageDates(request.startDate, request.nights).includes(slot.date)
     || !findByKey(catalog.facilities, slot.facilityKey) || !findTimeUnit(slot, catalog));
-// "大体育館 AM" ／ "大研修室(1･3研) 9:00~10:00"（知らないキーはそのまま出す）
+// "大体育館 AM" ／ "大研修室（第１研修室） 9:00~10:00"（知らないキーはそのまま出す）
 const formatSlotName = (slot, catalog) => `${findByKey(catalog.facilities, slot.facilityKey)?.name ?? slot.facilityKey} ${findTimeUnit(slot, catalog)?.label ?? slot.timeKey}`;
 // 宿泊する団体数が上限に達している夜（{ date, groups }）。その夜に泊まらない（0人）なら対象外
 const findGroupLimitOverflows = (reservations, request, maxStayGroups) => listStayNights(request.startDate, request.nights)
@@ -523,10 +529,19 @@ const isValidReservation = (value) => typeof value === 'object' && value !== nul
 const safeParseJson = (text) => {
     try { return JSON.parse(text); } catch (error) { return null; }
 };
-// 保存データの文字列から予約の一覧を作る（壊れたデータは空、形の違う予約は除く）
-const parseStoredReservations = (rawText) => {
+// 分割前の施設キーのコマを、分割後の施設ごとのコマの一覧にする（今の施設キー・知らないキーはそのまま1つ）
+const migrateLegacySlot = (slot, catalog) => {
+    const facilityKeys = catalog?.legacyFacilityKeys?.[slot?.facilityKey];
+    return facilityKeys ? facilityKeys.map((facilityKey) => ({ ...slot, facilityKey })) : [slot];
+};
+// 分割前の施設キーを持つ過去の予約を、分割後の施設キーにした新しい予約にする
+const migrateLegacyReservation = (reservation, catalog) => ({
+    ...reservation, slots: reservation.slots.flatMap((slot) => migrateLegacySlot(slot, catalog))
+});
+// 保存データの文字列から予約の一覧を作る（壊れたデータは空、形の違う予約は除く。分割前の施設キーは読み替える）
+const parseStoredReservations = (rawText, catalog) => {
     const parsed = safeParseJson(rawText);
-    return Array.isArray(parsed) ? parsed.filter(isValidReservation) : [];
+    return Array.isArray(parsed) ? parsed.filter(isValidReservation).map((reservation) => migrateLegacyReservation(reservation, catalog)) : [];
 };
 const serializeReservations = (reservations) => JSON.stringify(reservations);
 const appendReservation = (reservations, reservation) => [...reservations, reservation];
@@ -550,17 +565,17 @@ const createReservation = (request, reservations, createdAt, catalog) => ({
 // ---------- 職員取込用の1行コード ----------
 // 改行を含まない1行の JSON（文字列の中の改行も \n に置き換わる）
 const buildReservationCode = (reservation) => JSON.stringify({ type: RESERVATION_CODE_TYPE, version: RESERVATION_CODE_VERSION, reservation });
-// 1行コードを読み取る（{ ok: true, reservation } または { ok: false, error }）
-const parseReservationCode = (codeText) => {
+// 1行コードを読み取る（{ ok: true, reservation } または { ok: false, error }。分割前の施設キーは読み替える）
+const parseReservationCode = (codeText, catalog) => {
     const parsed = safeParseJson(trimText(codeText));
     if (parsed?.type !== RESERVATION_CODE_TYPE) return { ok: false, error: '予約の取込用コードではありません' };
     if (parsed.version !== RESERVATION_CODE_VERSION) return { ok: false, error: `対応していない版のコードです（version ${parsed.version}）` };
     if (!isValidReservation(parsed.reservation)) return { ok: false, error: '予約の内容が正しくありません' };
-    return { ok: true, reservation: parsed.reservation };
+    return { ok: true, reservation: migrateLegacyReservation(parsed.reservation, catalog) };
 };
 // 1行コードの予約を一覧に加える（同じ予約番号があれば加えない）
-const importReservationCode = (reservations, codeText) => {
-    const result = parseReservationCode(codeText);
+const importReservationCode = (reservations, codeText, catalog) => {
+    const result = parseReservationCode(codeText, catalog);
     if (!result.ok) return result;
     if (reservations.some((reservation) => reservation.id === result.reservation.id)) return { ok: false, error: `予約番号 ${result.reservation.id} はすでに取り込まれています` };
     return { ok: true, reservations: appendReservation(reservations, result.reservation) };
@@ -573,7 +588,7 @@ const mergeHourRanges = (hours) => [...hours].sort((hour, otherHour) => hour - o
     return lastRange && lastRange[1] === hour ? [...ranges.slice(0, -1), [lastRange[0], hour + 1]] : [...ranges, [hour, hour + 1]];
 }, []);
 const formatHourRanges = (ranges) => ranges.map(([startHour, endHour]) => `${startHour}:00~${endHour}:00`).join('・');
-// 1つの施設の、1日分のコマ（"大体育館 AM・PM" ／ "大研修室(1･3研) 9:00~11:00・13:00~14:00"）
+// 1つの施設の、1日分のコマ（"大体育館 AM・PM" ／ "大研修室（第１研修室） 9:00~11:00・13:00~14:00"）
 const formatFacilitySlots = (facilityKey, slots, catalog) => {
     const facility = findByKey(catalog.facilities, facilityKey);
     if (facility?.billing !== 'hour') return `${facility?.name ?? facilityKey} ${slots.map((slot) => findTimeUnit(slot, catalog)?.label ?? slot.timeKey).join('・')}`;
@@ -647,6 +662,7 @@ const escapeHtml = (text) => String(text).replace(/[&<>"']/g, (char) => ({ '&': 
 
 // ---------- デモ用のサンプル予約（baseDate：今日の "YYYY-MM-DD"。offset は今日から何日後か） ----------
 // 既定の日程（3日後から2泊）を開くと、宿泊の△・大体育館の×・施設の△がすぐ確認できる並びにしている
+// （陸上グラウンドと球技場、大研修室の第１と第３は別の施設なので、片方だけ△になる）
 // サンプルの1時間単位のコマ（day 日目の startHour 時から endHour 時まで）
 const buildSampleHours = (day, facilityKey, startHour, endHour) => Array.from({ length: endHour - startHour },
     (_, index) => [day, facilityKey, toHourKey(startHour + index)]);
@@ -655,10 +671,10 @@ const buildSampleHours = (day, facilityKey, startHour, endHour) => Array.from({ 
 const SAMPLE_SPECS = deepFreeze([
     { offset: 3, nights: 2, groupName: 'サンプル高校 陸上部', representative: '佐藤 花子', purpose: 'スポーツ合宿',
         stays: { hs_m: [20, 19], hs_f: [20, 19] }, meals: { bf: [0, 40, 38], lu: [40, 40, 38], di: [40, 38, 0] }, dayGuests: { hs: [5, 5, 0] },
-        slots: [[0, 'field', 'am'], [0, 'field', 'pm'], [1, 'field', 'am'], [1, 'field', 'pm']] },
+        slots: [[0, 'track', 'am'], [0, 'track', 'pm'], [1, 'track', 'am'], [1, 'track', 'pm']] },
     { offset: 3, nights: 1, groupName: 'みどりスポーツクラブ', representative: '鈴木 一郎', purpose: 'サークル・クラブ活動',
         stays: { ad_m: [25], ad_f: [20] }, meals: { bf: [0, 45], di: [45, 0], te: [45, 0] },
-        slots: [...buildSampleHours(0, 'kL', 17, 21), [1, 'gym', 'am'], [1, 'gym', 'pm'], [1, 'gym', 'ev']] },
+        slots: [...buildSampleHours(0, 'kL1', 17, 21), [1, 'gym', 'am'], [1, 'gym', 'pm'], [1, 'gym', 'ev']] },
     { offset: 5, nights: 0, priceType: 'es', groupName: 'やまびこスポーツ少年団', representative: '高橋 次郎', purpose: '大会・試合',
         stays: {}, meals: { be_oni: [30], te: [30] }, slots: [[0, 'gym_s', 'am'], [0, 'gym_s', 'pm'], ...buildSampleHours(0, 'mr', 13, 17)] },
     { offset: 10, nights: 3, groupName: 'あおぞら大学 バレーボール部', representative: '田中 三郎', purpose: 'スポーツ合宿',
@@ -704,7 +720,7 @@ if (typeof module !== 'undefined') {
         isClosedDate, getStayCountOnDate, countStayGuests, countStayGroups, judgeStayAvailability, isSlotBooked, judgeFacilityAvailability, buildAvailabilityRows,
         findSlotConflicts, findDuplicateSlots, findCapacityOverflows, findGroupLimitOverflows, formatSlotName, findAvailabilityConflicts,
         isPhoneNumber, findInputMessages, findScheduleMessages, findReservationBlockers,
-        isValidReservation, parseStoredReservations, serializeReservations, appendReservation, isSampleReservation, mergeSampleReservations,
+        isValidReservation, migrateLegacySlot, migrateLegacyReservation, parseStoredReservations, serializeReservations, appendReservation, isSampleReservation, mergeSampleReservations,
         createReservationId, createReservation, buildReservationCode, parseReservationCode, importReservationCode,
         buildReservationSummary, buildMailSubject, buildMailBody, buildStaffMailUrl, escapeHtml, createSampleReservations
     };

@@ -27,7 +27,12 @@ const loadEstimateCategories = () => {
     return vm.runInNewContext(`(${source})`);
 };
 // 予約システムだけ表記を変えている施設（料金は同じ）
-const RENAMED_FACILITIES = Object.freeze({ mr: 'ミーティングルーム' });
+const RENAMED_FACILITIES = Object.freeze({
+    mr: 'ミーティングルーム', track: '陸上グラウンド', court: '球技場',
+    kL1: '大研修室（第１研修室）', kL3: '大研修室（第３研修室）', kS: '小研修室（第２研修室）'
+});
+// 予約システムで分割した施設 → 概算見積もりシステムの料金表の品目（分割前の1つの品目と同じ単価）
+const ESTIMATE_ITEM_KEYS = Object.freeze({ track: 'field', court: 'field', kL1: 'kL', kL3: 'kL' });
 const findEstimateItem = (categories, key) => categories.flatMap((category) => category.items).find((item) => item.key === key);
 
 // 概算見積もりシステムの消費税の設定 TAX_CONFIG を読み込む
@@ -74,7 +79,7 @@ test('予約システムの料金は、概算見積もりシステムの料金�
         assert.deepStrictEqual([meal.name, meal.price, meal.unit], [item.name, item.price, item.unit], meal.key);
     });
     CATALOG.facilities.forEach((facility) => {
-        const item = findEstimateItem(categories, facility.key);
+        const item = findEstimateItem(categories, ESTIMATE_ITEM_KEYS[facility.key] ?? facility.key);
         assert.strictEqual(facility.name, RENAMED_FACILITIES[facility.key] ?? item.name);
         [[true, 'ad'], [true, 'es'], [true, 'hs'], [false, 'ad'], [false, 'es'], [false, 'hs']].forEach(([isStay, type]) => {
             assert.strictEqual(pickFacilityPrice(facility, isStay, type), item.calcPrice(isStay, type), `${facility.key} ${isStay} ${type}`);
@@ -96,8 +101,50 @@ test('体育館・競技場は区分（AM・PM・夜）、研修室・ミーテ�
     assert.deepStrictEqual(toPlain(CATALOG.periods.map((period) => [period.key, period.name, period.time])),
         [['am', 'AM', '8:30~12:30'], ['pm', 'PM', '12:30~17:00'], ['ev', '夜', '17:00~21:00']]);
     assert.deepStrictEqual(CATALOG.facilities.map((facility) => `${facility.key}:${facility.billing}`),
-        ['gym:period', 'gym_s:period', 'field:period', 'kL:hour', 'kS:hour', 'mr:hour']);
+        ['gym:period', 'gym_s:period', 'track:period', 'court:period', 'kL1:hour', 'kL3:hour', 'kS:hour', 'mr:hour']);
     assert.ok(Object.isFrozen(CATALOG.facilities[0].prices) && Object.isFrozen(CATALOG.hourSlots[0]));
+});
+
+test('施設は区分単位の4施設と1時間単位の4施設の全8施設で、月間カレンダー用の略称を持つ', () => {
+    assert.deepStrictEqual(toPlain(CATALOG.facilities.map((facility) => [facility.key, facility.name, facility.shortName])), [
+        ['gym', '大体育館', '大体'], ['gym_s', '小体育館', '小体'], ['track', '陸上グラウンド', '陸上'], ['court', '球技場', '球技'],
+        ['kL1', '大研修室（第１研修室）', '大研1'], ['kL3', '大研修室（第３研修室）', '大研3'], ['kS', '小研修室（第２研修室）', '小研2'],
+        ['mr', 'ミーティングルーム', 'MR']
+    ]);
+    assert.strictEqual(new Set(CATALOG.facilities.map((facility) => facility.shortName)).size, 8, '略称が重ならない');
+});
+
+test('分割した施設（陸上グラウンドと球技場、第１研修室と第３研修室）の料金単価は同じ', () => {
+    const pricesOf = (key) => toPlain(CATALOG.facilities.find((facility) => facility.key === key).prices);
+    assert.deepStrictEqual(pricesOf('track'), pricesOf('court'));
+    assert.deepStrictEqual(pricesOf('track'), { stayAdult: 5280, stayYouth: 3520, dayAdult: 6600, dayYouth: 4400 });
+    assert.deepStrictEqual(pricesOf('kL1'), pricesOf('kL3'));
+    assert.deepStrictEqual(pricesOf('kL1'), { stayAdult: 950, stayYouth: 950, dayAdult: 1890, dayYouth: 1890 });
+    assert.deepStrictEqual(pricesOf('kS'), { stayAdult: 630, stayYouth: 630, dayAdult: 1260, dayYouth: 1260 });
+    assert.deepStrictEqual(toPlain(CATALOG.facilities.find((facility) => facility.key === 'court').joinPrices), { adult: 320, youth: 220 });
+    assert.deepStrictEqual(toPlain(CATALOG.legacyFacilityKeys), { field: ['track', 'court'], kL: ['kL1', 'kL3'] });
+});
+
+test('calculateReservationFee：分割した施設は施設ごとに別の明細行で計算する', () => {
+    const slots = [{ date: '2026-11-02', facilityKey: 'track', timeKey: 'am' }, { date: '2026-11-02', facilityKey: 'court', timeKey: 'am' },
+        { date: '2026-11-02', facilityKey: 'court', timeKey: 'pm' }, { date: '2026-11-02', facilityKey: 'kL1', timeKey: 'h09' },
+        { date: '2026-11-02', facilityKey: 'kL3', timeKey: 'h09' }, { date: '2026-11-02', facilityKey: 'kL3', timeKey: 'h10' },
+        { date: '2026-11-02', facilityKey: 'kS', timeKey: 'h09' }];
+    const fee = calculateReservationFee(buildSampleRequest({ stays: staysOf([0, 0]), slots }), CATALOG);
+    assert.deepStrictEqual(toPlain(fee.lines.map((line) => [line.label, line.unitPrice, line.quantity, line.unit, line.amount])), [
+        ['陸上グラウンド', 6600, 1, '区分', 6600], ['球技場', 6600, 2, '区分', 13200],
+        ['大研修室（第１研修室）', 1890, 1, '時間', 1890], ['大研修室（第３研修室）', 1890, 2, '時間', 3780],
+        ['小研修室（第２研修室）', 1260, 1, '時間', 1260]
+    ]);
+    assert.strictEqual(fee.total, 6600 + 13200 + 1890 + 3780 + 1260);
+});
+
+test('calculateReservationFee：日帰り参加料は陸上グラウンドと球技場で別々に数える', () => {
+    const slots = [{ date: '2026-11-02', facilityKey: 'track', timeKey: 'am' }, { date: '2026-11-02', facilityKey: 'court', timeKey: 'pm' }];
+    const dayGuests = { es: [0, 0, 0], hs: [3, 0, 0], ad: [0, 0, 0] };
+    const fee = calculateReservationFee(buildSampleRequest({ dayGuests, slots }), CATALOG);
+    assert.deepStrictEqual(toPlain(fee.lines.filter((line) => line.label.startsWith('日帰り参加料')).map((line) => [line.label, line.amount])),
+        [['日帰り参加料（陸上グラウンド・小中高）', 660], ['日帰り参加料（球技場・小中高）', 660]]);
 });
 
 test('1時間単位のコマは9時〜21時の12コマ（9:00~10:00 〜 20:00~21:00）', () => {
@@ -111,7 +158,7 @@ test('1時間単位のコマは9時〜21時の12コマ（9:00~10:00 〜 20:00~21
 
 test('listTimeUnits は区分の施設には AM・PM・夜、1時間の施設には1時間単位のコマを返す', () => {
     const facilityOf = (key) => CATALOG.facilities.find((facility) => facility.key === key);
-    assert.deepStrictEqual(listTimeUnits(facilityOf('field'), CATALOG).map((unit) => unit.key), ['am', 'pm', 'ev']);
+    assert.deepStrictEqual(listTimeUnits(facilityOf('track'), CATALOG).map((unit) => unit.key), ['am', 'pm', 'ev']);
     assert.strictEqual(listTimeUnits(facilityOf('mr'), CATALOG), CATALOG.hourSlots);
     assert.strictEqual(listTimeUnits(undefined, CATALOG), CATALOG.periods, '知らない施設は区分として扱う');
 });
@@ -159,13 +206,13 @@ test('toHalfWidthDigits・parseCount は全角を半角にし、空欄は0、正
 
 test('sortUniqueSlots は重なりを除いて日付・施設・時間帯の順に並べ、元の配列を書き換えない', () => {
     const slots = [
-        { date: '2026-11-03', facilityKey: 'gym', timeKey: 'pm' }, { date: '2026-11-02', facilityKey: 'kL', timeKey: 'h13' },
+        { date: '2026-11-03', facilityKey: 'gym', timeKey: 'pm' }, { date: '2026-11-02', facilityKey: 'kL1', timeKey: 'h13' },
         { date: '2026-11-02', facilityKey: 'gym', timeKey: 'ev' }, { date: '2026-11-03', facilityKey: 'gym', timeKey: 'pm' },
-        { date: '2026-11-02', facilityKey: 'gym', timeKey: 'am' }, { date: '2026-11-02', facilityKey: 'kL', timeKey: 'h09' }
+        { date: '2026-11-02', facilityKey: 'gym', timeKey: 'am' }, { date: '2026-11-02', facilityKey: 'kL1', timeKey: 'h09' }
     ];
     const original = toPlain(slots);
     assert.deepStrictEqual(sortUniqueSlots(slots, CATALOG).map((slot) => `${slot.date} ${slot.facilityKey} ${slot.timeKey}`),
-        ['2026-11-02 gym am', '2026-11-02 gym ev', '2026-11-02 kL h09', '2026-11-02 kL h13', '2026-11-03 gym pm']);
+        ['2026-11-02 gym am', '2026-11-02 gym ev', '2026-11-02 kL1 h09', '2026-11-02 kL1 h13', '2026-11-03 gym pm']);
     assert.deepStrictEqual(slots, original);
 });
 
@@ -275,8 +322,8 @@ test('isStayRequest は宿泊人数が1人以上の夜があるときだけ宿�
 
 test('calculateReservationFee：宿泊は夜ごとの人数、食事・弁当・お茶は日ごとの合計で計算する', () => {
     const slots = [{ date: '2026-11-02', facilityKey: 'gym', timeKey: 'am' }, { date: '2026-11-02', facilityKey: 'gym', timeKey: 'pm' },
-        { date: '2026-11-03', facilityKey: 'kL', timeKey: 'h13' }, { date: '2026-11-03', facilityKey: 'kL', timeKey: 'h14' },
-        { date: '2026-11-04', facilityKey: 'kL', timeKey: 'h09' }];
+        { date: '2026-11-03', facilityKey: 'kL1', timeKey: 'h13' }, { date: '2026-11-03', facilityKey: 'kL1', timeKey: 'h14' },
+        { date: '2026-11-04', facilityKey: 'kL1', timeKey: 'h09' }];
     const meals = buildMeals(3, { bf: [0, 20, 18], di: [20, 18, 0], be_maku: [0, 0, 18], te: [20, 20, 18] });
     const fee = calculateReservationFee(buildSampleRequest({ stays: staysOf([20, 18]), meals, slots }), CATALOG);
     assert.deepStrictEqual(toPlain(fee.lines), [
@@ -287,7 +334,7 @@ test('calculateReservationFee：宿泊は夜ごとの人数、食事・弁当・
         { label: '幕の内弁当', unitPrice: 700, quantity: 18, unit: '食', isReducedTax: true, amount: 12600 },
         { label: 'お茶', unitPrice: 150, quantity: 58, unit: '本', isReducedTax: true, amount: 8700 },
         { label: '大体育館', unitPrice: 5370, quantity: 2, unit: '区分', isReducedTax: false, amount: 10740 },
-        { label: '大研修室(1･3研)', unitPrice: 950, quantity: 3, unit: '時間', isReducedTax: false, amount: 2850 }
+        { label: '大研修室（第１研修室）', unitPrice: 950, quantity: 3, unit: '時間', isReducedTax: false, amount: 2850 }
     ]);
     assert.strictEqual(fee.total, 192590);
     assert.deepStrictEqual(toPlain(fee.taxBreakdown), {
@@ -310,15 +357,15 @@ test('calculateReservationFee：宿泊料は夜ごと・区分ごとに男女を
     assert.strictEqual(fee.total, 59270);
 });
 
-// 陸上/球技場 AM と、ミーティングルーム 13時・14時
-const DAY_TRIP_SLOTS = [{ date: '2026-11-02', facilityKey: 'field', timeKey: 'am' },
+// 陸上グラウンド AM と、ミーティングルーム 13時・14時
+const DAY_TRIP_SLOTS = [{ date: '2026-11-02', facilityKey: 'track', timeKey: 'am' },
     { date: '2026-11-02', facilityKey: 'mr', timeKey: 'h13' }, { date: '2026-11-02', facilityKey: 'mr', timeKey: 'h14' }];
 const calculateDayTripFee = (priceType) => calculateReservationFee(buildSampleRequest({ nights: 0, stays: staysOf([]), meals: buildMeals(1), priceType, slots: DAY_TRIP_SLOTS }), CATALOG);
 
 test('calculateReservationFee：日帰り（1日）は、選んだ料金区分の日帰り専有料金になる', () => {
     const fee = calculateDayTripFee('ad');
     assert.deepStrictEqual(toPlain(fee.lines.map((line) => [line.label, line.quantity, line.unit, line.amount])),
-        [['陸上/球技場', 1, '区分', 6600], ['ミーティングルーム', 2, '時間', 1320]]);
+        [['陸上グラウンド', 1, '区分', 6600], ['ミーティングルーム', 2, '時間', 1320]]);
     assert.deepStrictEqual([fee.total, fee.isStay, fee.facilityPriceType], [7920, false, 'ad']);
     assert.deepStrictEqual(['es', 'hs'].map((priceType) => toPlain(calculateDayTripFee(priceType).lines.map((line) => line.amount))), [[4400, 1320], [4400, 1320]],
         '小学生・中学生／高校生は小中高の料金（研修室・ミーティングルームは区分で変わらない）');
@@ -336,9 +383,9 @@ const buildDayGuests = (dayCount, overrides) => Object.fromEntries(['es', 'hs', 
     .map((key) => [key, overrides?.[key] ?? Array.from({ length: dayCount }, () => 0)]));
 const pickJoinLines = (fee) => toPlain(fee.lines.filter((line) => line.label.startsWith('日帰り参加料'))
     .map((line) => [line.label, line.unitPrice, line.quantity, line.unit, line.amount]));
-// 11/2 は大体育館（AM・PM）と大研修室、11/3 は陸上/球技場、11/4 は小体育館を使う
+// 11/2 は大体育館（AM・PM）と大研修室、11/3 は陸上グラウンド、11/4 は小体育館を使う
 const JOIN_SLOTS = [{ date: '2026-11-02', facilityKey: 'gym', timeKey: 'am' }, { date: '2026-11-02', facilityKey: 'gym', timeKey: 'pm' },
-    { date: '2026-11-02', facilityKey: 'kL', timeKey: 'h09' }, { date: '2026-11-03', facilityKey: 'field', timeKey: 'am' },
+    { date: '2026-11-02', facilityKey: 'kL1', timeKey: 'h09' }, { date: '2026-11-03', facilityKey: 'track', timeKey: 'am' },
     { date: '2026-11-04', facilityKey: 'gym_s', timeKey: 'am' }];
 
 test('calculateReservationFee：日帰り参加料は、体育館・競技場を使う日の日帰り参加人数×その施設の単価（小中高・大学一般）で加算する', () => {
@@ -346,7 +393,7 @@ test('calculateReservationFee：日帰り参加料は、体育館・競技場を
     const fee = calculateReservationFee(buildSampleRequest({ dayGuests, slots: JOIN_SLOTS }), CATALOG);
     assert.deepStrictEqual(pickJoinLines(fee), [
         ['日帰り参加料（大体育館・小中高）', 220, 5, '人', 1100], ['日帰り参加料（大体育館・大学・一般）', 320, 1, '人', 320],
-        ['日帰り参加料（小体育館・大学・一般）', 320, 6, '人', 1920], ['日帰り参加料（陸上/球技場・小中高）', 220, 4, '人', 880]
+        ['日帰り参加料（小体育館・大学・一般）', 320, 6, '人', 1920], ['日帰り参加料（陸上グラウンド・小中高）', 220, 4, '人', 880]
     ], '同じ日に同じ施設を2区分使っても1日分。研修室には日帰り参加料がない');
     const withoutGuests = calculateReservationFee(buildSampleRequest({ dayGuests: buildDayGuests(3), slots: JOIN_SLOTS }), CATALOG);
     assert.strictEqual(fee.total - withoutGuests.total, 1100 + 320 + 1920 + 880, '合計に日帰り参加料が加わる');
@@ -355,10 +402,10 @@ test('calculateReservationFee：日帰り参加料は、体育館・競技場を
 
 test('calculateReservationFee：日帰り参加料は複数日・複数施設の分を足し、施設を使わない日・宿泊者がいないときは加算しない', () => {
     const slots = [{ date: '2026-11-02', facilityKey: 'gym', timeKey: 'am' }, { date: '2026-11-03', facilityKey: 'gym', timeKey: 'ev' },
-        { date: '2026-11-03', facilityKey: 'field', timeKey: 'am' }];
+        { date: '2026-11-03', facilityKey: 'track', timeKey: 'am' }];
     const dayGuests = buildDayGuests(3, { hs: [10, 10, 10] });
     assert.deepStrictEqual(pickJoinLines(calculateReservationFee(buildSampleRequest({ dayGuests, slots }), CATALOG)),
-        [['日帰り参加料（大体育館・小中高）', 220, 20, '人', 4400], ['日帰り参加料（陸上/球技場・小中高）', 220, 10, '人', 2200]], '3日目は施設を使わない');
+        [['日帰り参加料（大体育館・小中高）', 220, 20, '人', 4400], ['日帰り参加料（陸上グラウンド・小中高）', 220, 10, '人', 2200]], '3日目は施設を使わない');
     assert.deepStrictEqual(pickJoinLines(calculateReservationFee(buildSampleRequest({ dayGuests, slots: [] }), CATALOG)), []);
     assert.deepStrictEqual(pickJoinLines(calculateReservationFee(buildSampleRequest({ stays: staysOf([0, 0]), dayGuests, slots }), CATALOG)), [], '宿泊0人');
     assert.deepStrictEqual(pickJoinLines(calculateReservationFee(buildSampleRequest({ dayGuests: undefined, slots }), CATALOG)), [], '日帰り参加人数がない古い予約');
@@ -367,8 +414,8 @@ test('calculateReservationFee：日帰り参加料は複数日・複数施設の
 
 test('日帰り参加料の単価は、概算見積もりシステムの「日帰り参加料」と同じ', () => {
     const categories = loadEstimateCategories();
-    const estimateKeys = { gym: 'jg', gym_s: 'js', field: 'jf' };
-    assert.deepStrictEqual(CATALOG.facilities.filter((facility) => facility.joinPrices).map((facility) => facility.key), ['gym', 'gym_s', 'field']);
+    const estimateKeys = { gym: 'jg', gym_s: 'js', track: 'jf', court: 'jf' };
+    assert.deepStrictEqual(CATALOG.facilities.filter((facility) => facility.joinPrices).map((facility) => facility.key), ['gym', 'gym_s', 'track', 'court']);
     Object.entries(estimateKeys).forEach(([facilityKey, prefix]) => {
         const { joinPrices } = CATALOG.facilities.find((facility) => facility.key === facilityKey);
         assert.deepStrictEqual([joinPrices.youth, joinPrices.adult],

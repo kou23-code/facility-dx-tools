@@ -139,7 +139,7 @@
                         <section class="bg-gray-50 p-3 rounded border">
                             <div class="flex items-center gap-2 mb-1"><span class="step-badge">3</span><span class="font-bold text-base">日ごとの人数・食事</span></div>
                             <p class="text-xs text-gray-500 mb-1 ml-8">宿泊は「泊まる夜の日付」に、区分（小学生・中学生／高校生／大学生・一般）×男女の人数を入れます（最終日の夜は泊まりません）。空欄は0。「全日」で1日目の数を他の日にもコピーできます。</p>
-                            <p class="text-xs text-gray-500 mb-1 ml-8">泊まらずに日帰りで合流する人は「日帰り参加」の行に、参加する日ごと・区分ごとの人数を入れます（男女別は不要です）。体育館・競技場を使う日に、1人あたりの日帰り参加料を概算料金に加えます。</p>
+                            <p class="text-xs text-gray-500 mb-1 ml-8">泊まらずに日帰りで合流する人は「日帰り参加」の行に、参加する日ごと・区分ごとの人数を入れます（男女別は不要です）。体育館・陸上グラウンド・球技場を使う日に、1人あたりの日帰り参加料を概算料金に加えます。</p>
                             <p id="stayPlanNote" class="text-sm font-bold text-blue-800 mb-2 ml-8">※現時点での予定人数で構いません（後日変更可能です）</p>
                             <div id="dailyTable" class="overflow-x-auto"></div>
                         </section>
@@ -147,7 +147,7 @@
                         <!-- STEP4 施設コマ -->
                         <section class="bg-gray-50 p-3 rounded border">
                             <div class="flex items-center gap-2 mb-1"><span class="step-badge">4</span><span class="font-bold text-base">希望する施設コマ</span></div>
-                            <p class="text-xs text-gray-500 mb-2 ml-8">体育館・競技場は区分（AM 8:30~12:30 ／ PM 12:30~17:00 ／ 夜 17:00~21:00）、研修室・ミーティングルームは9時〜21時の1時間単位で選びます。押すと青くなり選ばれます。灰色の「×」は予約済みで選べません。</p>
+                            <p class="text-xs text-gray-500 mb-2 ml-8">大体育館・小体育館・陸上グラウンド・球技場は区分（AM 8:30~12:30 ／ PM 12:30~17:00 ／ 夜 17:00~21:00）、大研修室（第１研修室・第３研修室）・小研修室（第２研修室）・ミーティングルームは9時〜21時の1時間単位で選びます。施設・部屋ごとに別々に予約できます。押すと青くなり選ばれます。灰色の「×」は予約済みで選べません。</p>
                             <div id="slotGrid" class="overflow-x-auto"></div>
                             <p class="extra-fee-note mt-2 text-sm font-bold text-amber-800 bg-amber-50 border border-amber-300 rounded px-3 py-2"></p>
                         </section>
@@ -247,7 +247,7 @@
 
         // ---------- 予約データの読み書き（localStorage） ----------
         const loadReservations = () => {
-            try { return parseStoredReservations(localStorage.getItem(RESERVATION_STORAGE_KEY)); } catch (error) { return []; }
+            try { return parseStoredReservations(localStorage.getItem(RESERVATION_STORAGE_KEY), CATALOG); } catch (error) { return []; }
         };
         const saveReservations = (reservations) => {
             try { localStorage.setItem(RESERVATION_STORAGE_KEY, serializeReservations(reservations)); return true; } catch (error) { return false; }
@@ -297,7 +297,7 @@
             .map((guestType) => buildStayRowHtml(guestType, dates, nights, formValues.stays?.[guestType.key] ?? [], catalog)).join('')
             + buildStayTotalRowHtml(dates, nights);
         // 日帰り参加人数の行（行のキー："day_区分"（例：day_hs）。区分ごとで男女別なし。日帰りの日程では合流する宿泊団体がいないので「—」）
-        const DAY_GUEST_GROUP_TITLE = '日帰り参加（泊まらずに宿泊団体へ合流する人の人数。区分ごと・男女別なし。体育館・競技場を使う日に日帰り参加料がかかります）';
+        const DAY_GUEST_GROUP_TITLE = '日帰り参加（泊まらずに宿泊団体へ合流する人の人数。区分ごと・男女別なし。体育館・陸上グラウンド・球技場を使う日に日帰り参加料がかかります）';
         const DAY_TRIP_LOCKED_CELL_HTML = '<td class="text-gray-400" title="日帰りのため、合流する宿泊団体がいません">—</td>';
         // 日帰り参加料の単価の表示（"210〜220円/人"。施設によって単価が違うときは範囲で出す）
         const buildJoinPriceNote = (priceTypeKey, catalog) => {
@@ -410,11 +410,11 @@
         const buildDateHeaderHtml = (row, rowSpan = 1) => `<th rowspan="${rowSpan}">${formatDateLabel(row.date)}${row.isClosed ? '<div class="text-[10px] text-red-600">休館日</div>' : ''}</th>`;
         const buildFacilityHeadHtml = (facilities, extraHeads) => `<thead><tr><th>日付</th>${extraHeads}${facilities
             .map((facility) => `<th>${escapeHtml(facility.name)}</th>`).join('')}</tr></thead>`;
-        // 体育館・競技場の表（行：日付、列：施設。1マスに AM・PM・夜 のボタン）
+        // 区分単位の施設（大体育館・小体育館・陸上グラウンド・球技場）の表（行：日付、列：施設。1マスに AM・PM・夜 のボタン）
         const buildPeriodGridHtml = (rows, selectedSlots, context, facilities) => `<table class="grid-table w-full text-xs">${buildFacilityHeadHtml(facilities, '')}<tbody>${rows
             .map((row) => `<tr>${buildDateHeaderHtml(row)}${facilities.map((facility) => `<td><div class="flex gap-0.5 justify-center">${
                 buildFacilityTogglesHtml(row, facility, selectedSlots, context).join('')}</div></td>`).join('')}</tr>`).join('')}</tbody></table>`;
-        // 研修室・ミーティングルームの表（行：日付×部屋、列：9時〜20時台の1時間ずつ）
+        // 1時間単位の部屋（大研修室の第１・第３、小研修室、ミーティングルーム）の表（行：日付×部屋、列：9時〜20時台の1時間ずつ）
         const buildHourHeadHtml = (catalog) => `<thead><tr><th>日付</th><th>部屋</th>${catalog.hourSlots
             .map((unit) => `<th title="${unit.label}">${formatHourHeader(unit)}</th>`).join('')}</tr></thead>`;
         const buildHourRowHtml = (row, facility, index, facilities, selectedSlots, context) => `<tr>${index === 0 ? buildDateHeaderHtml(row, facilities.length) : ''}`
@@ -423,14 +423,18 @@
             .flatMap((row) => facilities.map((facility, index) => buildHourRowHtml(row, facility, index, facilities, selectedSlots, context))).join('')}</tbody></table>`;
         const SCHEDULE_PLACEHOLDER_HTML = '<p class="text-gray-500 text-center py-4">利用開始日と利用日数を選ぶと表示されます。</p>';
         const filterFacilities = (catalog, billing) => catalog.facilities.filter((facility) => facility.billing === billing);
+        // 施設コマの表の見出し（"区分単位（AM・PM・夜）：大体育館・小体育館・…"）
+        const buildSlotGridTitleHtml = (title, facilities, extraClass) => `<div class="slot-grid-title font-bold text-gray-700 ${extraClass}">${title}：`
+            + `${facilities.map((facility) => escapeHtml(facility.name)).join('・')}</div>`;
 
         const renderSlotGrid = (request, context) => {
             if (!canCheckSchedule(request, context.config)) { byId('slotGrid').innerHTML = SCHEDULE_PLACEHOLDER_HTML; return; }
             const rows = buildAvailabilityRows(context.reservations, request.startDate, request.nights, context);
-            byId('slotGrid').innerHTML = `<div class="font-bold text-gray-700 mb-1">体育館・競技場（区分：AM・PM・夜）</div>`
-                + buildPeriodGridHtml(rows, request.slots, context, filterFacilities(context.catalog, 'period'))
-                + `<div class="font-bold text-gray-700 mt-3 mb-1">研修室・ミーティングルーム（9時〜21時の1時間単位）</div>`
-                + buildHourGridHtml(rows, request.slots, context, filterFacilities(context.catalog, 'hour'));
+            const [periodFacilities, hourFacilities] = [filterFacilities(context.catalog, 'period'), filterFacilities(context.catalog, 'hour')];
+            byId('slotGrid').innerHTML = buildSlotGridTitleHtml('区分単位（AM・PM・夜）', periodFacilities, 'mb-1')
+                + buildPeriodGridHtml(rows, request.slots, context, periodFacilities)
+                + buildSlotGridTitleHtml('1時間単位（9時〜21時）', hourFacilities, 'mt-3 mb-1')
+                + buildHourGridHtml(rows, request.slots, context, hourFacilities);
         };
 
         // ---------- 空き状況の表（◎/△/×） ----------
@@ -532,7 +536,7 @@
                 <div>※内容に確認が必要な場合のみ、施設よりご連絡させていただきます</div>
                 <div class="font-bold text-gray-800">${escapeHtml(EXTRA_FEE_NOTE)}</div>
                 <div>※料金は概算です。食事代・施設使用料等は実際のご利用数に基づき精算します。</div>
-                <div>※区分・・・AM (8:30~12:30) PM (12:30~17:00) 夜(17:00~21:00)。研修室・ミーティングルームは1時間単位です。</div></div>`;
+                <div>※区分・・・AM (8:30~12:30) PM (12:30~17:00) 夜(17:00~21:00)。大研修室（第１研修室・第３研修室）・小研修室（第２研修室）・ミーティングルームは1時間単位です。</div></div>`;
         const buildSummaryRowsHtml = (summary) => summary
             .map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join('');
         const buildIssuerHtml = (info) => `<div class="text-right text-xs leading-relaxed">${buildIssuerLines(info)

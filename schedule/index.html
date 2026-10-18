@@ -179,7 +179,7 @@
 
         // ---------- データの読み書き（localStorage） ----------
         const loadReservations = () => {
-            try { return parseStoredReservations(localStorage.getItem(RESERVATION_STORAGE_KEY)); } catch (error) { return []; }
+            try { return parseStoredReservations(localStorage.getItem(RESERVATION_STORAGE_KEY), CATALOG); } catch (error) { return []; }
         };
         const saveReservations = (reservations) => {
             try { localStorage.setItem(RESERVATION_STORAGE_KEY, serializeReservations(reservations)); return true; } catch (error) { return false; }
@@ -241,7 +241,7 @@
         const buildPublicCellBodyHtml = (date, context) => {
             const publicDay = Schedule.findPublicDay(context.publicSource.schedule, date);
             const staySymbol = judgeStaySymbolOf(publicDay.stayGuests, publicDay.stayGroups);
-            const facilitySymbols = Schedule.summarizeFacilitySymbols(Schedule.mapPublicFacilitySchedule(publicDay, CATALOG));
+            const facilitySymbols = Schedule.summarizeFacilitySymbols(Schedule.mapPublicFacilitySchedule(publicDay, CATALOG), CATALOG);
             return `<div class="text-[11px] mt-0.5" data-stay-symbol="${staySymbol}"><span class="hidden sm:inline text-gray-600">宿泊</span>${buildSymbolHtml(staySymbol, 'text-sm')}</div>${buildFacilityMiniHtml(facilitySymbols)}`;
         };
         // 職員用：宿泊合計人数/団体数と、利用団体名のバッジ（青：その夜に宿泊 ／ 灰：日帰り・チェックアウト日）
@@ -268,8 +268,10 @@
         };
         const buildCalendarHtml = (context) => `<table class="calendar-table"><thead><tr>${WEEKDAY_HEADS.map((name, index) => `<th class="${({ 0: 'is-sun', 6: 'is-sat' })[index] ?? ''}">${name}</th>`).join('')}</tr></thead>`
             + `<tbody>${Schedule.buildCalendarWeeks(context.state.month).map((week) => `<tr>${week.map((date) => buildCalendarCellHtml(date, context)).join('')}</tr>`).join('')}</tbody></table>`;
+        // 凡例の「略称：施設名」の一覧（"大体：大体育館、…、MR：ミーティングルーム"。施設カタログの順）
+        const buildFacilityLegendText = (catalog) => catalog.facilities.map((facility) => `${facility.shortName ?? facility.name}：${facility.name}`).join('、');
         const PUBLIC_LEGEND = '宿泊：<b class="text-green-700">◎</b>空きあり ／ <b class="text-amber-600">△</b>残りわずか（200人以上か4団体以上） ／ <b class="text-red-600">×</b>満室（300人以上か6団体以上）。'
-            + '施設（大体：大体育館、小体：小体育館、陸上：陸上/球技場、大研：大研修室、小研：小研修室、MR：ミーティングルーム）：◎すべて空き ／ △一部予約済み ／ ×すべて予約済み。日付を押すと、その日の時間ごとの空きを確認できます。';
+            + `施設（${escapeHtml(buildFacilityLegendText(CATALOG))}）：◎すべて空き ／ △一部予約済み ／ ×すべて予約済み。日付を押すと、その日の時間ごとの空きを確認できます。`;
         const buildStaffLegend = () => `宿泊合計人数/団体数（${buildStayLimitText()}）。団体名のバッジ：<span class="group-badge is-stay inline-block">青</span>その夜に宿泊`
             + ` ／ <span class="group-badge is-day inline-block">灰</span>日帰り・チェックアウト日。日付を押すと、その日の詳細と団体別内訳を確認できます。`;
         const renderCalendar = (context) => {
@@ -296,10 +298,12 @@
             .map((run) => buildStaffRunCellHtml(run, facilitySchedule.facilityKey)).join('');
         const buildFacilityTableHtml = (facilitySchedules, headHtml, buildCellsHtml) => `<div class="overflow-x-auto"><table class="grid-table w-full text-xs">${headHtml}<tbody>${facilitySchedules
             .map((facilitySchedule) => `<tr><th>${escapeHtml(facilitySchedule.name)}</th>${buildCellsHtml(facilitySchedule)}</tr>`).join('')}</tbody></table></div>`;
-        const buildTimetableHtml = (facilitySchedules, buildCellsHtml) => '<h3 class="font-bold mt-3 mb-1">体育館・競技場（午前・午後・夜間の3区分）</h3>'
-            + buildFacilityTableHtml(filterFacilitySchedules(facilitySchedules, 'period'), buildPeriodHeadHtml(), buildCellsHtml)
-            + '<h3 class="font-bold mt-3 mb-1">研修室・ミーティングルーム（9-10時〜20-21時の1時間単位）</h3>'
-            + buildFacilityTableHtml(filterFacilitySchedules(facilitySchedules, 'hour'), buildHourHeadHtml(), buildCellsHtml);
+        // 見出し（"区分単位（午前・午後・夜間）：大体育館・小体育館・…"）と施設コマ表
+        const buildTimetableSectionHtml = (title, facilitySchedules, headHtml, buildCellsHtml) => `<h3 class="timetable-heading font-bold mt-3 mb-1">${title}：`
+            + `${facilitySchedules.map((facilitySchedule) => escapeHtml(facilitySchedule.name)).join('・')}</h3>` + buildFacilityTableHtml(facilitySchedules, headHtml, buildCellsHtml);
+        const buildTimetableHtml = (facilitySchedules, buildCellsHtml) => buildTimetableSectionHtml('区分単位（午前・午後・夜間の3区分）',
+            filterFacilitySchedules(facilitySchedules, 'period'), buildPeriodHeadHtml(), buildCellsHtml)
+            + buildTimetableSectionHtml('1時間単位（9-10時〜20-21時）', filterFacilitySchedules(facilitySchedules, 'hour'), buildHourHeadHtml(), buildCellsHtml);
 
         // ---------- 日別の詳細（公開用） ----------
         const buildDetailHeadHtml = (date, staySymbol, extraHtml) => `<div class="flex flex-wrap items-center justify-between gap-2"><h2 id="detailHeading" class="text-lg font-bold">${formatDateJapanese(date)} の詳細</h2>`
