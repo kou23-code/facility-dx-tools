@@ -348,6 +348,8 @@
     };
 
     // ---------- 職員用の団体ごとの表示 ----------
+    // 予約を編集する Web予約画面の URL（"../reservation/index.html?edit=R20261017-001"。予約番号は URL 用に変換する）
+    const buildEditReservationUrl = (id) => `../reservation/index.html?edit=${encodeURIComponent(id)}`;
     // その日に利用する（チェックアウト日・日帰りを含む）予約の一覧
     const listReservationsOnDate = (reservationList, date) => reservationList.filter((reservation) => findDayIndex(reservation, date) >= 0);
     // カレンダーのマスに出す団体名のバッジ（isStay：その夜に泊まるか）
@@ -379,7 +381,7 @@
         PUBLIC_SCHEDULE_TYPE, PUBLIC_SCHEDULE_VERSION, serializePublicSchedule, parsePublicSchedule,
         findPublicDay, mapPublicFacilitySchedule, judgeFacilityDaySymbol, summarizeFacilitySymbols,
         toMonthKey, parseMonthKey, toMonthKeyOfDate, shiftMonthKey, formatMonthLabel, buildCalendarWeeks,
-        resolveInitialMode, buildModeSearch, listReservationsOnDate, listGroupBadges, buildGroupDailyRows, mergeBookedUnits
+        resolveInitialMode, buildModeSearch, buildEditReservationUrl, listReservationsOnDate, listGroupBadges, buildGroupDailyRows, mergeBookedUnits
     });
     if (typeof module !== 'undefined') module.exports = ScheduleLogic;
     if (typeof window !== 'undefined') window.ScheduleLogic = ScheduleLogic;

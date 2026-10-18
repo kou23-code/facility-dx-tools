@@ -30,6 +30,13 @@
         .facility-mini { display: flex; flex-wrap: wrap; gap: 0 4px; margin-top: 2px; font-size: 10px; line-height: 1.35; }
         .facility-mini > span { white-space: nowrap; }
         .group-badge { display: block; overflow: hidden; padding: 0 4px; border-radius: 3px; font-size: 10px; line-height: 1.5; white-space: nowrap; text-overflow: ellipsis; }
+        /* 職員用のカレンダーの団体名バッジ（日付のボタンの下に並べ、右端に「編集」） */
+        .calendar-cell.has-badges .calendar-day { height: auto; min-height: 3rem; }
+        .badge-list { padding: 0 3px 3px; cursor: pointer; }
+        .badge-row { display: flex; align-items: center; gap: 2px; }
+        .badge-row .group-badge { flex: 1; min-width: 0; }
+        .badge-edit { flex: none; padding: 0 3px; border: 1px solid #93c5fd; border-radius: 3px; background: #fff; color: #1d4ed8; font-size: 10px; line-height: 1.4; }
+        .badge-edit:hover { background: #dbeafe; }
         .group-badge.is-stay { background: #dbeafe; color: #1e3a8a; }
         .group-badge.is-day { background: #f3f4f6; color: #374151; }
         @media (max-width: 639px) {
@@ -244,27 +251,33 @@
             const facilitySymbols = Schedule.summarizeFacilitySymbols(Schedule.mapPublicFacilitySchedule(publicDay, CATALOG), CATALOG);
             return `<div class="text-[11px] mt-0.5" data-stay-symbol="${staySymbol}"><span class="hidden sm:inline text-gray-600">宿泊</span>${buildSymbolHtml(staySymbol, 'text-sm')}</div>${buildFacilityMiniHtml(facilitySymbols)}`;
         };
-        // 職員用：宿泊合計人数/団体数と、利用団体名のバッジ（青：その夜に宿泊 ／ 灰：日帰り・チェックアウト日）
-        const buildBadgeHtml = (badge) => `<span class="group-badge ${badge.isStay ? 'is-stay' : 'is-day'}" title="${escapeHtml(badge.groupName)}">${escapeHtml(badge.groupName)}</span>`;
-        const buildBadgesHtml = (badges) => (badges.length === 0 ? '' : `<div class="hidden sm:flex flex-col gap-px mt-0.5">${badges.slice(0, MAX_CALENDAR_BADGES).map(buildBadgeHtml).join('')}`
-            + `${badges.length > MAX_CALENDAR_BADGES ? `<span class="text-[10px] text-gray-500">他${badges.length - MAX_CALENDAR_BADGES}団体</span>` : ''}</div>`
-            + `<div class="sm:hidden text-[10px] text-gray-600">${badges.length}団体</div>`);
+        // 職員用：宿泊合計人数/団体数と、利用団体名のバッジ（青：その夜に宿泊 ／ 灰：日帰り・チェックアウト日）。バッジの「編集」で Web予約画面の予約編集モードを開く
+        // （バッジは日付のボタンの中に入れられないので、ボタンの下に並べる。バッジを押しても、その日を選ぶ）
+        const buildEditLinkHtml = (id, groupName, className, label) => `<a class="${className}" href="${escapeHtml(Schedule.buildEditReservationUrl(id))}"`
+            + ` data-reservation-id="${escapeHtml(id)}" aria-label="${escapeHtml(groupName)}（予約番号 ${escapeHtml(id)}）の予約を編集する">${label}</a>`;
+        const buildBadgeHtml = (badge) => `<div class="badge-row"><span class="group-badge ${badge.isStay ? 'is-stay' : 'is-day'}" title="${escapeHtml(badge.groupName)}">${escapeHtml(badge.groupName)}</span>`
+            + `${buildEditLinkHtml(badge.id, badge.groupName, 'badge-edit', '編集')}</div>`;
+        const buildBadgeListHtml = (date, badges) => (badges.length === 0 ? '' : `<div class="badge-list hidden sm:flex flex-col gap-px" onclick="selectDate('${date}')">`
+            + `${badges.slice(0, MAX_CALENDAR_BADGES).map(buildBadgeHtml).join('')}`
+            + `${badges.length > MAX_CALENDAR_BADGES ? `<span class="text-[10px] text-gray-500">他${badges.length - MAX_CALENDAR_BADGES}団体（日付を押すと一覧）</span>` : ''}</div>`);
         const buildStaffCellBodyHtml = (date, context) => {
             const summary = Schedule.summarizeDailyReservations(context.reservations, date, CATALOG);
             const badges = Schedule.listGroupBadges(context.reservations, date);
             if (summary.stayGuests === 0 && badges.length === 0) return ''; // 利用する団体がいない日は何も出さない
             const staySymbol = judgeStaySymbolOf(summary.stayGuests, summary.stayGroups);
             return `<div class="stay-count text-[11px] font-bold whitespace-nowrap" data-stay-symbol="${staySymbol}">${buildSymbolHtml(staySymbol, 'text-xs')}${summary.stayGuests}人`
-                + `<span class="hidden sm:inline">/${summary.stayGroups}団体</span></div>${buildBadgesHtml(badges)}`;
+                + `<span class="hidden sm:inline">/${summary.stayGroups}団体</span></div>${badges.length > 0 ? `<div class="sm:hidden text-[10px] text-gray-600">${badges.length}団体</div>` : ''}`;
         };
-        const buildCalendarClasses = (date, isClosed, context) => ['calendar-cell', date === context.state.selectedDate && 'is-selected',
-            date === context.today && 'is-today', isClosed && 'is-closed'].filter(Boolean).join(' ');
+        const listStaffBadges = (date, context) => (context.state.mode === 'staff' ? Schedule.listGroupBadges(context.reservations, date) : []);
+        const buildCalendarClasses = (date, isClosed, context, hasBadges) => ['calendar-cell', date === context.state.selectedDate && 'is-selected',
+            date === context.today && 'is-today', isClosed && 'is-closed', hasBadges && 'has-badges'].filter(Boolean).join(' ');
         const buildCalendarCellHtml = (date, context) => {
             if (date === null) return '<td class="calendar-cell is-outside"></td>';
             const isClosed = isClosedDate(date, ACTIVE_CONFIG.closedDates);
             const bodyHtml = context.state.mode === 'staff' ? buildStaffCellBodyHtml(date, context) : (isClosed ? '' : buildPublicCellBodyHtml(date, context));
-            return `<td class="${buildCalendarClasses(date, isClosed, context)}" data-date="${date}"><button type="button" class="calendar-day" onclick="selectDate('${date}')"`
-                + ` aria-label="${formatDateJapanese(date)}の詳細を見る">${buildDayNumberHtml(date, isClosed)}${bodyHtml}</button></td>`;
+            const badges = listStaffBadges(date, context);
+            return `<td class="${buildCalendarClasses(date, isClosed, context, badges.length > 0)}" data-date="${date}"><button type="button" class="calendar-day" onclick="selectDate('${date}')"`
+                + ` aria-label="${formatDateJapanese(date)}の詳細を見る">${buildDayNumberHtml(date, isClosed)}${bodyHtml}</button>${buildBadgeListHtml(date, badges)}</td>`;
         };
         const buildCalendarHtml = (context) => `<table class="calendar-table"><thead><tr>${WEEKDAY_HEADS.map((name, index) => `<th class="${({ 0: 'is-sun', 6: 'is-sat' })[index] ?? ''}">${name}</th>`).join('')}</tr></thead>`
             + `<tbody>${Schedule.buildCalendarWeeks(context.state.month).map((week) => `<tr>${week.map((date) => buildCalendarCellHtml(date, context)).join('')}</tr>`).join('')}</tbody></table>`;
@@ -273,7 +286,8 @@
         const PUBLIC_LEGEND = '宿泊：<b class="text-green-700">◎</b>空きあり ／ <b class="text-amber-600">△</b>残りわずか（200人以上か4団体以上） ／ <b class="text-red-600">×</b>満室（300人以上か6団体以上）。'
             + `施設（${escapeHtml(buildFacilityLegendText(CATALOG))}）：◎すべて空き ／ △一部予約済み ／ ×すべて予約済み。日付を押すと、その日の時間ごとの空きを確認できます。`;
         const buildStaffLegend = () => `宿泊合計人数/団体数（${buildStayLimitText()}）。団体名のバッジ：<span class="group-badge is-stay inline-block">青</span>その夜に宿泊`
-            + ` ／ <span class="group-badge is-day inline-block">灰</span>日帰り・チェックアウト日。日付を押すと、その日の詳細と団体別内訳を確認できます。`;
+            + ` ／ <span class="group-badge is-day inline-block">灰</span>日帰り・チェックアウト日。バッジの「編集」で予約の内容（人数・食事・施設コマ・団体情報）を変更できます。`
+            + '日付を押すと、その日の詳細と団体別内訳を確認できます。';
         const renderCalendar = (context) => {
             byId('monthLabel').textContent = Schedule.formatMonthLabel(context.state.month);
             byId('calendar').innerHTML = buildCalendarHtml(context);
@@ -332,7 +346,8 @@
             + `<thead><tr>${buildMealHeadCellsHtml()}</tr></thead><tbody><tr>${buildMealCellsHtml(summary.meals)}</tr></tbody></table></div>`;
         const buildGroupRowHtml = (row) => `<tr data-reservation-id="${escapeHtml(row.id)}"><th><div class="font-bold">${escapeHtml(row.groupName)}</div><div class="text-[10px] font-normal text-gray-600">`
             + `${escapeHtml(row.representative)}・TEL ${escapeHtml(row.phone)}<br>${escapeHtml(row.id)}</div></th><td class="text-right">${row.stayGuests}人</td>${buildMealCellsHtml(row.meals)}`
-            + `<td><button type="button" class="delete-button px-2 py-0.5 rounded border border-red-300 text-red-600 hover:bg-red-50" data-reservation-id="${escapeHtml(row.id)}" onclick="deleteReservationById(this.dataset.reservationId)">削除</button></td></tr>`;
+            + `<td><div class="flex gap-1 justify-center">${buildEditLinkHtml(row.id, row.groupName, 'edit-button px-2 py-0.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50', '編集')}`
+            + `<button type="button" class="delete-button px-2 py-0.5 rounded border border-red-300 text-red-600 hover:bg-red-50" data-reservation-id="${escapeHtml(row.id)}" onclick="deleteReservationById(this.dataset.reservationId)">削除</button></div></td></tr>`;
         const buildGroupTableHtml = (rows, summary) => `<h3 class="font-bold mt-4 mb-1">団体別内訳一覧</h3>${rows.length === 0 ? '<p class="text-sm text-gray-500">この日の予約はありません。</p>'
             : `<div class="overflow-x-auto"><table id="groupTable" class="grid-table w-full text-xs"><thead><tr><th>団体名（代表者名・TEL・予約番号）</th><th>宿泊</th>${buildMealHeadCellsHtml()}<th>操作</th></tr></thead>`
                 + `<tbody>${rows.map(buildGroupRowHtml).join('')}</tbody><tfoot><tr><th>合計</th><td class="text-right">${summary.stayGuests}人</td>${buildMealCellsHtml(summary.meals)}<td></td></tr></tfoot></table></div>`}`;
