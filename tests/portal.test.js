@@ -160,3 +160,60 @@ test('見積もりツールは estimate/index.html、予約システムは reser
     const htmlFiles = listFiles(ROOT_DIR).filter((file) => file.endsWith('.html'));
     assert.deepStrictEqual(htmlFiles.filter((file) => !/^[\x21-\x7e]+$/.test(file.replace(/\\/g, '/'))), []);
 });
+
+// ---------- ヒーローの背景スライドショー ----------
+const Portal = require(PORTAL_LOGIC_PATH);
+
+test('ヒーローに背景写真の層（#heroSlides）とドット（#heroDots）があり、読み込めないときのグラデーション背景も残っている', () => {
+    const html = readPortal();
+    const hero = sliceBlock(html, /<section class="hero"/, '</section>');
+    assert.match(findTagById(hero, 'heroSlides'), /class="hero-slides"[^>]*aria-hidden="true"/);
+    assert.match(findTagById(hero, 'heroDots'), /class="hero-dots"[^>]*aria-label="背景写真の切り替え"/);
+    assert.match(sliceBlock(html, /\.hero \{/, '}'), /linear-gradient\(135deg, #0b3d66/);
+    assert.match(sliceBlock(html, /\.hero-slide::after \{/, '}'), /linear-gradient\(135deg, rgba\(6, 27, 52/);
+    assert.match(html, /\.hero-slide\.is-loaded\.is-active \{ opacity: 1; transform: scale\(1\.08\); \}/);
+    assert.match(html, /startHeroSlideshow\(Portal\.resolveHeroImages\(Portal\.DEFAULT_HERO_IMAGES, window\.CUSTOM_FACILITY_INFO\?\.heroImages\)\)/);
+});
+
+test('既定の背景写真は4枚（陸上競技場・体育館・球技場・研修室）で、すべて https の画像URL、切り替えは5秒ごと', () => {
+    assert.strictEqual(Portal.HERO_SLIDE_INTERVAL_MS, 5000);
+    assert.deepStrictEqual(Portal.DEFAULT_HERO_IMAGES.map((image) => image.alt),
+        ['陸上競技場のトラックを走る選手', '明るい体育館のコートでの競技', '緑の芝生の球技場でのプレー', '清潔な研修室でのセミナー']);
+    Portal.DEFAULT_HERO_IMAGES.forEach((image) => assert.match(image.url, /^https:\/\/images\.unsplash\.com\/photo-[\w-]+\?/));
+    assert.ok(Object.isFrozen(Portal.DEFAULT_HERO_IMAGES) && Object.isFrozen(Portal.DEFAULT_HERO_IMAGES[0]));
+});
+
+test('heroImages に URL の配列を指定すると、その写真に差し替わる（前後の空白は取り、空・文字列以外は除く）', () => {
+    const images = Portal.resolveHeroImages(Portal.DEFAULT_HERO_IMAGES, [' ./images/gym.jpg ', '', 123, null, './images/field.jpg']);
+    assert.deepStrictEqual(images, [{ url: './images/gym.jpg', alt: '施設の写真 1' }, { url: './images/field.jpg', alt: '施設の写真 2' }]);
+});
+
+test('heroImages がない・空の配列・配列でない・有効な URL がないときは、既定の写真のまま', () => {
+    [undefined, null, [], '', './images/gym.jpg', ['  ', 0]].forEach((customUrls) => {
+        assert.strictEqual(Portal.resolveHeroImages(Portal.DEFAULT_HERO_IMAGES, customUrls), Portal.DEFAULT_HERO_IMAGES, `${JSON.stringify(customUrls)} のとき`);
+    });
+});
+
+test('次に表示する写真の番号は、最後の次で最初に戻り、写真がなければ 0', () => {
+    assert.deepStrictEqual([[0, 4], [2, 4], [3, 4], [0, 1], [0, 0]].map(([current, count]) => Portal.nextSlideIndex(current, count)), [1, 3, 0, 0, 0]);
+});
+
+test('前回の切り替えから間隔（5秒）が過ぎたときだけ、次の写真へ切り替える', () => {
+    assert.strictEqual(Portal.isSlideDue(1000, 5999, 5000), false);
+    assert.strictEqual(Portal.isSlideDue(1000, 6000, 5000), true);
+    assert.strictEqual(Portal.isSlideDue(1000, 1000, 0), true);
+});
+
+test('背景写真の層とドットの HTML を写真の枚数だけ作り、URL・説明はエスケープする。写真が1枚以下ならドットは出さない', () => {
+    const images = [{ url: 'a.jpg?x=1&y="2"', alt: '<体育館>' }, { url: 'b.jpg', alt: '球技場' }];
+    assert.strictEqual(Portal.renderHeroSlidesHtml(images),
+        '<div class="hero-slide" data-slide-index="0" data-src="a.jpg?x=1&amp;y=&quot;2&quot;"></div><div class="hero-slide" data-slide-index="1" data-src="b.jpg"></div>');
+    assert.match(Portal.renderHeroDotsHtml(images), /^<button type="button" class="hero-dot" data-slide-index="0" aria-label="背景写真 1（&lt;体育館&gt;）を表示"><\/button><button [^>]*data-slide-index="1"/);
+    assert.strictEqual(Portal.renderHeroDotsHtml(images.slice(0, 1)), '');
+    assert.strictEqual(Portal.renderHeroSlidesHtml([]), '');
+});
+
+test('CSS の url() に入れる値は、引用符・バックスラッシュをエスケープし、改行を取り除く', () => {
+    assert.strictEqual(Portal.toCssUrl('./images/gym.jpg'), 'url("./images/gym.jpg")');
+    assert.strictEqual(Portal.toCssUrl('a"b\\c\nd.jpg'), 'url("a\\"b\\\\cd.jpg")');
+});

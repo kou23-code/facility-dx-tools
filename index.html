@@ -96,8 +96,34 @@
                         linear-gradient(135deg, #0b3d66 0%, #0f5e9c 55%, #1789b8 100%);
             color: #fff;
         }
-        .hero-deco { position: absolute; right: -60px; bottom: -40px; width: min(520px, 70vw); opacity: .16; pointer-events: none; }
-        .hero-inner { position: relative; max-width: 760px; }
+        .hero-deco { position: absolute; z-index: 1; right: -60px; bottom: -40px; width: min(520px, 70vw); opacity: .16; pointer-events: none; }
+        .hero-inner { position: relative; z-index: 1; max-width: 760px; }
+
+        /* ヒーローの背景スライドショー。読み込めた写真（is-loaded）だけを表示し、読み込めないときは上のグラデーションがそのまま見える */
+        .hero-slides { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+        .hero-slide {
+            position: absolute; inset: 0; background-size: cover; background-position: center;
+            opacity: 0; transform: scale(1); transition: opacity 1.6s ease-in-out, transform 7s ease-out;
+        }
+        .hero-slide.is-loaded.is-active { opacity: 1; transform: scale(1.08); }
+        /* 白い文字がどの写真の上でも読めるよう、ネイビー〜ブルーの半透明グラデーションを重ねる */
+        .hero-slide::after {
+            content: ""; position: absolute; inset: 0;
+            background: linear-gradient(135deg, rgba(6, 27, 52, .9) 0%, rgba(11, 61, 102, .78) 50%, rgba(23, 137, 184, .55) 100%);
+        }
+        .hero h1, .hero-lead { text-shadow: 0 2px 14px rgba(4, 20, 40, .35); }
+        .hero-dots { position: absolute; z-index: 2; right: 28px; bottom: 22px; display: flex; gap: 10px; }
+        .hero-dot {
+            width: 10px; height: 10px; padding: 0; border: 1px solid rgba(255, 255, 255, .75); border-radius: 999px;
+            background: rgba(255, 255, 255, .25); cursor: pointer; transition: width .3s, background-color .3s;
+        }
+        .hero-dot:hover { background: rgba(255, 255, 255, .6); }
+        .hero-dot.is-active { width: 28px; background: #fff; }
+        .hero-dot:focus-visible { outline: 2px solid #fde68a; outline-offset: 3px; }
+        @media (prefers-reduced-motion: reduce) {
+            .hero-slide { transition: opacity .4s linear; }
+            .hero-slide.is-loaded.is-active { transform: none; }
+        }
         .hero-eyebrow { display: inline-block; margin: 0 0 18px; padding: 4px 14px; border-radius: 999px; background: rgba(255, 255, 255, .16); font-size: .85rem; font-weight: 700; letter-spacing: .08em; }
         .hero h1 { margin: 0; font-size: clamp(1.9rem, 5vw, 3.1rem); line-height: 1.35; letter-spacing: .02em; }
         .hero h1 .hero-accent { color: #fde68a; }
@@ -236,6 +262,7 @@
             .section { padding: 64px 0; }
             .hero { padding: calc(var(--header-height) + 48px) 0 72px; }
             .hero-actions .btn { width: 100%; }
+            .hero-dots { right: 50%; bottom: 18px; transform: translateX(50%); }
             .flow-steps { grid-template-columns: minmax(0, 1fr); gap: 32px; }
             .flow-step:not(:last-child)::after { top: auto; right: 50%; bottom: -24px; transform: translateX(50%) rotate(135deg); }
             .panel { padding: 24px 18px; }
@@ -287,6 +314,8 @@
     <main id="top">
         <!-- ヒーロー -->
         <section class="hero" aria-labelledby="heroTitle">
+            <!-- 背景写真（JavaScript で作る。写真は portal-logic.js の DEFAULT_HERO_IMAGES、または facility-config.js の heroImages） -->
+            <div class="hero-slides" id="heroSlides" aria-hidden="true"></div>
             <svg class="hero-deco" viewBox="0 0 200 200" fill="none" stroke="#fff" stroke-width="3" aria-hidden="true"><circle cx="100" cy="100" r="90"/><path d="M10 100h180M100 10v180"/><circle cx="100" cy="100" r="30"/><path d="M30 40c30 20 30 100 0 120M170 40c-30 20-30 100 0 120"/></svg>
             <div class="container hero-inner">
                 <p class="hero-eyebrow">合宿・スポーツ大会・研修の総合施設</p>
@@ -313,6 +342,8 @@
                     </a>
                 </div>
             </div>
+            <!-- 表示中の背景写真を示すドット（押すと切り替わる） -->
+            <div class="hero-dots" id="heroDots" role="group" aria-label="背景写真の切り替え"></div>
         </section>
 
         <!-- 施設紹介（カードは RESERVATION_CATALOG の施設一覧と料金から作る） -->
@@ -538,10 +569,51 @@
             byId('globalNav').addEventListener('click', (event) => { if (event.target.closest('a')) setMenuOpen(false); });
         };
 
+        // ---------- ヒーローの背景スライドショー（どの写真を表示中かは is-active のクラスで持つ） ----------
+        const listHeroSlides = () => [...byId('heroSlides').querySelectorAll('.hero-slide')];
+        const listHeroDots = () => [...byId('heroDots').querySelectorAll('.hero-dot')];
+
+        // 写真を先に読み込み、読み込めたものだけ表示する（オフラインや読み込み失敗のときは、もとのグラデーションのまま）
+        const loadHeroSlide = (slide) => {
+            const image = new Image();
+            image.addEventListener('load', () => {
+                slide.style.backgroundImage = Portal.toCssUrl(slide.dataset.src);
+                slide.classList.add('is-loaded');
+            });
+            image.src = slide.dataset.src;
+        };
+
+        const showHeroSlide = (activeIndex) => {
+            listHeroSlides().forEach((slide, index) => slide.classList.toggle('is-active', index === activeIndex));
+            listHeroDots().forEach((dot, index) => {
+                dot.classList.toggle('is-active', index === activeIndex);
+                dot.setAttribute('aria-current', String(index === activeIndex));
+            });
+            byId('heroSlides').dataset.changedAt = String(Date.now());
+        };
+
+        const readActiveSlideIndex = () => Math.max(listHeroSlides().findIndex((slide) => slide.classList.contains('is-active')), 0);
+
+        // 前回の切り替え（自動・ドットのクリック）から間隔が過ぎていたら、次の写真へ
+        const advanceHeroSlideIfDue = () => {
+            if (!Portal.isSlideDue(Number(byId('heroSlides').dataset.changedAt), Date.now(), Portal.HERO_SLIDE_INTERVAL_MS)) return;
+            showHeroSlide(Portal.nextSlideIndex(readActiveSlideIndex(), listHeroSlides().length));
+        };
+
+        const startHeroSlideshow = (images) => {
+            byId('heroSlides').innerHTML = Portal.renderHeroSlidesHtml(images);
+            byId('heroDots').innerHTML = Portal.renderHeroDotsHtml(images);
+            listHeroSlides().forEach(loadHeroSlide);
+            showHeroSlide(0);
+            byId('heroDots').addEventListener('click', (event) => { const dot = event.target.closest('.hero-dot'); if (dot) showHeroSlide(Number(dot.dataset.slideIndex)); });
+            if (images.length > 1) setInterval(advanceHeroSlideIfDue, 500);
+        };
+
         renderContactInfo(Portal.buildContactInfo(ACTIVE_FACILITY_INFO, new Date().getFullYear()));
         renderFacilitySections(RESERVATION_CATALOG);
         renderStayAndMeals(RESERVATION_CATALOG, ACTIVE_CONFIG);
         bindMenu();
+        startHeroSlideshow(Portal.resolveHeroImages(Portal.DEFAULT_HERO_IMAGES, window.CUSTOM_FACILITY_INFO?.heroImages));
     </script>
 </body>
 </html>
