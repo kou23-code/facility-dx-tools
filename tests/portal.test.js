@@ -235,3 +235,20 @@ test('CSS の url() に入れる値は、引用符・バックスラッシュを
     assert.strictEqual(Portal.toCssUrl('./images/gym.jpg'), 'url("./images/gym.jpg")');
     assert.strictEqual(Portal.toCssUrl('a"b\\c\nd.jpg'), 'url("a\\"b\\\\cd.jpg")');
 });
+
+// ---------- 爽やかな配色とイラスト ----------
+test('配色にスカイブルー・ミントグリーン・サンシャインオレンジの変数がある', () => {
+    const rootBlock = sliceBlock(readPortal(), /:root \{/, '}');
+    [/--sky: #38bdf8/, /--mint: #34d3a6/, /--accent: #ff9f1c/].forEach((pattern) => assert.match(rootBlock, pattern));
+});
+
+test('施設紹介に体育館・グラウンド・研修室、宿泊・お食事に客室・食堂ごはん・お弁当のイラスト（説明つきのインライン SVG）がある', () => {
+    const html = readPortal();
+    const banners = [['facilities', 'facilityIllustrations', ['体育館', 'グラウンド・球技場', '研修室']],
+        ['stay', 'stayIllustrations', ['ふかふかの客室でぐっすり', 'できたて・あったか食堂ごはん', 'お弁当・おにぎり・お茶']]];
+    banners.forEach(([sectionId, bannerId, captions]) => {
+        const banner = sliceBlock(sliceBlock(html, new RegExp(`<section [^>]*id="${sectionId}"`), '</section>'), new RegExp(`id="${bannerId}"`), '<div class="stay-grid">');
+        assert.deepStrictEqual([...banner.matchAll(/<figcaption><strong>([^<]*)<\/strong>/g)].map(([, caption]) => caption), captions, `${bannerId} の見出し`);
+        assert.strictEqual([...banner.matchAll(/<svg viewBox="0 0 200 140" role="img" aria-label="[^"]+">/g)].length, 3, `${bannerId} のイラスト`);
+    });
+});
