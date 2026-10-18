@@ -503,10 +503,11 @@ const findScheduleMessages = (request, config, today) => {
         leadDays > config.maxAdvanceDays && `利用開始日は${formatDateJapanese(addDaysToDateString(today, config.maxAdvanceDays))}までを選んでください`
     ].filter(Boolean);
 };
-// 予約を確定できない理由のすべて（空なら確定できる）。context：{ reservations, config, catalog, today }
+// 予約を確定できない理由のすべて（空なら確定できる）。context：{ reservations, config, catalog, today, editingId }
+// 職員が既存の予約を編集するとき（editingId がある）は、利用者向けの受付期間（何日後から・何日先まで）を確認しない
 const findReservationBlockers = (request, context) => [
     ...findInputMessages(request, context.config, context.catalog),
-    ...findScheduleMessages(request, context.config, context.today),
+    ...(context.editingId ? [] : findScheduleMessages(request, context.config, context.today)),
     ...findAvailabilityConflicts(request, context)
 ];
 
@@ -561,6 +562,35 @@ const createReservation = (request, reservations, createdAt, catalog) => ({
     id: createReservationId(createdAt, reservations), createdAt, ...request,
     estimatedTotal: calculateReservationFee(request, catalog).total
 });
+
+// ---------- 予約の編集（職員がスケジュール管理表の「編集」から開く。URL は "?edit=予約番号"） ----------
+const STAFF_SCHEDULE_URL = '../schedule/index.html?mode=staff'; // 編集を保存したあとに戻る、スケジュール管理表（職員用モード）
+// URL の検索部分（"?edit=R20261017-001"）から、編集する予約番号を取り出す（指定がなければ空文字）
+const resolveEditReservationId = (search) => trimText(new URLSearchParams(search ?? '').get('edit') ?? '');
+const findReservationById = (reservations, id) => reservations.find((reservation) => reservation.id === id) ?? null;
+// 編集中の予約を除いた一覧（施設コマの重複・宿泊の上限の判定で、自分の古い内容と比べないようにする）
+const excludeReservationById = (reservations, id) => reservations.filter((reservation) => reservation.id !== id);
+// 入力欄に入れる数の文字列（0は空欄にして、新しく入力するときと同じ見た目にする）
+const toCountText = (count) => (toSafeCount(count) === 0 ? '' : String(count));
+const toCountTextTable = (table, keyedList, length) => Object.fromEntries(keyedList
+    .map((entry) => [entry.key, Array.from({ length }, (_, index) => toCountText(table?.[entry.key]?.[index]))]));
+const toContactFormValues = (reservation) => Object.fromEntries(['groupName', 'representative', 'phone', 'email', 'purpose']
+    .map((key) => [key, typeof reservation[key] === 'string' ? reservation[key] : '']));
+// 保存した予約から、画面の入力値（buildRequest に渡す formValues と同じ形の文字列）を作る
+const buildFormValuesFromReservation = (reservation, catalog) => ({
+    ...toContactFormValues(reservation), startDate: reservation.startDate, nights: String(reservation.nights),
+    priceType: findByKey(catalog.priceTypes, reservation.priceType) ? reservation.priceType : catalog.dayTripPriceType,
+    stays: toCountTextTable(reservation.stays, catalog.stayGuestTypes, reservation.nights),
+    meals: toCountTextTable(reservation.meals, catalog.meals, reservation.nights + 1),
+    dayGuests: toCountTextTable(reservation.dayGuests, catalog.priceTypes, reservation.nights + 1)
+});
+// 編集した内容の予約（予約番号・申込日時はそのまま、変更日時 updatedAt を付け、概算料金を計算し直す）
+const updateReservation = (original, request, updatedAt, catalog) => ({
+    id: original.id, createdAt: original.createdAt, updatedAt, ...request, estimatedTotal: calculateReservationFee(request, catalog).total
+});
+// 同じ予約番号の予約を置き換えた、新しい一覧（なければ最後に加える。元の一覧は書き換えない）
+const replaceReservation = (reservations, reservation) => (reservations.some((entry) => entry.id === reservation.id)
+    ? reservations.map((entry) => (entry.id === reservation.id ? reservation : entry)) : appendReservation(reservations, reservation));
 
 // ---------- 職員取込用の1行コード ----------
 // 改行を含まない1行の JSON（文字列の中の改行も \n に置き換わる）
@@ -721,7 +751,8 @@ if (typeof module !== 'undefined') {
         findSlotConflicts, findDuplicateSlots, findCapacityOverflows, findGroupLimitOverflows, formatSlotName, findAvailabilityConflicts,
         isPhoneNumber, findInputMessages, findScheduleMessages, findReservationBlockers,
         isValidReservation, migrateLegacySlot, migrateLegacyReservation, parseStoredReservations, serializeReservations, appendReservation, isSampleReservation, mergeSampleReservations,
-        createReservationId, createReservation, buildReservationCode, parseReservationCode, importReservationCode,
+        createReservationId, createReservation, buildReservationCode,
+        STAFF_SCHEDULE_URL, resolveEditReservationId, findReservationById, excludeReservationById, buildFormValuesFromReservation, updateReservation, replaceReservation, parseReservationCode, importReservationCode,
         buildReservationSummary, buildMailSubject, buildMailBody, buildStaffMailUrl, escapeHtml, createSampleReservations
     };
 }

@@ -39,6 +39,13 @@ const CAPTURE_SOURCE = `const capture = () => ({
     stayBreakdown: Array.from(document.querySelectorAll('#stayBreakdownTable tbody tr'), (row) => row.textContent),
     mealTotals: Array.from(document.querySelectorAll('#mealTotalsTable tbody td'), (cell) => cell.textContent),
     groupRows: Array.from(document.querySelectorAll('#groupTable tbody tr'), (row) => row.dataset.reservationId),
+    groupEditLinks: Array.from(document.querySelectorAll('#groupTable tbody tr'), (row) => Array.from(row.querySelectorAll('a.edit-button, button.delete-button'), (element) => element.textContent + ':' + (element.getAttribute('href') || '')).join(' ')),
+    badgeEditLinks: Object.fromEntries(Array.from(document.querySelectorAll('#calendar td[data-date]'), (cell) => [cell.dataset.date, Array.from(cell.querySelectorAll('.badge-row'), (row) => row.textContent + '>' + row.querySelector('a.badge-edit').getAttribute('href'))])),
+    nestedLinkCount: document.querySelectorAll('#calendar button a, #calendar button button').length,
+    panelHeadings: Array.from(document.querySelectorAll('#staffPanel h3'), (heading) => heading.textContent),
+    publicDetailsOpen: document.getElementById('publicDataDetails').open,
+    publicSummary: document.querySelector('#publicDataDetails > summary').textContent,
+    publicControlsInDetails: ['exportPublicButton', 'publicJsonOutput', 'publicJsonInput', 'loadPublicButton', 'clearPublicButton'].every((id) => document.getElementById(id).closest('#publicDataDetails') !== null),
     publicText: ['modeNotice', 'calendar', 'dayDetail', 'calendarLegend'].map((id) => document.getElementById(id).textContent).join(' '),
     legend: document.getElementById('calendarLegend').textContent,
     timetableHeadings: Array.from(document.querySelectorAll('#dayDetail .timetable-heading'), (element) => element.textContent),
@@ -181,10 +188,21 @@ test('画面：職員用モードに切り替えると、人数/団体数・団�
     assert.deepStrictEqual(staff.stayBreakdown, ['小学生・中学生30人30人60人', '高校生20人20人40人', '大学生・一般105人20人125人']);
     assert.deepStrictEqual(staff.mealTotals, ['0食', '40食', '85食', '0食', '45本', '0食']);
     assert.deepStrictEqual(staff.groupRows, ['SAMPLE-001', 'SAMPLE-002', 'SAMPLE-005', 'SAMPLE-006']);
+    // 団体別内訳一覧の各行の「削除」の隣と、カレンダーの団体名バッジに「編集」（Web予約画面の予約編集モードを開く）
+    assert.deepStrictEqual(staff.groupEditLinks, ['SAMPLE-001', 'SAMPLE-002', 'SAMPLE-005', 'SAMPLE-006']
+        .map((id) => `編集:../reservation/index.html?edit=${id} 削除:`));
+    assert.deepStrictEqual(staff.badgeEditLinks[dates.day3], ['サンプル高校 陸上部編集>../reservation/index.html?edit=SAMPLE-001',
+        'みどりスポーツクラブ編集>../reservation/index.html?edit=SAMPLE-002', 'さくら中学校 バスケットボール部編集>../reservation/index.html?edit=SAMPLE-005'],
+        '1マスに3団体まで');
+    assert.strictEqual(staff.nestedLinkCount, 0, '日付のボタンの中にリンク・ボタンを入れない');
+    // 職員用データ管理パネル：①②は平易な見出し、外部共有用データ（公開用 JSON）は折りたたんで普段は隠す
+    assert.deepStrictEqual(staff.panelHeadings, ['① メールから予約を取り込む', '② 電話・窓口予約の追加と変更/キャンセル']);
+    assert.deepStrictEqual([staff.publicDetailsOpen, staff.publicSummary, staff.publicControlsInDetails], [false, '外部共有用データの出力・読込（詳細設定）', true]);
     assert.match(staff.storageStatus, /11件（うちサンプル 11件）/);
     assert.strictEqual(backToPublic.search, '');
     assert.strictEqual(backToPublic.staffPanelHidden, true);
     assert.deepStrictEqual(backToPublic.groupRows, []);
+    assert.deepStrictEqual(backToPublic.badgeEditLinks[dates.day3], [], '公開用モードには編集を出さない');
 });
 
 test('画面：URL に ?mode=staff を付けて開くと、最初から職員用モードになる', { skip: !BROWSER }, () => {

@@ -64,7 +64,18 @@ const CAPTURE_SOURCE = `const capture = () => ({
     removedInputCount: document.querySelectorAll('#in_people').length,
     priceTypeHidden: document.getElementById('priceTypeField').classList.contains('hidden'),
     priceTypeOptions: Array.from(document.querySelectorAll('#in_price_type option'), (option) => option.value + ':' + option.textContent),
-    priceTypeValue: document.getElementById('in_price_type').value
+    priceTypeValue: document.getElementById('in_price_type').value,
+    editBannerHidden: document.getElementById('editBanner').classList.contains('hidden'),
+    editBannerText: document.getElementById('editBanner').textContent.replace(/\s+/g, ' '),
+    confirmText: document.getElementById('confirmButton').textContent,
+    fieldValues: ['in_group', 'in_representative', 'in_phone', 'in_email', 'in_purpose', 'in_start', 'in_nights',
+        'in_stay_hs_m_0', 'in_stay_hs_m_1', 'in_stay_hs_f_0', 'in_stay_hs_f_1', 'in_day_hs_0', 'in_day_hs_1', 'in_meal_bf_1', 'in_meal_di_0'].map((id) => (document.getElementById(id) || { value: null }).value),
+    checkedSlots: Array.from(document.querySelectorAll('input.slot-check:checked'), (box) => box.dataset.facility + ':' + box.dataset.time + ':' + box.dataset.date),
+    conflictSlotCount: document.querySelectorAll('#slotGrid .slot-conflict').length,
+    editSavedHidden: document.getElementById('editSavedBox').classList.contains('hidden'),
+    sendAlertHidden: document.getElementById('sendAlert').classList.contains('hidden'),
+    newReservationHidden: document.getElementById('newReservationButton').classList.contains('hidden'),
+    backHref: document.getElementById('backToScheduleButton').getAttribute('href')
 });
 const setValue = (id, value) => { document.getElementById(id).value = value; };
 // 宿泊は2泊とも10人（大学生・一般。利用人数10人）、朝食は2日目・3日目に10食ずつ、幕の内弁当は1日目に10食
@@ -89,17 +100,20 @@ window.addEventListener('load', () => {
 });
 </script>`;
 
-// 一時フォルダの中の reservation/ にページを置いて開く（configSource：reservation/facility-config.js、rootConfigSource：ルートの facility-config.js）
-const renderStates = (steps, configSource, rootConfigSource) => {
+// 一時フォルダの中の reservation/ にページを置いて開く（configSource：reservation/facility-config.js、rootConfigSource：ルートの facility-config.js、
+// options.search：URL の検索部分（例："?edit=SAMPLE-001"）、options.seedSource：画面の起動前に動かすスクリプト（localStorage に予約を入れておくなど））
+const insertSeedScript = (html, seedSource) => (seedSource
+    ? html.replace('<script src="reservation-logic.js"></script>', `<script src="reservation-logic.js"></script>\n<script>${seedSource}</script>`) : html);
+const renderStates = (steps, configSource, rootConfigSource, options = {}) => {
     const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reservation-test-'));
     const dir = path.join(rootDir, 'reservation');
     fs.mkdirSync(dir);
     const htmlPath = path.join(dir, 'index.html');
-    fs.writeFileSync(htmlPath, readPage().replace('</body>', `${buildScript(steps)}\n</body>`), 'utf8');
+    fs.writeFileSync(htmlPath, insertSeedScript(readPage(), options.seedSource).replace('</body>', `${buildScript(steps)}\n</body>`), 'utf8');
     fs.copyFileSync(RESERVATION_LOGIC_PATH, path.join(dir, 'reservation-logic.js'));
     if (configSource) fs.writeFileSync(path.join(dir, 'facility-config.js'), configSource, 'utf8');
     if (rootConfigSource) fs.writeFileSync(path.join(rootDir, 'facility-config.js'), rootConfigSource, 'utf8');
-    return JSON.parse(decodeURIComponent(findById(renderDom(BROWSER, htmlPath), 'test_dump')));
+    return JSON.parse(decodeURIComponent(findById(renderDom(BROWSER, htmlPath, options.search ?? ''), 'test_dump')));
 };
 
 test('予約画面は facility-config.js（このフォルダ → ルートの順）と reservation-logic.js を読み込み、let・var を使っていない', () => {
@@ -257,6 +271,43 @@ test('画面：完了画面は送信がまだであることを強調し、1行�
     assert.ok(!completed.receiptText.includes('施設の職員から確認の連絡をいたします'), '前の文言は残さない');
     assert.strictEqual(completed.mailOpenedHidden, true);
     assert.strictEqual(afterMailClick.mailOpenedHidden, false, '送信ボタンを押すと、メールソフトで送信するよう案内する');
+    assert.deepStrictEqual([completed.editBannerHidden, completed.editSavedHidden, completed.sendAlertHidden, completed.newReservationHidden], [true, true, false, false],
+        '新しい申込では編集モードの表示を出さない');
+});
+
+test('画面：?edit=予約番号 で開くと保存した内容が全入力欄に戻り、保存すると同じ予約番号のまま上書きされ、スケジュール管理表へ戻れる', { skip: !BROWSER }, () => {
+    const seedSource = `localStorage.setItem('${RESERVATION_STORAGE_KEY}', serializeReservations(createSampleReservations(toLocalDateString(new Date()), RESERVATION_CATALOG)));`;
+    const [opened, saved] = renderStates(`
+        states.push(capture());
+        setValue('in_stay_hs_m_0', '25');
+        setValue('in_meal_bf_1', '45');
+        document.querySelector('input.slot-check[data-facility="court"][data-time="ev"]').checked = true;
+        refreshSlots();
+        confirmReservation();
+        states.push(capture());
+    `, null, null, { search: '?edit=SAMPLE-001', seedSource });
+    const firstDay = addDaysToDateString(toLocalDateString(new Date()), 3);
+    const secondDay = addDaysToDateString(firstDay, 1);
+    assert.strictEqual(opened.editBannerHidden, false);
+    assert.ok(opened.editBannerText.includes('予約番号：SAMPLE-001 の内容を編集中'), opened.editBannerText);
+    assert.strictEqual(opened.confirmText, '変更を保存する');
+    assert.deepStrictEqual(opened.fieldValues, ['サンプル高校 陸上部', '佐藤 花子', '0000000001', 'sample1@example.com', 'スポーツ合宿', firstDay, '2',
+        '20', '19', '20', '19', '5', '5', '40', '40'], '団体情報・日程・日ごとの宿泊人数・日帰り参加人数・食事が戻る');
+    assert.deepStrictEqual(opened.lunchValues, ['40', '40', '38']);
+    assert.deepStrictEqual(opened.checkedSlots, [`track:am:${firstDay}`, `track:pm:${firstDay}`, `track:am:${secondDay}`, `track:pm:${secondDay}`], '施設コマが戻る');
+    assert.strictEqual(opened.conflictSlotCount, 0, '自分の予約のコマは「予約済み」と重ならない');
+    assert.deepStrictEqual([opened.buttonDisabled, opened.blockers, opened.warnings], [false, [], []], '自分の古い内容を除いて判定するので、そのまま保存できる');
+
+    const storedList = JSON.parse(saved.storage);
+    const updated = storedList.find((reservation) => reservation.id === 'SAMPLE-001');
+    assert.strictEqual(storedList.length, 11, '新しい予約番号を作らず、件数は変わらない');
+    assert.ok(storedList.every((reservation) => reservation.id.startsWith('SAMPLE-')));
+    assert.deepStrictEqual([updated.stays.hs_m, updated.meals.bf], [[25, 19], [0, 45, 38]]);
+    assert.ok(updated.slots.some((slot) => slot.facilityKey === 'court' && slot.timeKey === 'ev' && slot.date === firstDay));
+    assert.ok(updated.updatedAt && updated.createdAt.endsWith('T09:00'), '申込日時はそのまま、変更日時を付ける');
+    assert.deepStrictEqual([saved.completeHidden, saved.editSavedHidden, saved.sendAlertHidden, saved.newReservationHidden], [false, false, true, true]);
+    assert.ok(saved.completeText.includes('変更を保存しました。') && saved.completeText.includes('スケジュール管理表へ戻る'), saved.completeText);
+    assert.strictEqual(saved.backHref, '../schedule/index.html?mode=staff');
 });
 
 test('予約画面に1行コードの欄・コピーの処理が残っていない', () => {

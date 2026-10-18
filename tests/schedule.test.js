@@ -19,7 +19,7 @@ const {
     PUBLIC_SCHEDULE_TYPE, serializePublicSchedule, parsePublicSchedule, findPublicDay, mapPublicFacilitySchedule,
     judgeFacilityDaySymbol, summarizeFacilitySymbols,
     parseMonthKey, toMonthKeyOfDate, shiftMonthKey, formatMonthLabel, buildCalendarWeeks,
-    resolveInitialMode, buildModeSearch, listGroupBadges, buildGroupDailyRows, mergeBookedUnits
+    resolveInitialMode, buildModeSearch, buildEditReservationUrl, listGroupBadges, buildGroupDailyRows, mergeBookedUnits
 } = ScheduleLogic;
 
 // キーごとの日ごとの数の表を、keyedList のすべてのキー・日数分にそろえる（書いていないキーは毎日0）
@@ -492,6 +492,17 @@ test('buildCalendarWeeks はうるう年の2月・日曜始まりの月・6週�
 });
 
 // ---------- 表示モード ----------
+test('buildEditReservationUrl は予約番号を付けた Web予約画面の編集用 URL を作り、予約システムで同じ予約番号に戻せる', () => {
+    const { resolveEditReservationId } = require(RESERVATION_LOGIC_PATH);
+    assert.strictEqual(buildEditReservationUrl('SAMPLE-001'), '../reservation/index.html?edit=SAMPLE-001');
+    assert.strictEqual(buildEditReservationUrl('R20261017-001'), '../reservation/index.html?edit=R20261017-001');
+    ['SAMPLE-001', 'R20261017-012', 'A&B=1 ?#'].forEach((id) => {
+        const url = buildEditReservationUrl(id);
+        assert.strictEqual(resolveEditReservationId(url.slice(url.indexOf('?'))), id, id);
+    });
+    assert.ok(!buildEditReservationUrl('A&B').includes('&B'), '記号は URL 用に変換する');
+});
+
 test('resolveInitialMode は ?mode=staff のときだけ職員用、それ以外は公開用', () => {
     assert.deepStrictEqual(['?mode=staff', '?x=1&mode=staff', '', '?mode=public', '?mode=STAFF', undefined].map(resolveInitialMode),
         ['staff', 'staff', 'public', 'public', 'public', 'public']);
