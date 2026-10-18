@@ -22,7 +22,10 @@ const textOf = (html, pattern) => (pattern.exec(html) || [])[1];
 // id を持つ要素の開始タグ（属性の確認に使う）
 const findTagById = (html, id) => textOf(html, new RegExp(`(<[a-z]+ [^>]*id="${id}"[^>]*>)`));
 
-const hrefOf = (tag) => textOf(tag || '', /href="([^"]*)"/);
+// フォルダへのリンクは、末尾の index.html があってもなくても同じ行き先として比べる（./estimate/index.html → ./estimate/）
+const normalizeFolderHref = (href) => href.replace(/\/index\.html(?=$|[?#])/, '/');
+
+const hrefOf = (tag) => normalizeFolderHref(textOf(tag || '', /href="([^"]*)"/) || '');
 
 // 指定した開始タグから、対応する閉じタグの手前までを取り出す（入れ子の同じタグは数えない簡易版）
 const sliceBlock = (html, startPattern, closeTag) => {
@@ -33,13 +36,13 @@ const sliceBlock = (html, startPattern, closeTag) => {
 // ツールのカード一覧（ul.tools）の <li> ごとに、見出し・リンク先・準備中かどうかを取り出す
 const parseToolCards = (html) => [...sliceBlock(html, /<ul class="tools"/, '</ul>').matchAll(/<li>([\s\S]*?)<\/li>/g)].map(([, card]) => ({
     title: textOf(card, /<h3>([^<]*)<\/h3>/),
-    href: textOf(card, /<a class="card" [^>]*href="([^"]*)"/) || null,
+    href: hrefOf(textOf(card, /(<a class="card" [^>]*>)/)) || null,
     isSoon: card.includes('is-soon') && card.includes('準備中')
 }));
 
 // ナビゲーション（nav-list）のリンクを、文字とリンク先の組にする
 const parseNavLinks = (html) => [...sliceBlock(html, /<ul class="nav-list"/, '</ul>').matchAll(/<a [^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g)]
-    .map(([, href, label]) => ({ label: label.trim(), href }));
+    .map(([, href, label]) => ({ label: label.trim(), href: normalizeFolderHref(href) }));
 
 const listHrefs = (html) => [...html.matchAll(/\shref="([^"]*)"/g)].map(([, href]) => href);
 
@@ -130,6 +133,13 @@ test('ポータルのリンク先がすべて存在し、URLに日本語を含�
     });
 });
 
+test('ツールへのリンクは、PC で直接開いた（file://）ときもフォルダ一覧にならないよう、末尾の index.html まで書いてある', () => {
+    const folderHrefs = listHrefs(readPortal()).filter((href) => !href.startsWith('#'));
+    assert.ok(folderHrefs.length > 0);
+    folderHrefs.forEach((href) => assert.match(href, /^\.\/(estimate|reservation|schedule)\/index\.html(\?mode=staff)?$/, `リンク先 ${href} に index.html がありません`));
+    assert.ok(folderHrefs.includes('./schedule/index.html?mode=staff'));
+});
+
 test('ポータルは facility-config.js → reservation-logic.js → portal-logic.js の順に読み込み、読み込むファイルが存在する', () => {
     const html = readPortal();
     const sources = [...html.matchAll(/<script src="([^"]*)"><\/script>/g)].map(([, src]) => src);
@@ -169,10 +179,18 @@ test('ヒーローに背景写真の層（#heroSlides）とドット（#heroDots
     const hero = sliceBlock(html, /<section class="hero"/, '</section>');
     assert.match(findTagById(hero, 'heroSlides'), /class="hero-slides"[^>]*aria-hidden="true"/);
     assert.match(findTagById(hero, 'heroDots'), /class="hero-dots"[^>]*aria-label="背景写真の切り替え"/);
-    assert.match(sliceBlock(html, /\.hero \{/, '}'), /linear-gradient\(135deg, #0b3d66/);
-    assert.match(sliceBlock(html, /\.hero-slide::after \{/, '}'), /linear-gradient\(135deg, rgba\(6, 27, 52/);
+    assert.match(sliceBlock(html, /\.hero \{/, '}'), /linear-gradient\(135deg, #0a5a92/);
+    assert.match(sliceBlock(html, /\.hero-slide::after \{/, '}'), /linear-gradient\(90deg, rgba\(6, 40, 72/);
     assert.match(html, /\.hero-slide\.is-loaded\.is-active \{ opacity: 1; transform: scale\(1\.08\); \}/);
     assert.match(html, /startHeroSlideshow\(Portal\.resolveHeroImages\(Portal\.DEFAULT_HERO_IMAGES, window\.CUSTOM_FACILITY_INFO\?\.heroImages\)\)/);
+});
+
+test('写真の色味が見えるよう、オーバーレイの濃さ（不透明度）は 0.5 以下で、白い文字には影が付いている', () => {
+    const html = readPortal();
+    const alphas = [...sliceBlock(html, /\.hero-slide::after \{/, '}').matchAll(/rgba\([^)]*,\s*([\d.]+)\)/g)].map(([, alpha]) => Number(alpha));
+    assert.ok(alphas.length > 0);
+    assert.ok(Math.max(...alphas) <= 0.5, `オーバーレイの不透明度が濃すぎます（最大 ${Math.max(...alphas)}）`);
+    assert.match(html, /\.hero h1, \.hero-lead[^{]*\{ text-shadow: [^}]+\}/);
 });
 
 test('既定の背景写真は4枚（陸上競技場・体育館・球技場・研修室）で、すべて https の画像URL、切り替えは5秒ごと', () => {
@@ -216,4 +234,21 @@ test('背景写真の層とドットの HTML を写真の枚数だけ作り、UR
 test('CSS の url() に入れる値は、引用符・バックスラッシュをエスケープし、改行を取り除く', () => {
     assert.strictEqual(Portal.toCssUrl('./images/gym.jpg'), 'url("./images/gym.jpg")');
     assert.strictEqual(Portal.toCssUrl('a"b\\c\nd.jpg'), 'url("a\\"b\\\\cd.jpg")');
+});
+
+// ---------- 爽やかな配色とイラスト ----------
+test('配色にスカイブルー・ミントグリーン・サンシャインオレンジの変数がある', () => {
+    const rootBlock = sliceBlock(readPortal(), /:root \{/, '}');
+    [/--sky: #38bdf8/, /--mint: #34d3a6/, /--accent: #ff9f1c/].forEach((pattern) => assert.match(rootBlock, pattern));
+});
+
+test('施設紹介に体育館・グラウンド・研修室、宿泊・お食事に客室・食堂ごはん・お弁当のイラスト（説明つきのインライン SVG）がある', () => {
+    const html = readPortal();
+    const banners = [['facilities', 'facilityIllustrations', ['体育館', 'グラウンド・球技場', '研修室']],
+        ['stay', 'stayIllustrations', ['ふかふかの客室でぐっすり', 'できたて・あったか食堂ごはん', 'お弁当・おにぎり・お茶']]];
+    banners.forEach(([sectionId, bannerId, captions]) => {
+        const banner = sliceBlock(sliceBlock(html, new RegExp(`<section [^>]*id="${sectionId}"`), '</section>'), new RegExp(`id="${bannerId}"`), '<div class="stay-grid">');
+        assert.deepStrictEqual([...banner.matchAll(/<figcaption><strong>([^<]*)<\/strong>/g)].map(([, caption]) => caption), captions, `${bannerId} の見出し`);
+        assert.strictEqual([...banner.matchAll(/<svg viewBox="0 0 200 140" role="img" aria-label="[^"]+">/g)].length, 3, `${bannerId} のイラスト`);
+    });
 });

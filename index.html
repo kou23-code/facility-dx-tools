@@ -8,21 +8,26 @@
     <title>あおぞらセミナーハウス 公式ホームページ｜合宿・スポーツ大会・研修の総合施設</title>
     <style>
         :root {
-            --bg: #f6f8fb;
+            /* 爽やかな配色：スカイブルー（primary・sky）・ミントグリーン（green・mint）・サンシャインオレンジ（accent） */
+            --bg: #f3fafe;
             --surface: #ffffff;
             --text: #1e293b;
-            --muted: #64748b;
-            --line: #e2e8f0;
-            --primary: #0f5e9c;
-            --primary-dark: #0b4673;
-            --primary-soft: #e8f2fb;
-            --accent: #f59e0b;
-            --accent-dark: #d97706;
-            --green: #0f8a5f;
-            --green-soft: #e7f6ef;
-            --radius: 16px;
+            --muted: #5b6b80;
+            --line: #dbe8f1;
+            --primary: #0a74b8;
+            --primary-dark: #08598d;
+            --primary-soft: #e3f4fd;
+            --sky: #38bdf8;
+            --accent: #ff9f1c;
+            --accent-dark: #f08a00;
+            --accent-soft: #fff1dc;
+            --accent-text: #9a4a00;
+            --green: #0a7f5f;
+            --green-soft: #e2f8f0;
+            --mint: #34d3a6;
+            --radius: 18px;
             --header-height: 68px;
-            --shadow: 0 10px 30px rgba(15, 40, 80, .08);
+            --shadow: 0 10px 30px rgba(10, 116, 184, .10);
         }
         * { box-sizing: border-box; }
         html { scroll-behavior: smooth; }
@@ -50,11 +55,11 @@
         .btn:hover, .btn:focus-visible { transform: translateY(-1px); }
         .btn:focus-visible { outline: 3px solid rgba(245, 158, 11, .6); outline-offset: 2px; }
         .btn svg { width: 20px; height: 20px; flex: none; }
-        .btn-primary { background: var(--accent); color: #1f1300; box-shadow: 0 6px 16px rgba(245, 158, 11, .35); }
-        .btn-primary:hover, .btn-primary:focus-visible { background: var(--accent-dark); color: #fff; }
+        .btn-primary { background: var(--accent); color: #2a1600; box-shadow: 0 6px 16px rgba(255, 159, 28, .4); }
+        .btn-primary:hover, .btn-primary:focus-visible { background: var(--accent-dark); color: #2a1600; }
         .btn-solid { background: var(--primary); color: #fff; }
         .btn-solid:hover, .btn-solid:focus-visible { background: var(--primary-dark); }
-        .btn-ghost { background: rgba(255, 255, 255, .12); color: #fff; border-color: rgba(255, 255, 255, .7); }
+        .btn-ghost { background: rgba(6, 40, 72, .28); color: #fff; border-color: rgba(255, 255, 255, .85); backdrop-filter: blur(4px); }
         .btn-ghost:hover, .btn-ghost:focus-visible { background: #fff; color: var(--primary-dark); }
 
         /* ---------- 固定ヘッダー ---------- */
@@ -65,7 +70,7 @@
         }
         .header-inner { display: flex; align-items: center; gap: 16px; height: 100%; }
         .site-logo { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; min-width: 0; }
-        .logo-mark { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, var(--primary), #18a0c8); color: #fff; }
+        .logo-mark { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, var(--sky), var(--mint)); color: #fff; }
         .logo-mark svg { width: 24px; height: 24px; }
         .logo-text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
         .logo-org { font-size: .7rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -74,8 +79,8 @@
         .nav-list { display: flex; align-items: center; gap: 2px; margin: 0; padding: 0; list-style: none; }
         .nav-list a { display: block; padding: 8px 12px; border-radius: 999px; color: var(--text); font-size: .9rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
         .nav-list a:hover, .nav-list a:focus-visible { background: var(--primary-soft); color: var(--primary); outline: none; }
-        .nav-list a.nav-cta { background: var(--primary); color: #fff; padding: 8px 16px; }
-        .nav-list a.nav-cta:hover, .nav-list a.nav-cta:focus-visible { background: var(--primary-dark); color: #fff; }
+        .nav-list a.nav-cta { background: var(--accent); color: #2a1600; padding: 8px 16px; box-shadow: 0 4px 12px rgba(255, 159, 28, .35); }
+        .nav-list a.nav-cta:hover, .nav-list a.nav-cta:focus-visible { background: var(--accent-dark); color: #2a1600; }
         .staff-link {
             display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; padding: 4px 10px;
             border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font-size: .72rem; text-decoration: none; white-space: nowrap;
@@ -91,9 +96,9 @@
         /* ---------- ヒーロー ---------- */
         .hero {
             position: relative; overflow: hidden; padding: calc(var(--header-height) + 72px) 0 96px;
-            background: radial-gradient(circle at 85% 15%, rgba(56, 189, 248, .35), transparent 45%),
-                        radial-gradient(circle at 10% 90%, rgba(16, 185, 129, .25), transparent 45%),
-                        linear-gradient(135deg, #0b3d66 0%, #0f5e9c 55%, #1789b8 100%);
+            background: radial-gradient(circle at 85% 15%, rgba(125, 211, 252, .45), transparent 45%),
+                        radial-gradient(circle at 10% 90%, rgba(52, 211, 153, .35), transparent 45%),
+                        linear-gradient(135deg, #0a5a92 0%, #0e86c4 55%, #1aa7c9 100%);
             color: #fff;
         }
         .hero-deco { position: absolute; z-index: 1; right: -60px; bottom: -40px; width: min(520px, 70vw); opacity: .16; pointer-events: none; }
@@ -106,13 +111,19 @@
             opacity: 0; transform: scale(1); transition: opacity 1.6s ease-in-out, transform 7s ease-out;
         }
         .hero-slide.is-loaded.is-active { opacity: 1; transform: scale(1.08); }
-        /* 白い文字がどの写真の上でも読めるよう、ネイビー〜ブルーの半透明グラデーションを重ねる */
+        /* 写真の色味（芝生の緑・トラックやコートの色）が見えるよう、オーバーレイは薄くする。
+           文字が乗る左側と上下の端だけを少し濃くし、文字の影で読みやすさを補う */
+        .hero-slide { filter: saturate(1.15) brightness(1.04); }
         .hero-slide::after {
             content: ""; position: absolute; inset: 0;
-            background: linear-gradient(135deg, rgba(6, 27, 52, .9) 0%, rgba(11, 61, 102, .78) 50%, rgba(23, 137, 184, .55) 100%);
+            background: linear-gradient(90deg, rgba(6, 40, 72, .5) 0%, rgba(6, 40, 72, .28) 45%, rgba(6, 40, 72, 0) 80%),
+                        linear-gradient(180deg, rgba(6, 40, 72, .25) 0%, rgba(6, 40, 72, 0) 30%, rgba(6, 40, 72, 0) 70%, rgba(6, 40, 72, .3) 100%);
         }
-        .hero h1, .hero-lead { text-shadow: 0 2px 14px rgba(4, 20, 40, .35); }
-        .hero-dots { position: absolute; z-index: 2; right: 28px; bottom: 22px; display: flex; gap: 10px; }
+        .hero h1, .hero-lead, .hero-eyebrow, .hero-tags li { text-shadow: 0 1px 3px rgba(0, 20, 40, .55), 0 3px 18px rgba(0, 20, 40, .45); }
+        .hero-dots { position: absolute; z-index: 2; right: 28px; bottom: 56px; display: flex; gap: 10px; }
+        /* ヒーローの下端を、次のセクションの背景色の波でやわらかくつなぐ */
+        .hero-wave { position: absolute; z-index: 1; left: 0; right: 0; bottom: -1px; width: 100%; height: 48px; pointer-events: none; }
+        .hero-wave path { fill: var(--bg); }
         .hero-dot {
             width: 10px; height: 10px; padding: 0; border: 1px solid rgba(255, 255, 255, .75); border-radius: 999px;
             background: rgba(255, 255, 255, .25); cursor: pointer; transition: width .3s, background-color .3s;
@@ -124,36 +135,53 @@
             .hero-slide { transition: opacity .4s linear; }
             .hero-slide.is-loaded.is-active { transform: none; }
         }
-        .hero-eyebrow { display: inline-block; margin: 0 0 18px; padding: 4px 14px; border-radius: 999px; background: rgba(255, 255, 255, .16); font-size: .85rem; font-weight: 700; letter-spacing: .08em; }
+        .hero-eyebrow { display: inline-block; margin: 0 0 18px; padding: 4px 14px; border-radius: 999px; background: rgba(14, 165, 233, .55); font-size: .85rem; font-weight: 700; letter-spacing: .08em; }
         .hero h1 { margin: 0; font-size: clamp(1.9rem, 5vw, 3.1rem); line-height: 1.35; letter-spacing: .02em; }
-        .hero h1 .hero-accent { color: #fde68a; }
-        .hero-lead { margin: 20px 0 0; font-size: clamp(.95rem, 2vw, 1.1rem); color: rgba(255, 255, 255, .9); }
+        .hero h1 .hero-accent { color: #ffd166; }
+        .hero-lead { margin: 20px 0 0; font-size: clamp(.95rem, 2vw, 1.1rem); color: #fff; font-weight: 500; }
         .hero-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 0; padding: 0; list-style: none; }
-        .hero-tags li { padding: 4px 12px; border-radius: 8px; background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .25); font-size: .85rem; }
+        .hero-tags li { padding: 4px 12px; border-radius: 999px; background: rgba(6, 40, 72, .35); border: 1px solid rgba(255, 255, 255, .55); font-size: .85rem; font-weight: 600; backdrop-filter: blur(4px); }
         .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px; }
 
         /* ---------- セクション共通 ---------- */
         .section { padding: 88px 0; }
-        .section-alt { background: var(--surface); }
-        .section-head { max-width: 720px; margin: 0 auto 48px; text-align: center; }
-        .section-label { margin: 0 0 6px; color: var(--primary); font-size: .8rem; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; }
+        .section-alt { background: linear-gradient(180deg, #ffffff 0%, #f0fbf6 100%); }
+        .section-head { max-width: 720px; margin: 0 auto 40px; text-align: center; }
+        .section-label {
+            display: inline-block; margin: 0 0 10px; padding: 2px 14px; border-radius: 999px; background: var(--primary-soft);
+            color: var(--primary); font-size: .8rem; font-weight: 800; letter-spacing: .2em; text-transform: uppercase;
+        }
+        #stay .section-label { background: var(--green-soft); color: var(--green); }
+        #flow .section-label { background: var(--accent-soft); color: var(--accent-text); }
+
+        /* ---------- イラストのビジュアルバナー（施設紹介・宿泊・お食事） ---------- */
+        .visual-banner { margin: 0 0 48px; padding: 28px; border-radius: 28px; background: linear-gradient(120deg, #e0f4fd 0%, #e2f8f0 50%, #fff1dc 100%); }
+        .visual-banner-title { margin: 0 0 20px; color: var(--primary-dark); font-size: clamp(1.05rem, 2.4vw, 1.25rem); font-weight: 800; text-align: center; letter-spacing: .04em; }
+        .illust-banner { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+        .illust-card { margin: 0; padding: 16px 16px 20px; border-radius: 22px; background: var(--surface); box-shadow: var(--shadow); text-align: center; transition: transform .2s; }
+        .illust-card:hover { transform: translateY(-4px) rotate(-.6deg); }
+        .illust-card svg { width: 100%; height: auto; margin-bottom: 12px; }
+        .illust-card figcaption strong { display: block; font-size: 1.05rem; line-height: 1.5; }
+        .illust-card figcaption span { display: block; margin-top: 2px; color: var(--muted); font-size: .85rem; line-height: 1.6; }
         .section-head h2 { margin: 0; font-size: clamp(1.5rem, 3.4vw, 2.1rem); letter-spacing: .03em; }
         .section-head p { margin: 14px 0 0; color: var(--muted); }
 
         /* ---------- 施設紹介 ---------- */
         .facility-group + .facility-group { margin-top: 56px; }
         .facility-group-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 0; font-size: 1.3rem; }
-        .facility-group-title::before { content: ""; align-self: center; width: 6px; height: 22px; border-radius: 3px; background: var(--primary); }
-        .facility-group[data-category="room"] .facility-group-title::before { background: var(--green); }
+        .facility-group-title::before { content: ""; align-self: center; width: 6px; height: 22px; border-radius: 3px; background: var(--sky); }
+        .facility-group[data-category="room"] .facility-group-title::before { background: var(--mint); }
         .facility-unit { padding: 2px 12px; border-radius: 999px; background: var(--primary-soft); color: var(--primary); font-size: .8rem; font-weight: 700; }
         .facility-group[data-category="room"] .facility-unit { background: var(--green-soft); color: var(--green); }
         .facility-time { margin: 8px 0 20px; color: var(--muted); font-size: .9rem; }
         .facility-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; }
         .facility-card {
             display: flex; flex-direction: column; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius);
-            background: var(--surface); box-shadow: var(--shadow); border-top: 4px solid var(--primary);
+            background: var(--surface); box-shadow: var(--shadow); border-top: 5px solid var(--sky);
+            transition: transform .2s, box-shadow .2s;
         }
-        .facility-group[data-category="room"] .facility-card { border-top-color: var(--green); }
+        .facility-card:hover { transform: translateY(-3px); box-shadow: 0 14px 32px rgba(10, 116, 184, .16); }
+        .facility-group[data-category="room"] .facility-card { border-top-color: var(--mint); }
         .facility-name { margin: 0 0 8px; font-size: 1.1rem; }
         .facility-usage { margin: 0 0 8px; color: var(--primary); font-size: .85rem; font-weight: 700; }
         .facility-group[data-category="room"] .facility-usage { color: var(--green); }
@@ -166,9 +194,11 @@
 
         /* ---------- 宿泊・お食事 ---------- */
         .stay-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
-        .panel { padding: 32px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); }
+        .panel { padding: 32px; border: 1px solid var(--line); border-radius: var(--radius); background: #f5fbff; border-top: 5px solid var(--sky); }
+        .panel-meal { background: #fffaf2; border-top-color: var(--accent); }
         .panel h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; font-size: 1.25rem; }
         .panel h3 svg { width: 28px; height: 28px; color: var(--primary); }
+        .panel-meal h3 svg { color: var(--accent-dark); }
         .panel p { margin: 0 0 16px; color: var(--muted); font-size: .92rem; }
         .highlights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 24px; padding: 0; list-style: none; }
         .highlights li { padding: 14px 8px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); text-align: center; }
@@ -183,7 +213,12 @@
         .price-table thead th:last-child { text-align: right; }
         .meal-groups { display: grid; gap: 16px; }
         .meal-group { padding: 16px 20px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
-        .meal-group h4 { margin: 0 0 8px; font-size: .95rem; color: var(--primary); }
+        .meal-group h4 { margin: 0 0 8px; font-size: .95rem; color: var(--accent-text); }
+        .meal-group:nth-child(3n+2) h4 { color: var(--green); }
+        .meal-group:nth-child(3n) h4 { color: var(--primary); }
+        .meal-group { border-left: 5px solid var(--accent); }
+        .meal-group:nth-child(3n+2) { border-left-color: var(--mint); }
+        .meal-group:nth-child(3n) { border-left-color: var(--sky); }
         .meal-group ul { margin: 0; padding: 0; list-style: none; }
         .meal-group li { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px dotted var(--line); font-size: .9rem; }
         .meal-group li:last-child { border-bottom: none; }
@@ -199,6 +234,8 @@
         .step-num { display: inline-block; margin-bottom: 12px; padding: 2px 14px; border-radius: 999px; background: var(--accent); color: #1f1300; font-size: .8rem; font-weight: 800; letter-spacing: .1em; }
         .step-icon { display: grid; place-items: center; width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); }
         .step-icon svg { width: 32px; height: 32px; }
+        .flow-step:nth-child(2) .step-icon, .tools li:nth-child(2) .icon { background: var(--green-soft); color: var(--green); }
+        .flow-step:nth-child(3) .step-icon, .tools li:nth-child(3) .icon { background: var(--accent-soft); color: var(--accent-text); }
         .flow-step h3 { margin: 0 0 6px; font-size: 1.1rem; }
         .flow-step p { margin: 0; color: var(--muted); font-size: .88rem; }
         .tools-title { margin: 0 0 20px; font-size: 1.2rem; text-align: center; }
@@ -225,7 +262,7 @@
         .access-list div { display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
         .access-list dt { color: var(--muted); font-size: .85rem; font-weight: 700; }
         .access-list dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
-        .contact-panel { display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 32px; border-radius: var(--radius); background: linear-gradient(135deg, #0b3d66, #0f5e9c); color: #fff; }
+        .contact-panel { display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 32px; border-radius: var(--radius); background: linear-gradient(135deg, #0a6fb0 0%, #0b8478 100%); color: #fff; }
         .contact-panel h3 { margin: 0; font-size: 1.2rem; }
         .contact-panel p { margin: 0; color: rgba(255, 255, 255, .85); font-size: .9rem; }
         .contact-tel { display: inline-flex; align-items: center; gap: 10px; color: #fff; font-size: clamp(1.4rem, 3.4vw, 1.9rem); font-weight: 800; text-decoration: none; letter-spacing: .04em; }
@@ -233,7 +270,7 @@
         .contact-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 
         /* ---------- フッター ---------- */
-        .site-footer { padding: 48px 0 32px; background: #0f172a; color: #cbd5e1; font-size: .88rem; }
+        .site-footer { padding: 48px 0 32px; background: #0b2f4a; color: #cbd5e1; font-size: .88rem; border-top: 6px solid var(--mint); }
         .footer-inner { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 32px; }
         .footer-name { margin: 0 0 8px; color: #fff; font-size: 1.05rem; font-weight: 800; }
         .footer-info p { margin: 0; }
@@ -241,7 +278,7 @@
         .footer-links a { color: #cbd5e1; text-decoration: none; }
         .footer-links a:hover, .footer-links a:focus-visible { color: #fff; text-decoration: underline; }
         .footer-staff { color: #64748b !important; font-size: .8rem; }
-        .copyright { margin: 32px 0 0; padding-top: 20px; border-top: 1px solid #1e293b; color: #64748b; font-size: .78rem; text-align: center; }
+        .copyright { margin: 32px 0 0; padding-top: 20px; border-top: 1px solid #16476b; color: #8aa4bb; font-size: .78rem; text-align: center; }
 
         /* ---------- タブレット ---------- */
         @media (max-width: 1020px) {
@@ -262,7 +299,10 @@
             .section { padding: 64px 0; }
             .hero { padding: calc(var(--header-height) + 48px) 0 72px; }
             .hero-actions .btn { width: 100%; }
-            .hero-dots { right: 50%; bottom: 18px; transform: translateX(50%); }
+            .hero-dots { right: 50%; bottom: 44px; transform: translateX(50%); }
+            .visual-banner { padding: 20px 16px; }
+            .illust-banner { grid-template-columns: minmax(0, 1fr); }
+            .illust-card svg { max-width: 280px; margin-left: auto; margin-right: auto; }
             .flow-steps { grid-template-columns: minmax(0, 1fr); gap: 32px; }
             .flow-step:not(:last-child)::after { top: auto; right: 50%; bottom: -24px; transform: translateX(50%) rotate(135deg); }
             .panel { padding: 24px 18px; }
@@ -272,7 +312,8 @@
         }
         @media (prefers-reduced-motion: reduce) {
             html { scroll-behavior: auto; }
-            .btn, .card { transition: none; }
+            .btn, .card, .illust-card, .facility-card { transition: none; }
+            .illust-card:hover, .facility-card:hover { transform: none; }
         }
     </style>
 </head>
@@ -299,11 +340,11 @@
                     <li><a href="#facilities">施設紹介</a></li>
                     <li><a href="#stay">宿泊・食事</a></li>
                     <li><a href="#flow">ご利用の流れ</a></li>
-                    <li><a href="./estimate/">料金シミュレーター</a></li>
-                    <li><a href="./schedule/">空き状況</a></li>
-                    <li><a class="nav-cta" href="./reservation/">Web予約</a></li>
+                    <li><a href="./estimate/index.html">料金シミュレーター</a></li>
+                    <li><a href="./schedule/index.html">空き状況</a></li>
+                    <li><a class="nav-cta" href="./reservation/index.html">Web予約</a></li>
                 </ul>
-                <a class="staff-link" id="staffLink" href="./schedule/?mode=staff">
+                <a class="staff-link" id="staffLink" href="./schedule/index.html?mode=staff">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
                     職員用スケジュール管理
                 </a>
@@ -328,15 +369,15 @@
                     <li>3食・お弁当の手配</li>
                 </ul>
                 <div class="hero-actions">
-                    <a class="btn btn-ghost" id="heroScheduleButton" href="./schedule/">
+                    <a class="btn btn-ghost" id="heroScheduleButton" href="./schedule/index.html">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>
                         空き状況を確認する
                     </a>
-                    <a class="btn btn-ghost" id="heroEstimateButton" href="./estimate/">
+                    <a class="btn btn-ghost" id="heroEstimateButton" href="./estimate/index.html">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="11" x2="10" y2="11"/><line x1="14" y1="11" x2="16" y2="11"/><line x1="8" y1="16" x2="10" y2="16"/><line x1="14" y1="16" x2="16" y2="16"/></svg>
                         概算見積もりを作る
                     </a>
-                    <a class="btn btn-primary" id="heroReservationButton" href="./reservation/">
+                    <a class="btn btn-primary" id="heroReservationButton" href="./reservation/index.html">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><polyline points="9 15 11 17 15 13"/></svg>
                         Web予約を申し込む
                     </a>
@@ -344,6 +385,7 @@
             </div>
             <!-- 表示中の背景写真を示すドット（押すと切り替わる） -->
             <div class="hero-dots" id="heroDots" role="group" aria-label="背景写真の切り替え"></div>
+            <svg class="hero-wave" viewBox="0 0 1440 48" preserveAspectRatio="none" aria-hidden="true"><path d="M0 24c240 24 480 24 720 0s480-24 720 0v24H0z"/></svg>
         </section>
 
         <!-- 施設紹介（カードは RESERVATION_CATALOG の施設一覧と料金から作る） -->
@@ -353,6 +395,60 @@
                     <p class="section-label">Facilities</p>
                     <h2 id="facilitiesTitle">施設紹介</h2>
                     <p>屋内外の競技スペースと、大小の研修室をそろえています。練習・試合・ミーティングまで、1か所で完結します。</p>
+                </div>
+                <!-- 施設のイラスト（体育館・グラウンド・研修室。インラインの SVG） -->
+                <div class="visual-banner" id="facilityIllustrations">
+                    <p class="visual-banner-title">屋内も、屋外も、学びの場も。思いきり動いて、しっかり学べる！</p>
+                    <div class="illust-banner">
+                        <figure class="illust-card">
+                            <svg viewBox="0 0 200 140" role="img" aria-label="体育館とバスケットボールのイラスト">
+                                <rect x="4" y="4" width="192" height="132" rx="20" fill="#e3f4fd"/>
+                                <circle cx="168" cy="28" r="10" fill="#ffd166"/>
+                                <path d="M30 62q70-44 140 0v58H30z" fill="#ffffff" stroke="#0a74b8" stroke-width="4" stroke-linejoin="round"/>
+                                <path d="M46 76h108" stroke="#bae6fd" stroke-width="10" stroke-linecap="round"/>
+                                <rect x="84" y="92" width="32" height="28" rx="4" fill="#38bdf8"/>
+                                <path d="M100 92v28" stroke="#ffffff" stroke-width="2"/>
+                                <path d="M16 120h168" stroke="#7cc4ea" stroke-width="4" stroke-linecap="round"/>
+                                <circle cx="154" cy="106" r="16" fill="#ff8c42" stroke="#c2410c" stroke-width="2"/>
+                                <path d="M138 106h32M154 90v32M144 94q8 12 0 24M164 94q-8 12 0 24" stroke="#c2410c" stroke-width="2" fill="none"/>
+                            </svg>
+                            <figcaption><strong>体育館</strong><span>バスケ・バレー・バドミントンも</span></figcaption>
+                        </figure>
+                        <figure class="illust-card">
+                            <svg viewBox="0 0 200 140" role="img" aria-label="陸上トラックと芝生のグラウンドのイラスト">
+                                <rect x="4" y="4" width="192" height="132" rx="20" fill="#e2f8f0"/>
+                                <circle cx="170" cy="24" r="10" fill="#ffd166"/>
+                                <rect x="16" y="40" width="168" height="86" rx="43" fill="#e0703f"/>
+                                <rect x="23" y="47" width="154" height="72" rx="36" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-dasharray="6 5"/>
+                                <rect x="30" y="54" width="140" height="58" rx="29" fill="#4cc38a"/>
+                                <path d="M100 54v58" stroke="#ffffff" stroke-width="2"/>
+                                <circle cx="100" cy="83" r="12" fill="none" stroke="#ffffff" stroke-width="2"/>
+                                <circle cx="138" cy="86" r="9" fill="#ffffff" stroke="#334155" stroke-width="1.5"/>
+                                <path d="M138 81l4 3-1.5 5h-5l-1.5-5z" fill="#334155"/>
+                                <path d="M40 20v30" stroke="#5b6b80" stroke-width="3" stroke-linecap="round"/>
+                                <path d="M40 20l18 7-18 7z" fill="#ff9f1c"/>
+                            </svg>
+                            <figcaption><strong>グラウンド・球技場</strong><span>陸上・サッカー・ラグビーも</span></figcaption>
+                        </figure>
+                        <figure class="illust-card">
+                            <svg viewBox="0 0 200 140" role="img" aria-label="ホワイトボードと机が並ぶ研修室のイラスト">
+                                <rect x="4" y="4" width="192" height="132" rx="20" fill="#fff1dc"/>
+                                <rect x="40" y="16" width="120" height="58" rx="6" fill="#ffffff" stroke="#f4a259" stroke-width="4"/>
+                                <rect x="56" y="46" width="12" height="18" rx="2" fill="#38bdf8"/>
+                                <rect x="74" y="36" width="12" height="28" rx="2" fill="#34d3a6"/>
+                                <rect x="92" y="28" width="12" height="36" rx="2" fill="#ff9f1c"/>
+                                <path d="M116 34h30M116 44h24M116 54h28" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round"/>
+                                <circle cx="44" cy="84" r="9" fill="#ffd9b8"/><path d="M35 83a9 9 0 0 1 18 0z" fill="#6b4226"/><path d="M32 100a12 10 0 0 1 24 0z" fill="#38bdf8"/>
+                                <circle cx="72" cy="84" r="9" fill="#ffd9b8"/><path d="M63 83a9 9 0 0 1 18 0z" fill="#3b2a1a"/><path d="M60 100a12 10 0 0 1 24 0z" fill="#34d3a6"/>
+                                <circle cx="128" cy="84" r="9" fill="#ffd9b8"/><path d="M119 83a9 9 0 0 1 18 0z" fill="#3b2a1a"/><path d="M116 100a12 10 0 0 1 24 0z" fill="#ff9f1c"/>
+                                <circle cx="156" cy="84" r="9" fill="#ffd9b8"/><path d="M147 83a9 9 0 0 1 18 0z" fill="#6b4226"/><path d="M144 100a12 10 0 0 1 24 0z" fill="#f78fb3"/>
+                                <rect x="22" y="98" width="70" height="10" rx="4" fill="#c98a4b"/>
+                                <rect x="108" y="98" width="70" height="10" rx="4" fill="#c98a4b"/>
+                                <path d="M30 108v18M84 108v18M116 108v18M170 108v18" stroke="#a86d34" stroke-width="4" stroke-linecap="round"/>
+                            </svg>
+                            <figcaption><strong>研修室</strong><span>講義・ミーティング・勉強会も</span></figcaption>
+                        </figure>
+                    </div>
                 </div>
                 <div id="facilitySections"></div>
                 <noscript><p class="note">施設の一覧と料金を表示するには、JavaScript を有効にしてください。</p></noscript>
@@ -368,8 +464,80 @@
                     <h2 id="stayTitle">宿泊・お食事</h2>
                     <p>大人数の合宿や複数団体での同時利用にも対応。年代別のわかりやすい料金と、練習の合間にうれしいお食事をご用意します。</p>
                 </div>
+                <!-- 宿泊・お食事のイラスト（客室・食堂のごはん・お弁当。インラインの SVG） -->
+                <div class="visual-banner" id="stayIllustrations">
+                    <p class="visual-banner-title">泊まって、食べて、また明日もがんばれる。合宿の毎日をまるごとサポート！</p>
+                    <div class="illust-banner">
+                        <figure class="illust-card">
+                            <svg viewBox="0 0 200 140" role="img" aria-label="ふかふかのベッドでぐっすり眠る客室のイラスト">
+                                <rect x="4" y="4" width="192" height="132" rx="20" fill="#e3f4fd"/>
+                                <rect x="118" y="18" width="62" height="46" rx="8" fill="#bae6fd" stroke="#ffffff" stroke-width="5"/>
+                                <circle cx="136" cy="36" r="9" fill="#ffd166"/>
+                                <ellipse cx="164" cy="52" rx="10" ry="5" fill="#ffffff"/>
+                                <path d="M149 18v46M118 41h62" stroke="#ffffff" stroke-width="4"/>
+                                <rect x="18" y="58" width="16" height="62" rx="6" fill="#f4a259"/>
+                                <rect x="24" y="112" width="8" height="14" rx="3" fill="#d9822b"/>
+                                <rect x="168" y="112" width="8" height="14" rx="3" fill="#d9822b"/>
+                                <rect x="28" y="88" width="152" height="28" rx="10" fill="#ffffff" stroke="#cfe6f5" stroke-width="2"/>
+                                <rect x="36" y="72" width="44" height="22" rx="11" fill="#ffffff" stroke="#cfe6f5" stroke-width="2"/>
+                                <circle cx="70" cy="80" r="13" fill="#ffd9b8"/>
+                                <path d="M57 78c2-12 24-14 26 0z" fill="#6b4226"/>
+                                <path d="M62 82q3 3 6 0M72 82q3 3 6 0" stroke="#6b4226" stroke-width="2" fill="none" stroke-linecap="round"/>
+                                <circle cx="62" cy="88" r="2.5" fill="#ffb4a2"/><circle cx="79" cy="88" r="2.5" fill="#ffb4a2"/>
+                                <path d="M80 86h94a8 8 0 0 1 8 8v14a8 8 0 0 1-8 8H86a10 10 0 0 1-10-10V90a4 4 0 0 1 4-4z" fill="#34d3a6"/>
+                                <path d="M104 86v30M130 86v30M156 86v30" stroke="#7ee8c8" stroke-width="6"/>
+                                <text x="90" y="66" font-size="18" font-weight="700" fill="#0a74b8" font-family="sans-serif">Z</text>
+                                <text x="104" y="52" font-size="13" font-weight="700" fill="#38bdf8" font-family="sans-serif">z</text>
+                            </svg>
+                            <figcaption><strong>ふかふかの客室でぐっすり</strong><span>清潔なお部屋で、練習の疲れをリフレッシュ</span></figcaption>
+                        </figure>
+                        <figure class="illust-card">
+                            <svg viewBox="0 0 200 140" role="img" aria-label="湯気の立つカレーライスとみそ汁のイラスト">
+                                <rect x="4" y="4" width="192" height="132" rx="20" fill="#fff1dc"/>
+                                <path d="M66 50c-8-8 8-14 0-24M90 46c-8-8 8-14 0-24M114 50c-8-8 8-14 0-24" stroke="#f4a259" stroke-width="4" fill="none" stroke-linecap="round" opacity=".75"/>
+                                <ellipse cx="90" cy="94" rx="70" ry="28" fill="#ffffff" stroke="#f3d9b5" stroke-width="3"/>
+                                <ellipse cx="90" cy="90" rx="54" ry="18" fill="#fffaf0"/>
+                                <path d="M38 90c0-14 22-22 44-20 4 8 4 26 0 38-24 2-44-6-44-18z" fill="#ffffff" stroke="#efe6d6" stroke-width="2"/>
+                                <path d="M82 70c26-2 54 6 56 20 0 12-26 20-56 18 4-12 4-30 0-38z" fill="#e89a2c"/>
+                                <circle cx="102" cy="84" r="5" fill="#ff7a1a"/><circle cx="122" cy="94" r="4.5" fill="#ff7a1a"/>
+                                <rect x="108" y="78" width="9" height="8" rx="2" fill="#ffd27a"/><rect x="94" y="94" width="9" height="8" rx="2" fill="#ffd27a"/>
+                                <circle cx="114" cy="100" r="3" fill="#5cc96a"/>
+                                <circle cx="54" cy="88" r="2" fill="#6b4226"/><circle cx="66" cy="88" r="2" fill="#6b4226"/>
+                                <path d="M57 94q3 3 6 0" stroke="#6b4226" stroke-width="2" fill="none" stroke-linecap="round"/>
+                                <circle cx="49" cy="93" r="2.5" fill="#ffb4a2"/><circle cx="71" cy="93" r="2.5" fill="#ffb4a2"/>
+                                <path d="M148 104h36a18 18 0 0 1-36 0z" fill="#e06b4f"/>
+                                <ellipse cx="166" cy="104" rx="18" ry="4" fill="#c98a4b"/>
+                                <path d="M166 96c-5-5 5-9 0-15" stroke="#f4a259" stroke-width="3" fill="none" stroke-linecap="round" opacity=".75"/>
+                            </svg>
+                            <figcaption><strong>できたて・あったか食堂ごはん</strong><span>朝・昼・夕の3食を、栄養たっぷりにご用意</span></figcaption>
+                        </figure>
+                        <figure class="illust-card">
+                            <svg viewBox="0 0 200 140" role="img" aria-label="お弁当とおにぎりとお茶のイラスト">
+                                <rect x="4" y="4" width="192" height="132" rx="20" fill="#e2f8f0"/>
+                                <path d="M24 44l88-10M26 50l88-10" stroke="#c98a4b" stroke-width="3" stroke-linecap="round"/>
+                                <rect x="20" y="56" width="98" height="66" rx="10" fill="#e8553f"/>
+                                <rect x="26" y="62" width="86" height="54" rx="6" fill="#fff8ec"/>
+                                <path d="M68 62v54" stroke="#e8553f" stroke-width="3"/>
+                                <rect x="30" y="66" width="34" height="46" rx="4" fill="#ffffff"/>
+                                <circle cx="47" cy="89" r="5" fill="#e63946"/>
+                                <circle cx="82" cy="74" r="8" fill="#c97b2a"/><circle cx="97" cy="73" r="7" fill="#d98c38"/>
+                                <rect x="73" y="86" width="16" height="11" rx="3" fill="#ffd23f"/><rect x="92" y="86" width="16" height="11" rx="3" fill="#ffd23f"/>
+                                <circle cx="80" cy="106" r="5" fill="#ff6b6b"/>
+                                <circle cx="100" cy="106" r="5" fill="#4caf50"/><circle cx="94" cy="108" r="4" fill="#5cc96a"/>
+                                <path d="M146 30c6-10 16-10 22 0l16 30c4 8-2 14-10 14h-34c-8 0-14-6-10-14z" fill="#ffffff" stroke="#d9e2e8" stroke-width="2"/>
+                                <rect x="146" y="56" width="22" height="18" rx="2" fill="#2f4f3a"/>
+                                <circle cx="151" cy="46" r="2" fill="#334155"/><circle cx="163" cy="46" r="2" fill="#334155"/>
+                                <circle cx="147" cy="51" r="2.5" fill="#ffb4a2"/><circle cx="167" cy="51" r="2.5" fill="#ffb4a2"/>
+                                <path d="M139 96h38l-4 28h-30z" fill="#8bd3b5"/>
+                                <ellipse cx="158" cy="96" rx="19" ry="4" fill="#5fae86"/>
+                                <path d="M152 90c-4-4 4-7 0-12M164 90c-4-4 4-7 0-12" stroke="#7cc4a4" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                            </svg>
+                            <figcaption><strong>お弁当・おにぎり・お茶</strong><span>練習や試合のおともに、持ち出しもOK</span></figcaption>
+                        </figure>
+                    </div>
+                </div>
                 <div class="stay-grid">
-                    <div class="panel">
+                    <div class="panel panel-stay">
                         <h3>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18V8"/><path d="M3 14h18v4"/><path d="M21 14v-2a3 3 0 0 0-3-3h-7v5"/><circle cx="7" cy="11" r="2"/></svg>
                             宿泊のご案内
@@ -382,7 +550,7 @@
                             <tbody id="stayPriceRows"></tbody>
                         </table>
                     </div>
-                    <div class="panel">
+                    <div class="panel panel-meal">
                         <h3>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3v8a3 3 0 0 0 3 3v7"/><path d="M10 3v8"/><path d="M7 3v8"/><path d="M17 21V3c-2 1-3 4-3 8h3"/></svg>
                             お食事のご案内
@@ -426,10 +594,10 @@
 
                 <h3 class="tools-title">オンラインツール</h3>
                 <!-- ツールを追加するときは、下の li 要素を1つコピーして増やします
-                     （a 要素は class="card"、リンク先は ./ から始まる英数字のフォルダ名） -->
+                     （a 要素は class="card"、リンク先は ./英数字のフォルダ名/index.html。PC で直接開いてもフォルダ一覧にならないよう index.html まで書く） -->
                 <ul class="tools" id="toolCards">
                     <li>
-                        <a class="card" href="./schedule/">
+                        <a class="card" href="./schedule/index.html">
                             <div class="card-head">
                                 <span class="icon" aria-hidden="true">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="20"/><line x1="15" y1="9" x2="15" y2="20"/></svg>
@@ -442,7 +610,7 @@
                         </a>
                     </li>
                     <li>
-                        <a class="card" href="./estimate/">
+                        <a class="card" href="./estimate/index.html">
                             <div class="card-head">
                                 <span class="icon" aria-hidden="true">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="14" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="16" y2="18"/></svg>
@@ -455,7 +623,7 @@
                         </a>
                     </li>
                     <li>
-                        <a class="card" href="./reservation/">
+                        <a class="card" href="./reservation/index.html">
                             <div class="card-head">
                                 <span class="icon" aria-hidden="true">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>
@@ -494,8 +662,8 @@
                         </a>
                         <p>オンラインでのお申し込みは24時間受け付けています。</p>
                         <div class="contact-actions">
-                            <a class="btn btn-ghost" href="./schedule/">空き状況</a>
-                            <a class="btn btn-primary" href="./reservation/">Web予約</a>
+                            <a class="btn btn-ghost" href="./schedule/index.html">空き状況</a>
+                            <a class="btn btn-primary" href="./reservation/index.html">Web予約</a>
                         </div>
                     </div>
                 </div>
@@ -513,13 +681,13 @@
                 </div>
                 <ul class="footer-links">
                     <li><a href="#facilities">施設紹介</a></li>
-                    <li><a href="./schedule/">空き状況</a></li>
+                    <li><a href="./schedule/index.html">空き状況</a></li>
                     <li><a href="#stay">宿泊・食事</a></li>
-                    <li><a href="./estimate/">料金シミュレーター</a></li>
+                    <li><a href="./estimate/index.html">料金シミュレーター</a></li>
                     <li><a href="#flow">ご利用の流れ</a></li>
-                    <li><a href="./reservation/">Web予約</a></li>
+                    <li><a href="./reservation/index.html">Web予約</a></li>
                     <li><a href="#access">アクセス</a></li>
-                    <li><a class="footer-staff" href="./schedule/?mode=staff">職員用</a></li>
+                    <li><a class="footer-staff" href="./schedule/index.html?mode=staff">職員用</a></li>
                 </ul>
             </div>
             <p class="copyright" id="copyright" data-contact="copyright">&copy; あおぞらセミナーハウス</p>

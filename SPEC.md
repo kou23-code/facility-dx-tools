@@ -761,7 +761,7 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
   - 1行コードの取込（エラーの理由の表示、重複で取り込まない、追加、削除ボタン、削除用のコード）
   - 公開用データの出力（個人情報なし）・正しくないデータの読み込みエラー・読み込んだデータでの表示・解除
   - リセットでサンプル投入の案内が出ること
-- `tests/portal.test.js`：ポータルの「空き状況カレンダー」のカードが公開中で `./schedule/` へのリンクになっていること（15.6を参照）
+- `tests/portal.test.js`：ポータルの「空き状況カレンダー」のカードが公開中で `./schedule/index.html` へのリンクになっていること（15.6を参照）
 
 ### 14.11 現状の注意点
 
@@ -776,40 +776,48 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
 - 画面（`index.html`）と、表示内容を作る純粋関数（ルートの `portal-logic.js`。`window.PortalLogic`）に分けている。純粋関数は DOM に触らず、施設・料金・食事は `reservation/reservation-logic.js` の `RESERVATION_CATALOG`、受け入れ上限は `RESERVATION_CONFIG`、施設名・所在地などは `FACILITY_INFO` を引数で受け取る。画面の処理は書き込みとメニューの開け閉めだけを行う
 - 料金を二重に持たないよう、施設カードの料金目安・宿泊料金・食事の料金は `RESERVATION_CATALOG` から作る（料金を改定すると自動で反映される）
 - 読み込む順番：`./facility-config.js`（Git管理外。なければダミー表記）→ `./reservation/reservation-logic.js` → `./portal-logic.js`
-- 外部ライブラリは使わない（アイコン・飾りはインラインの SVG）。外部画像はヒーローの背景写真（フリー素材。15.2を参照）だけで、読み込めなくても表示が崩れないようにしている
+- 外部ライブラリは使わない（アイコン・飾り・イラストはインラインの SVG）。外部画像はヒーローの背景写真（フリー素材。15.2を参照）だけで、読み込めなくても表示が崩れないようにしている
+- 配色：明るく親しみやすい印象にするため、スカイブルー（`--primary` #0a74b8・`--sky` #38bdf8）・ミントグリーン（`--green` #0a7f5f・`--mint` #34d3a6）・サンシャインオレンジ（`--accent` #ff9f1c）を使う。文字に使う色（`--primary`・`--green`・`--accent-text` #9a4a00）は白い背景の上で読める濃さにし、オレンジのボタン（Web予約・ナビゲーションの `nav-cta`）の文字は濃い茶色にする
+- ツールへのリンクは、末尾の `index.html` まで書く（例：`./estimate/index.html`、`./schedule/index.html?mode=staff`）。パソコン上でファイルを直接開いた（`file://`）ときも、フォルダの中身の一覧ではなくツールの画面が開く
 - レスポンシブ：PC は横並びのナビゲーション、幅 1020px 以下（タブレット）はメニューの開閉ボタン（`#menuToggle`。`aria-expanded` で状態を示し、メニュー内のリンクを押すと閉じる）で開くナビゲーションと1列の宿泊・アクセス欄、幅 680px 以下（スマホ）はヒーローのボタンを横幅いっぱいにし、ご利用の流れを縦に並べる
 
 ### 15.2 画面の構成
 
 1. **固定ヘッダー＆ナビゲーション**（`#siteHeader`）
    - 左：ロゴ（会社名の小さな行 `data-contact="organization"` と施設名 `data-contact="facilityName"`）。押すとページの先頭へ
-   - ナビゲーション（`ul.nav-list`）：「施設紹介」`#facilities`／「宿泊・食事」`#stay`／「ご利用の流れ」`#flow`／「料金シミュレーター」`./estimate/`／「空き状況」`./schedule/`／「Web予約」`./reservation/`（目立つボタン `nav-cta`）
-   - 右端：控えめな「職員用スケジュール管理」（`#staffLink`、`class="staff-link"`、`./schedule/?mode=staff`）
+   - ナビゲーション（`ul.nav-list`）：「施設紹介」`#facilities`／「宿泊・食事」`#stay`／「ご利用の流れ」`#flow`／「料金シミュレーター」`./estimate/index.html`／「空き状況」`./schedule/index.html`／「Web予約」`./reservation/index.html`（目立つボタン `nav-cta`）
+   - 右端：控えめな「職員用スケジュール管理」（`#staffLink`、`class="staff-link"`、`./schedule/index.html?mode=staff`）
 2. **ヒーロー**：合宿・スポーツ大会・研修の総合施設であることを伝えるキャッチコピー（`#heroTitle`）、紹介文、特長のタグ（体育館・グラウンド 4施設／研修室 4室など）と、3つの主要アクションボタン
-   - 「空き状況を確認する」`#heroScheduleButton` → `./schedule/`
-   - 「概算見積もりを作る」`#heroEstimateButton` → `./estimate/`
-   - 「Web予約を申し込む」`#heroReservationButton` → `./reservation/`（いちばん目立つ色）
+   - 「空き状況を確認する」`#heroScheduleButton` → `./schedule/index.html`
+   - 「概算見積もりを作る」`#heroEstimateButton` → `./estimate/index.html`
+   - 「Web予約を申し込む」`#heroReservationButton` → `./reservation/index.html`（いちばん目立つ色）
    - **背景スライドショー**（`#heroSlides`。`aria-hidden="true"` の飾り）
      - 既定の写真は `portal-logic.js` の `DEFAULT_HERO_IMAGES` の4枚（陸上競技場のトラック／体育館のコート／芝生の球技場／研修室のセミナー。Unsplash のフリー素材の固定 URL）
      - 約5秒（`HERO_SLIDE_INTERVAL_MS`）ごとに、クロスフェード（1.6秒）と少しずつ拡大するズームイン（7秒で 1.08 倍）で次の写真へ切り替わる。最後の次は最初に戻る。OS の「動きを減らす」設定（`prefers-reduced-motion`）のときはズームせず、短いフェードだけにする
-     - 各写真の上に、ネイビー〜ブルーの半透明グラデーション（`.hero-slide::after`）を重ね、白い文字とボタンがどの写真の上でも読めるようにする（文字にも薄い影を付ける）
+     - 写真の色味（芝生の緑・トラックやコートの色）がはっきり見えるよう、オーバーレイ（`.hero-slide::after`）は薄いネイビーにする（不透明度は最大 0.5。文字が乗る左側から右へ透明になる横のグラデーションと、上下の端だけ少し濃くする縦のグラデーション）。写真は彩度を少し上げる（`saturate(1.15)`）
+     - 白い文字（見出し・紹介文・ラベル・タグ）には、くっきりした影と広い影の2重の `text-shadow` を付け、タグとゴーストボタンには半透明のネイビーの下地を敷いて、どの写真の上でも読めるようにする
+     - ヒーローの下端は、次のセクションの背景色の波（`.hero-wave`）でつなぐ
      - 写真は JavaScript で先に読み込み、読み込めたものだけ表示する（`is-loaded`）。オフラインや読み込み失敗のときは写真の層が透明のままで、もとのブルーのグラデーション背景がそのまま見える
    - **スライドドット**（`#heroDots`。ヒーローの右下、スマホでは下部中央）：表示中の写真のドットが横長の白（`is-active`・`aria-current="true"`）になる。押すとその写真に切り替わり、そこから5秒後に次へ進む。写真が1枚以下ならドットは出さず、自動の切り替えもしない
    - **写真の差し替え**：ルートの `facility-config.js` の `window.CUSTOM_FACILITY_INFO.heroImages` に URL の配列を書くと、その写真に差し替わる（ローカルの写真も可。例：`heroImages: ['./images/gym.jpg', './images/field.jpg']`）。前後の空白は取り、空の文字列・文字列以外は除く。有効な URL が1つもない（書かない・空の配列・配列でない）ときは既定の4枚
 3. **施設紹介**（`#facilities`。カードは `#facilitySections` に JavaScript で作る）
+   - 見出しの下に、イラストのビジュアルバナー（`#facilityIllustrations`。スカイブルー〜ミント〜オレンジの淡いグラデーション）：「体育館」（建物とバスケットボール）・「グラウンド・球技場」（陸上トラックと芝生のフィールド、サッカーボール、旗）・「研修室」（ホワイトボードと机に並ぶ人）のカラフルなイラスト（インラインの SVG。`role="img"` と `aria-label` で内容を伝える）
+   - 体育館・グラウンドのカードはスカイブルー、研修室のカードはミントグリーンの線で色分けする
    - 体育館・グラウンド（午前・午後・夜間の3区分。各区分の時間も表示）：大体育館・小体育館・陸上グラウンド・球技場
    - 研修室（9〜21時の1時間単位）：大研修室（第１研修室）・大研修室（第３研修室）・小研修室（第２研修室）・ミーティングルーム
    - 各カードに施設名・主な用途・特徴・料金目安（料金表の一番安い額〜一番高い額。「1区分あたり」「1時間あたり」、税込・目安）を出す。用途と特徴の文章は `portal-logic.js` の `FACILITY_GUIDES` に書く
 4. **宿泊・お食事**（`#stay`）
+   - 見出しの下に、イラストのビジュアルバナー（`#stayIllustrations`）：「ふかふかの客室でぐっすり」（窓のある客室のベッドで眠る人）・「できたて・あったか食堂ごはん」（湯気の立つカレーライスとみそ汁）・「お弁当・おにぎり・お茶」（お弁当箱・おにぎり・湯のみ）のカラフルなイラスト（インラインの SVG）
+   - 宿泊のご案内（`.panel-stay`）はスカイブルー、お食事のご案内（`.panel-meal`）はオレンジの線で色分けし、食事のグループもオレンジ・ミント・スカイブルーで色分けする
    - 受け入れ条件（`#stayHighlights`）：最大宿泊人数（`stayCapacity`。既定 300名）・同時受け入れ（`maxStayGroups`。既定 6団体まで）・連泊（`maxNights`。既定 最大6泊）。`facility-config.js` の `window.CUSTOM_RESERVATION_CONFIG` で変えると表示も変わる
    - 宿泊料金の表（`#stayPriceRows`）：小学生・中学生／高校生／大学生・一般の1名1泊の料金
    - お食事（`#mealGroups`）：「食堂の食事」（朝食・昼食・夕食）・「弁当」・「お茶・おにぎり」のグループごとに品目と料金
 5. **ご利用の流れ＆DXツール案内**（`#flow`）
    - STEP 1「空き状況を確認」→ STEP 2「概算見積もり」→ STEP 3「Web予約を申し込む」の3ステップを矢印つきで図解（`ol.flow-steps`）
-   - ツールのカード（`ul.tools#toolCards` の `<li>`。カード全体が `a.card` のリンク、見出しは `h3`）：「空き状況カレンダー」`./schedule/`／「料金シミュレーター（概算見積もり）」`./estimate/`／「Web予約」`./reservation/`
-   - ツールを追加するときは、`<li>` を1つコピーして増やし、英数字のフォルダ（例：`xxx/index.html`）を作る
+   - ツールのカード（`ul.tools#toolCards` の `<li>`。カード全体が `a.card` のリンク、見出しは `h3`）：「空き状況カレンダー」`./schedule/index.html`／「料金シミュレーター（概算見積もり）」`./estimate/index.html`／「Web予約」`./reservation/index.html`
+   - ツールを追加するときは、`<li>` を1つコピーして増やし、英数字のフォルダ（例：`xxx/index.html`）を作る。リンク先は `./xxx/index.html` と `index.html` まで書く
 6. **アクセス・お問い合わせ**（`#access`）：施設名（会社名＋施設名）・所在地（〒郵便番号＋住所）・電話番号・主な施設、電話番号のリンク（`#contactTelLink`。`tel:` の後ろは数字だけ）と、空き状況・Web予約へのボタン
-7. **フッター**：施設名・所在地・電話番号、サイト内リンク（末尾に控えめな「職員用」`./schedule/?mode=staff`）、コピーライト（`#copyright`。「© 西暦 会社名 施設名」。西暦は表示した日の年）
+7. **フッター**：施設名・所在地・電話番号、サイト内リンク（末尾に控えめな「職員用」`./schedule/index.html?mode=staff`）、コピーライト（`#copyright`。「© 西暦 会社名 施設名」。西暦は表示した日の年）
 
 ### 15.3 施設名・所在地・電話番号の表示（`facility-config.js` 連動）
 
@@ -840,7 +848,7 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
 
 ### 15.5 画面の確認のしかた
 
-- `index.html` をブラウザで開く。パソコン上でファイルを直接開く（`file://`）と、`./estimate/` などのリンクはフォルダの中身の一覧になる。GitHub Pages などの Web サーバーでは各フォルダの `index.html` が表示される
+- `index.html` をブラウザで開く。リンクは `./estimate/index.html` のように `index.html` まで書いてあるので、パソコン上でファイルを直接開いた（`file://`）ときも、GitHub Pages などの Web サーバーでも、各ツールの画面が開く
 
 ### 15.6 動作確認テスト
 
@@ -850,10 +858,12 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
   - ヒーローの3つのボタンのリンク先と文字、ページ内リンクの行き先のセクションがあること、JavaScript で書き込む場所（`id`・`data-contact`）があること
   - ご利用の流れが STEP 1〜3 の順であること、ツールのカードが3枚・決められた順番・すべて公開中のリンクであること
   - リンク先のファイルがすべて存在し（`?mode=staff` などの検索部分は外して確認）、URL に日本語が入っていないこと。読み込む JavaScript の順番とファイルがあること
+  - ツールへのリンクがすべて `./(estimate|reservation|schedule)/index.html`（職員用は `?mode=staff` 付き）と `index.html` まで書かれていること。リンク先の文字・順番を比べるテストでは、`./estimate/index.html` と `./estimate/` を同じ行き先として扱う（`normalizeFolderHref`）
   - `index.html` と `portal-logic.js`（`FACILITY_INFO` ブロックの外）に会社名・住所・電話番号らしい表記がないこと
   - viewport・タブレットとスマホのメディアクエリ・メニューの開閉ボタンがあること
   - 見積もり・予約・スケジュール管理表の `index.html` の場所、HTML のファイル名・フォルダ名に日本語がないこと
-  - ヒーローの背景スライドショー：写真の層（`#heroSlides`）・ドット（`#heroDots`）・オーバーレイ・ズームの CSS があり、読み込めないときのグラデーション背景が残っていること。既定の写真が4枚（https の画像 URL）・5秒ごとであること。`heroImages` での差し替え（空白・空・文字列以外の除外）と、指定がない・無効なときは既定の写真になること。`nextSlideIndex` の折り返し・`isSlideDue` の境目（ちょうど5秒で切り替え）・HTML のエスケープ・1枚以下でドットを出さないこと・`toCssUrl` のエスケープ
+  - ヒーローの背景スライドショー：写真の層（`#heroSlides`）・ドット（`#heroDots`）・オーバーレイ・ズームの CSS があり、読み込めないときのグラデーション背景が残っていること。既定の写真が4枚（https の画像 URL）・5秒ごとであること。`heroImages` での差し替え（空白・空・文字列以外の除外）と、指定がない・無効なときは既定の写真になること。`nextSlideIndex` の折り返し・`isSlideDue` の境目（ちょうど5秒で切り替え）・HTML のエスケープ・1枚以下でドットを出さないこと・`toCssUrl` のエスケープ。写真の色味が見えるよう、オーバーレイの不透明度が 0.5 以下で、白い文字に `text-shadow` があること
+  - 配色の変数（`--sky`・`--mint`・`--accent`）があること。施設紹介（`#facilityIllustrations`）と宿泊・お食事（`#stayIllustrations`）に、説明（`aria-label`）つきのイラストが3枚ずつ、決められた見出しで並ぶこと
 - `tests/portal-logic.test.js`（純粋関数）
   - 全8施設の区分分け・順番、紹介文が全施設にあること、3区分／9〜21時の説明、料金目安（例：大体育館 5,370円〜10,060円、ミーティングルーム 330円〜660円）、紹介文のない施設の扱い
   - 宿泊料金（2,200円・2,500円・3,300円）、受け入れ条件（300名・6団体まで・最大6泊。0 などの値でも作れること）、食事の3グループと料金、空の一覧
