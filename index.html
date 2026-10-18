@@ -3,113 +3,545 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>あおぞらセミナーハウス 業務DXツール集</title>
+    <meta name="description" content="合宿・スポーツ大会・研修に最適な、宿泊・食事・体育館・グラウンド・研修室を備えた総合施設の公式ホームページです。空き状況の確認、概算見積もり、Web予約がオンラインでできます。">
+    <!-- タイトルの施設名は、JavaScript で FACILITY_INFO（または facility-config.js）の施設名に差し替える -->
+    <title>あおぞらセミナーハウス 公式ホームページ｜合宿・スポーツ大会・研修の総合施設</title>
     <style>
         :root {
-            --bg: #f5f7fa;
-            --card: #ffffff;
-            --text: #1f2937;
-            --muted: #6b7280;
-            --line: #e5e7eb;
-            --accent: #1d4ed8;
-            --accent-soft: #eff6ff;
+            --bg: #f6f8fb;
+            --surface: #ffffff;
+            --text: #1e293b;
+            --muted: #64748b;
+            --line: #e2e8f0;
+            --primary: #0f5e9c;
+            --primary-dark: #0b4673;
+            --primary-soft: #e8f2fb;
+            --accent: #f59e0b;
+            --accent-dark: #d97706;
+            --green: #0f8a5f;
+            --green-soft: #e7f6ef;
+            --radius: 16px;
+            --header-height: 68px;
+            --shadow: 0 10px 30px rgba(15, 40, 80, .08);
         }
         * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
         body {
             margin: 0;
             background: var(--bg);
             color: var(--text);
             font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", sans-serif;
-            line-height: 1.7;
+            line-height: 1.8;
+            -webkit-font-smoothing: antialiased;
         }
-        .wrap { max-width: 1040px; margin: 0 auto; padding: 56px 24px 40px; }
-        header { margin-bottom: 40px; }
-        .eyebrow { margin: 0 0 4px; color: var(--accent); font-size: .85rem; font-weight: 700; letter-spacing: .12em; }
-        h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2rem); letter-spacing: .02em; }
-        .lead { margin: 12px 0 0; color: var(--muted); }
+        img, svg { display: block; }
+        a { color: var(--primary); }
+        section[id] { scroll-margin-top: calc(var(--header-height) + 12px); }
+        .container { width: min(1120px, 100% - 40px); margin: 0 auto; }
+        .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-        .tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; padding: 0; margin: 0; list-style: none; }
+        /* ---------- ボタン ---------- */
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 12px 22px; border-radius: 999px; border: 2px solid transparent;
+            font-weight: 700; font-size: .95rem; text-decoration: none; line-height: 1.4;
+            transition: background-color .15s, color .15s, border-color .15s, transform .15s, box-shadow .15s;
+        }
+        .btn:hover, .btn:focus-visible { transform: translateY(-1px); }
+        .btn:focus-visible { outline: 3px solid rgba(245, 158, 11, .6); outline-offset: 2px; }
+        .btn svg { width: 20px; height: 20px; flex: none; }
+        .btn-primary { background: var(--accent); color: #1f1300; box-shadow: 0 6px 16px rgba(245, 158, 11, .35); }
+        .btn-primary:hover, .btn-primary:focus-visible { background: var(--accent-dark); color: #fff; }
+        .btn-solid { background: var(--primary); color: #fff; }
+        .btn-solid:hover, .btn-solid:focus-visible { background: var(--primary-dark); }
+        .btn-ghost { background: rgba(255, 255, 255, .12); color: #fff; border-color: rgba(255, 255, 255, .7); }
+        .btn-ghost:hover, .btn-ghost:focus-visible { background: #fff; color: var(--primary-dark); }
+
+        /* ---------- 固定ヘッダー ---------- */
+        .site-header {
+            position: fixed; inset: 0 0 auto 0; z-index: 50; height: var(--header-height);
+            background: rgba(255, 255, 255, .94); backdrop-filter: saturate(160%) blur(10px);
+            border-bottom: 1px solid var(--line);
+        }
+        .header-inner { display: flex; align-items: center; gap: 16px; height: 100%; }
+        .site-logo { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; min-width: 0; }
+        .logo-mark { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, var(--primary), #18a0c8); color: #fff; }
+        .logo-mark svg { width: 24px; height: 24px; }
+        .logo-text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+        .logo-org { font-size: .7rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .logo-name { font-weight: 800; font-size: 1.05rem; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .global-nav { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+        .nav-list { display: flex; align-items: center; gap: 2px; margin: 0; padding: 0; list-style: none; }
+        .nav-list a { display: block; padding: 8px 12px; border-radius: 999px; color: var(--text); font-size: .9rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
+        .nav-list a:hover, .nav-list a:focus-visible { background: var(--primary-soft); color: var(--primary); outline: none; }
+        .nav-list a.nav-cta { background: var(--primary); color: #fff; padding: 8px 16px; }
+        .nav-list a.nav-cta:hover, .nav-list a.nav-cta:focus-visible { background: var(--primary-dark); color: #fff; }
+        .staff-link {
+            display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; padding: 4px 10px;
+            border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font-size: .72rem; text-decoration: none; white-space: nowrap;
+        }
+        .staff-link:hover, .staff-link:focus-visible { color: var(--primary); border-color: var(--primary); }
+        .staff-link svg { width: 14px; height: 14px; }
+        .menu-toggle {
+            display: none; margin-left: auto; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 12px;
+            background: var(--surface); color: var(--text); cursor: pointer;
+        }
+        .menu-toggle svg { width: 24px; height: 24px; margin: auto; }
+
+        /* ---------- ヒーロー ---------- */
+        .hero {
+            position: relative; overflow: hidden; padding: calc(var(--header-height) + 72px) 0 96px;
+            background: radial-gradient(circle at 85% 15%, rgba(56, 189, 248, .35), transparent 45%),
+                        radial-gradient(circle at 10% 90%, rgba(16, 185, 129, .25), transparent 45%),
+                        linear-gradient(135deg, #0b3d66 0%, #0f5e9c 55%, #1789b8 100%);
+            color: #fff;
+        }
+        .hero-deco { position: absolute; right: -60px; bottom: -40px; width: min(520px, 70vw); opacity: .16; pointer-events: none; }
+        .hero-inner { position: relative; max-width: 760px; }
+        .hero-eyebrow { display: inline-block; margin: 0 0 18px; padding: 4px 14px; border-radius: 999px; background: rgba(255, 255, 255, .16); font-size: .85rem; font-weight: 700; letter-spacing: .08em; }
+        .hero h1 { margin: 0; font-size: clamp(1.9rem, 5vw, 3.1rem); line-height: 1.35; letter-spacing: .02em; }
+        .hero h1 .hero-accent { color: #fde68a; }
+        .hero-lead { margin: 20px 0 0; font-size: clamp(.95rem, 2vw, 1.1rem); color: rgba(255, 255, 255, .9); }
+        .hero-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 0; padding: 0; list-style: none; }
+        .hero-tags li { padding: 4px 12px; border-radius: 8px; background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .25); font-size: .85rem; }
+        .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px; }
+
+        /* ---------- セクション共通 ---------- */
+        .section { padding: 88px 0; }
+        .section-alt { background: var(--surface); }
+        .section-head { max-width: 720px; margin: 0 auto 48px; text-align: center; }
+        .section-label { margin: 0 0 6px; color: var(--primary); font-size: .8rem; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; }
+        .section-head h2 { margin: 0; font-size: clamp(1.5rem, 3.4vw, 2.1rem); letter-spacing: .03em; }
+        .section-head p { margin: 14px 0 0; color: var(--muted); }
+
+        /* ---------- 施設紹介 ---------- */
+        .facility-group + .facility-group { margin-top: 56px; }
+        .facility-group-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 0; font-size: 1.3rem; }
+        .facility-group-title::before { content: ""; align-self: center; width: 6px; height: 22px; border-radius: 3px; background: var(--primary); }
+        .facility-group[data-category="room"] .facility-group-title::before { background: var(--green); }
+        .facility-unit { padding: 2px 12px; border-radius: 999px; background: var(--primary-soft); color: var(--primary); font-size: .8rem; font-weight: 700; }
+        .facility-group[data-category="room"] .facility-unit { background: var(--green-soft); color: var(--green); }
+        .facility-time { margin: 8px 0 20px; color: var(--muted); font-size: .9rem; }
+        .facility-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; }
+        .facility-card {
+            display: flex; flex-direction: column; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius);
+            background: var(--surface); box-shadow: var(--shadow); border-top: 4px solid var(--primary);
+        }
+        .facility-group[data-category="room"] .facility-card { border-top-color: var(--green); }
+        .facility-name { margin: 0 0 8px; font-size: 1.1rem; }
+        .facility-usage { margin: 0 0 8px; color: var(--primary); font-size: .85rem; font-weight: 700; }
+        .facility-group[data-category="room"] .facility-usage { color: var(--green); }
+        .facility-feature { margin: 0; color: var(--muted); font-size: .9rem; }
+        .facility-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: auto 0 0; padding-top: 16px; border-top: 1px dashed var(--line); font-size: .85rem; }
+        .facility-feature + .facility-price { margin-top: 16px; }
+        .facility-price strong { font-size: 1.05rem; color: var(--text); }
+        .facility-price small { color: var(--muted); }
+        .note { margin: 28px 0 0; color: var(--muted); font-size: .85rem; text-align: center; }
+
+        /* ---------- 宿泊・お食事 ---------- */
+        .stay-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+        .panel { padding: 32px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); }
+        .panel h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; font-size: 1.25rem; }
+        .panel h3 svg { width: 28px; height: 28px; color: var(--primary); }
+        .panel p { margin: 0 0 16px; color: var(--muted); font-size: .92rem; }
+        .highlights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 24px; padding: 0; list-style: none; }
+        .highlights li { padding: 14px 8px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); text-align: center; }
+        .highlight-label { display: block; color: var(--muted); font-size: .75rem; }
+        .highlight-value { display: block; color: var(--primary); font-size: 1.25rem; line-height: 1.4; }
+        .price-table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+        .price-table caption { margin-bottom: 8px; text-align: left; font-weight: 700; font-size: .9rem; }
+        .price-table th, .price-table td { padding: 12px 16px; border-bottom: 1px solid var(--line); text-align: left; }
+        .price-table tr:last-child th, .price-table tr:last-child td { border-bottom: none; }
+        .price-table td { text-align: right; font-weight: 800; font-size: 1.05rem; }
+        .price-table thead th { background: var(--primary-soft); color: var(--primary); font-size: .8rem; }
+        .price-table thead th:last-child { text-align: right; }
+        .meal-groups { display: grid; gap: 16px; }
+        .meal-group { padding: 16px 20px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+        .meal-group h4 { margin: 0 0 8px; font-size: .95rem; color: var(--primary); }
+        .meal-group ul { margin: 0; padding: 0; list-style: none; }
+        .meal-group li { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px dotted var(--line); font-size: .9rem; }
+        .meal-group li:last-child { border-bottom: none; }
+        .meal-group li span:last-child { font-weight: 700; white-space: nowrap; }
+
+        /* ---------- ご利用の流れ ---------- */
+        .flow-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; margin: 0 0 56px; padding: 0; list-style: none; counter-reset: step; }
+        .flow-step { position: relative; padding: 28px 24px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); text-align: center; box-shadow: var(--shadow); }
+        .flow-step:not(:last-child)::after {
+            content: ""; position: absolute; top: 50%; right: -22px; width: 16px; height: 16px;
+            border-top: 3px solid var(--accent); border-right: 3px solid var(--accent); transform: translateY(-50%) rotate(45deg);
+        }
+        .step-num { display: inline-block; margin-bottom: 12px; padding: 2px 14px; border-radius: 999px; background: var(--accent); color: #1f1300; font-size: .8rem; font-weight: 800; letter-spacing: .1em; }
+        .step-icon { display: grid; place-items: center; width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); }
+        .step-icon svg { width: 32px; height: 32px; }
+        .flow-step h3 { margin: 0 0 6px; font-size: 1.1rem; }
+        .flow-step p { margin: 0; color: var(--muted); font-size: .88rem; }
+        .tools-title { margin: 0 0 20px; font-size: 1.2rem; text-align: center; }
+        .tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; padding: 0; margin: 0; list-style: none; }
         .card {
             display: flex; flex-direction: column; height: 100%;
-            padding: 24px; border: 1px solid var(--line); border-radius: 14px;
-            background: var(--card); color: inherit; text-decoration: none;
+            padding: 24px; border: 1px solid var(--line); border-radius: var(--radius);
+            background: var(--surface); color: inherit; text-decoration: none;
             transition: border-color .15s, box-shadow .15s, transform .15s;
         }
-        a.card:hover, a.card:focus-visible { border-color: var(--accent); box-shadow: 0 8px 24px rgba(29, 78, 216, .12); transform: translateY(-2px); outline: none; }
+        a.card:hover, a.card:focus-visible { border-color: var(--primary); box-shadow: 0 12px 28px rgba(15, 94, 156, .16); transform: translateY(-3px); outline: none; }
         .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-        .icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
+        .icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--primary-soft); color: var(--primary); }
         .icon svg { width: 24px; height: 24px; }
         .badge { padding: 2px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
-        .badge-open { background: #dcfce7; color: #166534; }
-        .badge-soon { background: #f3f4f6; color: var(--muted); }
-        .card h2 { margin: 0 0 6px; font-size: 1.15rem; }
+        .badge-step { background: #fef3c7; color: #92400e; }
+        .card h3 { margin: 0 0 6px; font-size: 1.15rem; }
         .card p { margin: 0; color: var(--muted); font-size: .9rem; }
-        .card-foot { margin-top: auto; padding-top: 20px; font-size: .9rem; font-weight: 700; color: var(--accent); }
+        .card-foot { margin-top: auto; padding-top: 20px; font-size: .9rem; font-weight: 700; color: var(--primary); }
 
-        .card.is-soon { background: #fafafa; border-style: dashed; }
-        .card.is-soon .icon { background: #f3f4f6; color: #9ca3af; }
-        .card.is-soon h2 { color: #4b5563; }
-        .card.is-soon .card-foot { color: #9ca3af; font-weight: 400; }
+        /* ---------- アクセス・お問い合わせ ---------- */
+        .access-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 24px; align-items: stretch; }
+        .access-list { margin: 0; }
+        .access-list div { display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+        .access-list dt { color: var(--muted); font-size: .85rem; font-weight: 700; }
+        .access-list dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+        .contact-panel { display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 32px; border-radius: var(--radius); background: linear-gradient(135deg, #0b3d66, #0f5e9c); color: #fff; }
+        .contact-panel h3 { margin: 0; font-size: 1.2rem; }
+        .contact-panel p { margin: 0; color: rgba(255, 255, 255, .85); font-size: .9rem; }
+        .contact-tel { display: inline-flex; align-items: center; gap: 10px; color: #fff; font-size: clamp(1.4rem, 3.4vw, 1.9rem); font-weight: 800; text-decoration: none; letter-spacing: .04em; }
+        .contact-tel svg { width: 28px; height: 28px; }
+        .contact-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 
-        footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: .8rem; }
+        /* ---------- フッター ---------- */
+        .site-footer { padding: 48px 0 32px; background: #0f172a; color: #cbd5e1; font-size: .88rem; }
+        .footer-inner { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 32px; }
+        .footer-name { margin: 0 0 8px; color: #fff; font-size: 1.05rem; font-weight: 800; }
+        .footer-info p { margin: 0; }
+        .footer-links { display: grid; grid-template-columns: repeat(2, auto); gap: 6px 32px; margin: 0; padding: 0; list-style: none; }
+        .footer-links a { color: #cbd5e1; text-decoration: none; }
+        .footer-links a:hover, .footer-links a:focus-visible { color: #fff; text-decoration: underline; }
+        .footer-staff { color: #64748b !important; font-size: .8rem; }
+        .copyright { margin: 32px 0 0; padding-top: 20px; border-top: 1px solid #1e293b; color: #64748b; font-size: .78rem; text-align: center; }
+
+        /* ---------- タブレット ---------- */
+        @media (max-width: 1020px) {
+            .menu-toggle { display: grid; }
+            .global-nav {
+                position: absolute; top: var(--header-height); left: 0; right: 0; display: none; flex-direction: column; align-items: stretch; gap: 8px;
+                padding: 16px 20px 20px; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow);
+            }
+            .site-header.is-open .global-nav { display: flex; }
+            .nav-list { flex-direction: column; align-items: stretch; }
+            .nav-list a { padding: 12px 16px; border-radius: 10px; }
+            .nav-list a.nav-cta { text-align: center; margin-top: 4px; }
+            .staff-link { align-self: flex-end; margin: 4px 0 0; }
+            .stay-grid, .access-grid { grid-template-columns: minmax(0, 1fr); }
+        }
+        /* ---------- スマホ ---------- */
+        @media (max-width: 680px) {
+            .section { padding: 64px 0; }
+            .hero { padding: calc(var(--header-height) + 48px) 0 72px; }
+            .hero-actions .btn { width: 100%; }
+            .flow-steps { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+            .flow-step:not(:last-child)::after { top: auto; right: 50%; bottom: -24px; transform: translateX(50%) rotate(135deg); }
+            .panel { padding: 24px 18px; }
+            .highlights { grid-template-columns: minmax(0, 1fr); }
+            .access-list div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+            .logo-org { display: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            html { scroll-behavior: auto; }
+            .btn, .card { transition: none; }
+        }
     </style>
 </head>
 <body>
-    <div class="wrap">
-        <header>
-            <p class="eyebrow">社内ポータル</p>
-            <h1>あおぞらセミナーハウス 業務DXツール集</h1>
-            <p class="lead">日々の業務で使うツールをまとめています。使いたいツールを選んでください。</p>
-        </header>
+    <!-- 施設名・会社名・所在地・電話番号は data-contact の付いた要素に JavaScript で表示する
+         （FACILITY_INFO のダミー表記。実名はルートの facility-config.js の window.CUSTOM_FACILITY_INFO に書く） -->
+    <header class="site-header" id="siteHeader">
+        <div class="container header-inner">
+            <a class="site-logo" href="#top" aria-label="ページの先頭へ">
+                <span class="logo-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M5 20V10l7-5 7 5v10"/><path d="M10 20v-5h4v5"/></svg>
+                </span>
+                <span class="logo-text">
+                    <span class="logo-org" data-contact="organization"></span>
+                    <span class="logo-name" data-contact="facilityName">あおぞらセミナーハウス</span>
+                </span>
+            </a>
+            <button type="button" class="menu-toggle" id="menuToggle" aria-controls="globalNav" aria-expanded="false">
+                <span class="visually-hidden">メニューを開く</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+            </button>
+            <nav class="global-nav" id="globalNav" aria-label="サイト内メニュー">
+                <ul class="nav-list">
+                    <li><a href="#facilities">施設紹介</a></li>
+                    <li><a href="#stay">宿泊・食事</a></li>
+                    <li><a href="#flow">ご利用の流れ</a></li>
+                    <li><a href="./estimate/">料金シミュレーター</a></li>
+                    <li><a href="./schedule/">空き状況</a></li>
+                    <li><a class="nav-cta" href="./reservation/">Web予約</a></li>
+                </ul>
+                <a class="staff-link" id="staffLink" href="./schedule/?mode=staff">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                    職員用スケジュール管理
+                </a>
+            </nav>
+        </div>
+    </header>
 
-        <main>
-            <!-- ツールを追加するときは、下の li 要素を1つコピーして増やします。
-                 公開中のツールは a 要素（class="card"、リンク先は英数字のフォルダ名）、
-                 準備中のツールは div 要素（class="card is-soon"）にします。 -->
-            <ul class="tools">
-                <li>
-                    <a class="card" href="estimate/">
-                        <div class="card-head">
-                            <span class="icon" aria-hidden="true">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="14" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="16" y2="18"/></svg>
-                            </span>
-                            <span class="badge badge-open">公開中</span>
-                        </div>
-                        <h2>概算見積もりシステム</h2>
-                        <p>宿泊・食事・施設利用の人数や時間を入力すると、概算の見積書を作成して印刷・PDF保存できます。</p>
-                        <span class="card-foot">開く →</span>
+    <main id="top">
+        <!-- ヒーロー -->
+        <section class="hero" aria-labelledby="heroTitle">
+            <svg class="hero-deco" viewBox="0 0 200 200" fill="none" stroke="#fff" stroke-width="3" aria-hidden="true"><circle cx="100" cy="100" r="90"/><path d="M10 100h180M100 10v180"/><circle cx="100" cy="100" r="30"/><path d="M30 40c30 20 30 100 0 120M170 40c-30 20-30 100 0 120"/></svg>
+            <div class="container hero-inner">
+                <p class="hero-eyebrow">合宿・スポーツ大会・研修の総合施設</p>
+                <h1 id="heroTitle">泊まる・食べる・鍛える・学ぶ。<br><span class="hero-accent">チームの成長</span>を、ここでひとつに。</h1>
+                <p class="hero-lead"><span data-contact="facilityName">あおぞらセミナーハウス</span>は、体育館・グラウンド・研修室と、大人数の宿泊・お食事をワンストップでご用意する総合施設です。部活動やクラブの合宿、スポーツ大会、企業・学校の研修まで、目的に合わせてご利用いただけます。</p>
+                <ul class="hero-tags" aria-label="施設の特長">
+                    <li>体育館・グラウンド 4施設</li>
+                    <li>研修室 4室</li>
+                    <li>大人数の宿泊に対応</li>
+                    <li>3食・お弁当の手配</li>
+                </ul>
+                <div class="hero-actions">
+                    <a class="btn btn-ghost" id="heroScheduleButton" href="./schedule/">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>
+                        空き状況を確認する
                     </a>
-                </li>
-                <li>
-                    <a class="card" href="reservation/">
-                        <div class="card-head">
-                            <span class="icon" aria-hidden="true">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>
-                            </span>
-                            <span class="badge badge-open">公開中</span>
-                        </div>
-                        <h2>Web予約システム</h2>
-                        <p>空き状況（◎/△/×）と概算料金を確認しながら、宿泊・施設・食事の予約をWeb上で申し込めます。</p>
-                        <span class="card-foot">開く →</span>
+                    <a class="btn btn-ghost" id="heroEstimateButton" href="./estimate/">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="11" x2="10" y2="11"/><line x1="14" y1="11" x2="16" y2="11"/><line x1="8" y1="16" x2="10" y2="16"/><line x1="14" y1="16" x2="16" y2="16"/></svg>
+                        概算見積もりを作る
                     </a>
-                </li>
-                <li>
-                    <a class="card" href="schedule/">
-                        <div class="card-head">
-                            <span class="icon" aria-hidden="true">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="20"/><line x1="15" y1="9" x2="15" y2="20"/></svg>
-                            </span>
-                            <span class="badge badge-open">公開中</span>
-                        </div>
-                        <h2>スケジュール管理表</h2>
-                        <p>宿泊・施設の空き状況を月間カレンダーと日別のタイムテーブルで確認できます。職員用モードでは予約の取込・集計・公開用データの出力ができます。</p>
-                        <span class="card-foot">開く →</span>
+                    <a class="btn btn-primary" id="heroReservationButton" href="./reservation/">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><polyline points="9 15 11 17 15 13"/></svg>
+                        Web予約を申し込む
                     </a>
-                </li>
-            </ul>
-        </main>
+                </div>
+            </div>
+        </section>
 
-        <footer>あおぞらセミナーハウス 業務DXツール集</footer>
-    </div>
+        <!-- 施設紹介（カードは RESERVATION_CATALOG の施設一覧と料金から作る） -->
+        <section class="section" id="facilities" aria-labelledby="facilitiesTitle">
+            <div class="container">
+                <div class="section-head">
+                    <p class="section-label">Facilities</p>
+                    <h2 id="facilitiesTitle">施設紹介</h2>
+                    <p>屋内外の競技スペースと、大小の研修室をそろえています。練習・試合・ミーティングまで、1か所で完結します。</p>
+                </div>
+                <div id="facilitySections"></div>
+                <noscript><p class="note">施設の一覧と料金を表示するには、JavaScript を有効にしてください。</p></noscript>
+                <p class="note">※料金は税込の目安です。宿泊団体のご利用・日帰りのご利用、年代（大学・一般／小中高）によって異なります。正確な金額は概算見積もりでご確認ください。</p>
+            </div>
+        </section>
+
+        <!-- 宿泊・お食事 -->
+        <section class="section section-alt" id="stay" aria-labelledby="stayTitle">
+            <div class="container">
+                <div class="section-head">
+                    <p class="section-label">Stay &amp; Meals</p>
+                    <h2 id="stayTitle">宿泊・お食事</h2>
+                    <p>大人数の合宿や複数団体での同時利用にも対応。年代別のわかりやすい料金と、練習の合間にうれしいお食事をご用意します。</p>
+                </div>
+                <div class="stay-grid">
+                    <div class="panel">
+                        <h3>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18V8"/><path d="M3 14h18v4"/><path d="M21 14v-2a3 3 0 0 0-3-3h-7v5"/><circle cx="7" cy="11" r="2"/></svg>
+                            宿泊のご案内
+                        </h3>
+                        <p>1泊ごとに、全団体あわせた人数と団体数の上限まで受け入れています。空き状況は「空き状況」ページでいつでもご確認いただけます。</p>
+                        <ul class="highlights" id="stayHighlights"></ul>
+                        <table class="price-table">
+                            <caption>宿泊料金（1名1泊・税込）</caption>
+                            <thead><tr><th scope="col">年代</th><th scope="col">料金</th></tr></thead>
+                            <tbody id="stayPriceRows"></tbody>
+                        </table>
+                    </div>
+                    <div class="panel">
+                        <h3>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3v8a3 3 0 0 0 3 3v7"/><path d="M10 3v8"/><path d="M7 3v8"/><path d="M17 21V3c-2 1-3 4-3 8h3"/></svg>
+                            お食事のご案内
+                        </h3>
+                        <p>食堂での朝食・昼食・夕食のほか、試合や外出に便利なお弁当、お茶・おにぎりも日ごとに手配できます。ご予約時に必要な数をお知らせください。</p>
+                        <div class="meal-groups" id="mealGroups"></div>
+                    </div>
+                </div>
+                <p class="note">※料金はすべて税込です。お弁当・お茶・おにぎりは軽減税率（8%）の対象です。</p>
+            </div>
+        </section>
+
+        <!-- ご利用の流れ＆DXツール案内 -->
+        <section class="section" id="flow" aria-labelledby="flowTitle">
+            <div class="container">
+                <div class="section-head">
+                    <p class="section-label">How to Book</p>
+                    <h2 id="flowTitle">ご利用の流れ</h2>
+                    <p>お申し込みまでの手続きは、すべてオンラインで完結します。3つのステップで、かんたんにご予約いただけます。</p>
+                </div>
+                <ol class="flow-steps">
+                    <li class="flow-step">
+                        <span class="step-num">STEP 1</span>
+                        <span class="step-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg></span>
+                        <h3>空き状況を確認</h3>
+                        <p>カレンダーで、ご希望の日の宿泊・施設の空き（◎／△／×）を確認します。</p>
+                    </li>
+                    <li class="flow-step">
+                        <span class="step-num">STEP 2</span>
+                        <span class="step-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="11" x2="10" y2="11"/><line x1="14" y1="11" x2="16" y2="11"/><line x1="8" y1="16" x2="16" y2="16"/></svg></span>
+                        <h3>概算見積もり</h3>
+                        <p>人数・日数・施設・食事を入力すると、料金の目安がすぐにわかります。見積書の印刷もできます。</p>
+                    </li>
+                    <li class="flow-step">
+                        <span class="step-num">STEP 3</span>
+                        <span class="step-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><polyline points="9 15 11 17 15 13"/></svg></span>
+                        <h3>Web予約を申し込む</h3>
+                        <p>空き状況と料金を見ながら、宿泊・施設・食事をまとめてお申し込みいただけます。</p>
+                    </li>
+                </ol>
+
+                <h3 class="tools-title">オンラインツール</h3>
+                <!-- ツールを追加するときは、下の li 要素を1つコピーして増やします
+                     （a 要素は class="card"、リンク先は ./ から始まる英数字のフォルダ名） -->
+                <ul class="tools" id="toolCards">
+                    <li>
+                        <a class="card" href="./schedule/">
+                            <div class="card-head">
+                                <span class="icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="20"/><line x1="15" y1="9" x2="15" y2="20"/></svg>
+                                </span>
+                                <span class="badge badge-step">STEP 1</span>
+                            </div>
+                            <h3>空き状況カレンダー</h3>
+                            <p>宿泊・施設の空き状況を、月間カレンダーと日別のタイムテーブルで確認できます。</p>
+                            <span class="card-foot">空き状況を見る →</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="card" href="./estimate/">
+                            <div class="card-head">
+                                <span class="icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="14" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="16" y2="18"/></svg>
+                                </span>
+                                <span class="badge badge-step">STEP 2</span>
+                            </div>
+                            <h3>料金シミュレーター（概算見積もり）</h3>
+                            <p>宿泊・食事・施設利用の人数や時間を入力すると、概算の見積書を作成して印刷・PDF保存できます。</p>
+                            <span class="card-foot">見積もりを作る →</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="card" href="./reservation/">
+                            <div class="card-head">
+                                <span class="icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>
+                                </span>
+                                <span class="badge badge-step">STEP 3</span>
+                            </div>
+                            <h3>Web予約</h3>
+                            <p>空き状況（◎/△/×）と概算料金を確認しながら、宿泊・施設・食事の予約をWeb上で申し込めます。</p>
+                            <span class="card-foot">予約を申し込む →</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- アクセス・お問い合わせ -->
+        <section class="section section-alt" id="access" aria-labelledby="accessTitle">
+            <div class="container">
+                <div class="section-head">
+                    <p class="section-label">Access &amp; Contact</p>
+                    <h2 id="accessTitle">アクセス・お問い合わせ</h2>
+                    <p>ご利用に関するご相談・ご質問は、お電話でお気軽にお問い合わせください。</p>
+                </div>
+                <div class="access-grid">
+                    <dl class="access-list">
+                        <div><dt>施設名</dt><dd data-contact="fullName">あおぞらセミナーハウス</dd></div>
+                        <div><dt>所在地</dt><dd><span data-contact="postal"></span> <span data-contact="address"></span></dd></div>
+                        <div><dt>電話番号</dt><dd data-contact="tel"></dd></div>
+                        <div><dt>主な施設</dt><dd>体育館・グラウンド、研修室、宿泊室、食堂</dd></div>
+                    </dl>
+                    <div class="contact-panel">
+                        <h3>お電話でのお問い合わせ</h3>
+                        <a class="contact-tel" id="contactTelLink" data-contact-href="telHref" href="#access">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>
+                            <span data-contact="tel"></span>
+                        </a>
+                        <p>オンラインでのお申し込みは24時間受け付けています。</p>
+                        <div class="contact-actions">
+                            <a class="btn btn-ghost" href="./schedule/">空き状況</a>
+                            <a class="btn btn-primary" href="./reservation/">Web予約</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="container">
+            <div class="footer-inner">
+                <div class="footer-info">
+                    <p class="footer-name" data-contact="fullName">あおぞらセミナーハウス</p>
+                    <p><span data-contact="postal"></span> <span data-contact="address"></span></p>
+                    <p>TEL <span data-contact="tel"></span></p>
+                </div>
+                <ul class="footer-links">
+                    <li><a href="#facilities">施設紹介</a></li>
+                    <li><a href="./schedule/">空き状況</a></li>
+                    <li><a href="#stay">宿泊・食事</a></li>
+                    <li><a href="./estimate/">料金シミュレーター</a></li>
+                    <li><a href="#flow">ご利用の流れ</a></li>
+                    <li><a href="./reservation/">Web予約</a></li>
+                    <li><a href="#access">アクセス</a></li>
+                    <li><a class="footer-staff" href="./schedule/?mode=staff">職員用</a></li>
+                </ul>
+            </div>
+            <p class="copyright" id="copyright" data-contact="copyright">&copy; あおぞらセミナーハウス</p>
+        </div>
+    </footer>
+
+    <!-- ローカル専用の実名の設定（Git管理外）。ファイルがなければダミー表記で動く -->
+    <script src="./facility-config.js"></script>
+    <!-- 施設・料金・食事の一覧と発行元のダミー表記（Web予約システムと共通の純粋関数） -->
+    <script src="./reservation/reservation-logic.js"></script>
+    <!-- このページの表示内容を作る純粋関数（window.PortalLogic） -->
+    <script src="./portal-logic.js"></script>
+    <script>
+        // ======================================================
+        //  画面の処理（DOM を扱う部分）。表示内容は portal-logic.js の純粋関数で作り、ここでは書き込むだけにする
+        // ======================================================
+        const Portal = window.PortalLogic;
+        const ACTIVE_FACILITY_INFO = resolveFacilityInfo(FACILITY_INFO, window.CUSTOM_FACILITY_INFO);
+        const ACTIVE_CONFIG = resolveReservationConfig(RESERVATION_CONFIG, window.CUSTOM_RESERVATION_CONFIG);
+
+        const byId = (id) => document.getElementById(id);
+
+        // 施設名・所在地・電話番号など（data-contact の要素の文字と、data-contact-href の要素のリンク先）
+        const renderContactInfo = (contact) => {
+            document.querySelectorAll('[data-contact]').forEach((element) => { element.textContent = contact[element.dataset.contact]; });
+            document.querySelectorAll('[data-contact-href]').forEach((element) => { element.href = contact[element.dataset.contactHref]; });
+            document.title = Portal.buildPortalTitle(ACTIVE_FACILITY_INFO);
+        };
+
+        const renderFacilitySections = (catalog) => {
+            byId('facilitySections').innerHTML = Portal.buildFacilitySections(catalog, Portal.FACILITY_GUIDES).map(Portal.renderFacilitySectionHtml).join('');
+        };
+
+        const renderStayAndMeals = (catalog, config) => {
+            byId('stayHighlights').innerHTML = Portal.renderStayHighlightsHtml(Portal.buildStayHighlights(config));
+            byId('stayPriceRows').innerHTML = Portal.renderStayPriceRowsHtml(Portal.buildStayPriceRows(catalog));
+            byId('mealGroups').innerHTML = Portal.buildMealGroups(catalog).map(Portal.renderMealGroupHtml).join('');
+        };
+
+        // スマホ・タブレットのメニューの開け閉め（メニュー内のリンクを押したら閉じる）
+        const setMenuOpen = (isOpen) => {
+            byId('siteHeader').classList.toggle('is-open', isOpen);
+            byId('menuToggle').setAttribute('aria-expanded', String(isOpen));
+        };
+        const bindMenu = () => {
+            byId('menuToggle').addEventListener('click', () => setMenuOpen(byId('menuToggle').getAttribute('aria-expanded') !== 'true'));
+            byId('globalNav').addEventListener('click', (event) => { if (event.target.closest('a')) setMenuOpen(false); });
+        };
+
+        renderContactInfo(Portal.buildContactInfo(ACTIVE_FACILITY_INFO, new Date().getFullYear()));
+        renderFacilitySections(RESERVATION_CATALOG);
+        renderStayAndMeals(RESERVATION_CATALOG, ACTIVE_CONFIG);
+        bindMenu();
+    </script>
 </body>
 </html>
