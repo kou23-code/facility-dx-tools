@@ -20,8 +20,9 @@ const BROWSER_CANDIDATES = [
 ];
 
 // ヘッドレスブラウザ1回分の待ち時間の上限（ミリ秒）。テストを並列で動かすと多数のブラウザが同時に起動して
-// 1回に60秒以上かかることがあるため、余裕をもたせている（ブラウザが固まったときは、この時間で打ち切る）
-const BROWSER_TIMEOUT_MS = 180000;
+// 1回に60秒以上かかることがあり、画面テストが増えると ETIMEDOUT になりやすいため、5分まで待つ
+// （ブラウザが固まったときは、この時間で打ち切る）
+const BROWSER_TIMEOUT_MS = 300000;
 
 const readHtml = () => fs.readFileSync(HTML_PATH, 'utf8');
 
