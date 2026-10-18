@@ -2,7 +2,7 @@
 
 対象ファイル：`estimate/index.html`（HTML・CSS・JavaScriptが1つにまとまったファイル。サーバー不要）
 
-Web予約システム（`reservation/index.html`）の仕様は13章、スケジュール管理表（`schedule/index.html`）の仕様は14章にまとめています。
+Web予約システム（`reservation/index.html`）の仕様は13章、スケジュール管理表（`schedule/index.html`）の仕様は14章、公式ホームページ兼DXポータル（`index.html`）の仕様は15章にまとめています。
 
 ## 0. フォルダ構成と公開URL
 
@@ -10,7 +10,8 @@ GitHub Pages で、複数のツールを一覧で公開できる構成にして�
 
 | パス | 内容 | 公開URL（例） |
 |---|---|---|
-| `index.html` | ポータル画面「あおぞらセミナーハウス 業務DXツール集」 | `https://<ユーザー名>.github.io/<リポジトリ名>/` |
+| `index.html` | 公式ホームページ兼DXポータル（15章を参照） | `https://<ユーザー名>.github.io/<リポジトリ名>/` |
+| `portal-logic.js` | 公式ホームページ兼DXポータルの表示内容を作る純粋関数（画面とテストの両方から読み込む） | `…/<リポジトリ名>/portal-logic.js` |
 | `estimate/index.html` | 概算見積もりシステム（この仕様書の対象） | `…/<リポジトリ名>/estimate/` |
 | `estimate/facility-config.js` | 見積もりツールだけの実名設定（ローカル専用・Git管理外。ルートの `facility-config.js` にない設定のときに使う。10.1章を参照） | 公開されない |
 | `reservation/index.html` | Web予約システムの画面（13章を参照） | `…/<リポジトリ名>/reservation/` |
@@ -18,19 +19,12 @@ GitHub Pages で、複数のツールを一覧で公開できる構成にして�
 | `reservation/facility-config.js` | 予約システムだけの実名・受付ルールの設定（ローカル専用・Git管理外。ルートの `facility-config.js` にない設定のときに使う。13.9を参照） | 公開されない |
 | `schedule/index.html` | スケジュール管理表の画面（14章を参照） | `…/<リポジトリ名>/schedule/` |
 | `schedule/schedule-logic.js` | スケジュール管理表の集計・判定の純粋関数（画面とテストの両方から読み込む） | `…/schedule/schedule-logic.js` |
-| `facility-config.js` | 全ツール共通の実名・受付ルールの設定（ローカル専用・Git管理外。見積もり・予約・スケジュール管理表のすべてが読み込む。10.1章を参照） | 公開されない |
+| `facility-config.js` | 全ツール共通の実名・受付ルールの設定（ローカル専用・Git管理外。見積もり・予約・スケジュール管理表・公式ホームページ兼DXポータルのすべてが読み込む。10.1章を参照） | 公開されない |
 | `tests/` | 動作確認テスト（11章を参照） | — |
 
 ### ポータル画面（`index.html`）
 
-- ツールをカードで並べる。画面の幅に合わせて、横に並ぶ枚数が変わる
-- 「概算見積もりシステム」：公開中。カード全体が `estimate/` へのリンク
-- 「Web予約システム」：公開中。カード全体が `reservation/` へのリンク
-- 「スケジュール管理表」：公開中。カード全体が `schedule/` へのリンク
-- 準備中のツールを置くときは、リンクのない `div`（`class="card is-soon"`）にし、点線の枠とグレーで表示する
-- JavaScript は使わず、HTML と CSS だけで作っている。外部ライブラリも使わない
-- ツールを追加するときは、`<li>` を1つ増やし、英数字のフォルダ（例：`reservation/index.html`）を作る
-- パソコン上でファイルを直接開く（`file://`）と、`estimate/`・`reservation/` のリンクはフォルダの中身の一覧になる。GitHub Pages などの Web サーバーでは `estimate/index.html` が表示される
+- 一般の利用者が最初に訪れる「公式ホームページ兼DXポータル」。構成・機能は15章を参照
 
 この文書は、現在のコードを読み取って、そのとおりの動きをまとめたものです。
 
@@ -278,10 +272,10 @@ GitHub Pages で、複数のツールを一覧で公開できる構成にして�
 | `address` | 住所 | 東京都千代田区千代田1-1-1 | 発行元欄 |
 | `tel` | 電話番号（TELは付けない） | 03-0000-0000 | 「TEL 03-0000-0000」と表示 |
 
-**実名で表示したいとき**は、`FACILITY_INFO` は書き換えず、リポジトリのルート（`index.html` と同じフォルダ）に `facility-config.js` を1つ作ります（`.gitignore` で除外済みなので Git には入りません）。この1ファイルが、見積もり・予約・スケジュール管理表のすべてに反映されます。
+**実名で表示したいとき**は、`FACILITY_INFO` は書き換えず、リポジトリのルート（`index.html` と同じフォルダ）に `facility-config.js` を1つ作ります（`.gitignore` で除外済みなので Git には入りません）。この1ファイルが、見積もり・予約・スケジュール管理表・公式ホームページ兼DXポータルのすべてに反映されます。
 
 - 見積もりツール・予約システムは、そのフォルダの `facility-config.js` → ルートの `../facility-config.js` の順に読み込む。両方に同じ設定（`window.CUSTOM_FACILITY_INFO` など）があるときは、あとから読み込むルートの設定を使う（設定はオブジェクトごと置き換わり、キーごとには混ざらない）。そのフォルダの `facility-config.js` は、ルートにその設定がないときだけ使われる（以前の置き方のままでも動く）
-- スケジュール管理表は、ルートの `facility-config.js` だけを読み込む
+- スケジュール管理表と公式ホームページ兼DXポータルは、ルートの `facility-config.js` だけを読み込む
 
 ```js
 // facility-config.js（ルートに置く。ローカル専用・Git管理外）
@@ -342,6 +336,7 @@ window.CUSTOM_TAX_CONFIG = {
 - `tests/helpers.js`：テストで共通して使う関数（ファイルの場所、HTMLの読み込み、ヘッドレスブラウザでの表示など）。見積もりツールの場所は `estimate/index.html`、ポータルは `index.html`、予約システムは `reservation/index.html` と `reservation/reservation-logic.js`、スケジュール管理表は `schedule/index.html` と `schedule/schedule-logic.js` として定義している。`renderDom` は URL の検索部分（例：`?mode=staff`）を付けて開ける。ヘッドレスブラウザ1回の待ち時間の上限は300秒（5分。`BROWSER_TIMEOUT_MS`。テストを並列で動かすと多数のブラウザが同時に起動して遅くなり、画面テストが増えると `ETIMEDOUT` になりやすいため）
 - Web予約システムのテスト（`tests/reservation-*.test.js`）は13.10を参照
 - スケジュール管理表のテスト（`tests/schedule*.test.js`）は14.10を参照
+- 公式ホームページ兼DXポータルのテスト（`tests/portal*.test.js`）は15.6を参照
 - `tests/remove-remarks.test.js`：備考欄を削除したことを確認するテスト
   - 備考に関係する要素（`in_note`・`out_note` など）が HTML に残っていないこと
   - ヘッドレスの Chrome（なければ Edge）でページを開き、計算の最後（単価・有効期限・合計・注意の表示）まで処理が進むこと
@@ -352,12 +347,6 @@ window.CUSTOM_TAX_CONFIG = {
   - `buildIssuerLines`・`buildPageTitle` が、渡された情報から正しい文字列を作ること
   - 自動保存のキーが `reservation_estimate_v1` であること、`facility-config.js` が `.gitignore` で除外されていること
   - ページを一時フォルダの `estimate/` にコピーして開き、`facility-config.js` がないときはダミー表記、あるときはその設定で表示されること。ルートの `facility-config.js` だけでも反映され、両方あるときはルートの設定で表示されること。このフォルダ → ルートの順に読み込むこと
-- `tests/portal.test.js`：ポータル画面とフォルダ構成を確認するテスト
-  - タイトルと見出しが「あおぞらセミナーハウス 業務DXツール集」であること
-  - カードが3枚、決められた順番で並び、見積もり・予約・スケジュール管理表がリンク付き（公開中）であること
-  - リンク先のファイルが存在し、URL に日本語が入っていないこと
-  - 会社名・住所・電話番号らしい表記がポータルに書かれていないこと
-  - 見積もりツールが `estimate/index.html`、予約システムが `reservation/index.html`、スケジュール管理表が `schedule/index.html` にあり、HTML のファイル名・フォルダ名に日本語がないこと
 - `tests/expiration-date.test.js`：見積書の有効期限を確認するテスト
   - `calculateExpirationDate` が、月の途中・月末日・うるう年（2000年・2028年）・うるう年でない年（2100年）・年またぎ（12月）の各場合に、発行日の1か月後を正しく返すこと
   - 渡した発行日の Date を書き換えないこと
@@ -772,9 +761,93 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
   - 1行コードの取込（エラーの理由の表示、重複で取り込まない、追加、削除ボタン、削除用のコード）
   - 公開用データの出力（個人情報なし）・正しくないデータの読み込みエラー・読み込んだデータでの表示・解除
   - リセットでサンプル投入の案内が出ること
-- `tests/portal.test.js`：ポータルのスケジュール管理表のカードが公開中で `schedule/` へのリンクになっていること
+- `tests/portal.test.js`：ポータルの「空き状況カレンダー」のカードが公開中で `./schedule/` へのリンクになっていること（15.6を参照）
 
 ### 14.11 現状の注意点
 
 - 職員用モードにパスワードなどの保護はない（URL やボタンで誰でも切り替えられる）。予約データはそのブラウザの localStorage にしかないため、別のパソコン・ブラウザの利用者には見えないが、職員のパソコンで公開用モードの画面を見せるときは職員用モードに切り替えたままにしないこと
 - 公開用データは、手で貼り付けて読み込む方式。GitHub Pages などで一般の利用者に見せるには、出力した JSON を配る・置く仕組み（例：`schedule/public-schedule.json` を自動で読み込む）が別に必要
+
+## 15. 公式ホームページ兼DXポータル（`index.html`）
+
+### 15.1 概要
+
+- 一般の利用者が最初に訪れるトップ画面。施設の魅力を伝える公式ホームページと、空き状況・概算見積もり・Web予約の各ツールへの入口（DXポータル）を兼ねる
+- 画面（`index.html`）と、表示内容を作る純粋関数（ルートの `portal-logic.js`。`window.PortalLogic`）に分けている。純粋関数は DOM に触らず、施設・料金・食事は `reservation/reservation-logic.js` の `RESERVATION_CATALOG`、受け入れ上限は `RESERVATION_CONFIG`、施設名・所在地などは `FACILITY_INFO` を引数で受け取る。画面の処理は書き込みとメニューの開け閉めだけを行う
+- 料金を二重に持たないよう、施設カードの料金目安・宿泊料金・食事の料金は `RESERVATION_CATALOG` から作る（料金を改定すると自動で反映される）
+- 読み込む順番：`./facility-config.js`（Git管理外。なければダミー表記）→ `./reservation/reservation-logic.js` → `./portal-logic.js`
+- 外部ライブラリ・外部画像は使わない（アイコン・飾りはインラインの SVG）
+- レスポンシブ：PC は横並びのナビゲーション、幅 1020px 以下（タブレット）はメニューの開閉ボタン（`#menuToggle`。`aria-expanded` で状態を示し、メニュー内のリンクを押すと閉じる）で開くナビゲーションと1列の宿泊・アクセス欄、幅 680px 以下（スマホ）はヒーローのボタンを横幅いっぱいにし、ご利用の流れを縦に並べる
+
+### 15.2 画面の構成
+
+1. **固定ヘッダー＆ナビゲーション**（`#siteHeader`）
+   - 左：ロゴ（会社名の小さな行 `data-contact="organization"` と施設名 `data-contact="facilityName"`）。押すとページの先頭へ
+   - ナビゲーション（`ul.nav-list`）：「施設紹介」`#facilities`／「宿泊・食事」`#stay`／「ご利用の流れ」`#flow`／「料金シミュレーター」`./estimate/`／「空き状況」`./schedule/`／「Web予約」`./reservation/`（目立つボタン `nav-cta`）
+   - 右端：控えめな「職員用スケジュール管理」（`#staffLink`、`class="staff-link"`、`./schedule/?mode=staff`）
+2. **ヒーロー**：合宿・スポーツ大会・研修の総合施設であることを伝えるキャッチコピー（`#heroTitle`）、紹介文、特長のタグ（体育館・グラウンド 4施設／研修室 4室など）と、3つの主要アクションボタン
+   - 「空き状況を確認する」`#heroScheduleButton` → `./schedule/`
+   - 「概算見積もりを作る」`#heroEstimateButton` → `./estimate/`
+   - 「Web予約を申し込む」`#heroReservationButton` → `./reservation/`（いちばん目立つ色）
+3. **施設紹介**（`#facilities`。カードは `#facilitySections` に JavaScript で作る）
+   - 体育館・グラウンド（午前・午後・夜間の3区分。各区分の時間も表示）：大体育館・小体育館・陸上グラウンド・球技場
+   - 研修室（9〜21時の1時間単位）：大研修室（第１研修室）・大研修室（第３研修室）・小研修室（第２研修室）・ミーティングルーム
+   - 各カードに施設名・主な用途・特徴・料金目安（料金表の一番安い額〜一番高い額。「1区分あたり」「1時間あたり」、税込・目安）を出す。用途と特徴の文章は `portal-logic.js` の `FACILITY_GUIDES` に書く
+4. **宿泊・お食事**（`#stay`）
+   - 受け入れ条件（`#stayHighlights`）：最大宿泊人数（`stayCapacity`。既定 300名）・同時受け入れ（`maxStayGroups`。既定 6団体まで）・連泊（`maxNights`。既定 最大6泊）。`facility-config.js` の `window.CUSTOM_RESERVATION_CONFIG` で変えると表示も変わる
+   - 宿泊料金の表（`#stayPriceRows`）：小学生・中学生／高校生／大学生・一般の1名1泊の料金
+   - お食事（`#mealGroups`）：「食堂の食事」（朝食・昼食・夕食）・「弁当」・「お茶・おにぎり」のグループごとに品目と料金
+5. **ご利用の流れ＆DXツール案内**（`#flow`）
+   - STEP 1「空き状況を確認」→ STEP 2「概算見積もり」→ STEP 3「Web予約を申し込む」の3ステップを矢印つきで図解（`ol.flow-steps`）
+   - ツールのカード（`ul.tools#toolCards` の `<li>`。カード全体が `a.card` のリンク、見出しは `h3`）：「空き状況カレンダー」`./schedule/`／「料金シミュレーター（概算見積もり）」`./estimate/`／「Web予約」`./reservation/`
+   - ツールを追加するときは、`<li>` を1つコピーして増やし、英数字のフォルダ（例：`xxx/index.html`）を作る
+6. **アクセス・お問い合わせ**（`#access`）：施設名（会社名＋施設名）・所在地（〒郵便番号＋住所）・電話番号・主な施設、電話番号のリンク（`#contactTelLink`。`tel:` の後ろは数字だけ）と、空き状況・Web予約へのボタン
+7. **フッター**：施設名・所在地・電話番号、サイト内リンク（末尾に控えめな「職員用」`./schedule/?mode=staff`）、コピーライト（`#copyright`。「© 西暦 会社名 施設名」。西暦は表示した日の年）
+
+### 15.3 施設名・所在地・電話番号の表示（`facility-config.js` 連動）
+
+- `data-contact="キー"` の付いた要素に、`buildContactInfo(ACTIVE_FACILITY_INFO, 年)` の値を書き込む。`data-contact-href="telHref"` の要素はリンク先を書き込む
+- `ACTIVE_FACILITY_INFO` は `resolveFacilityInfo(FACILITY_INFO, window.CUSTOM_FACILITY_INFO)`。ルートの `facility-config.js` に実名を書くと、ロゴ・紹介文・アクセス・フッター・コピーライト・ページのタイトルがすべて実名になる
+- ページのタイトルは `buildPortalTitle`（「施設名 公式ホームページ｜合宿・スポーツ大会・研修の総合施設」）
+- 特定防止のため、`index.html` には会社名・郵便番号・住所・電話番号を書かない（HTML の最初の表示は施設名のダミー表記だけで、ほかは空。JavaScript で書き込む）。`portal-logic.js` でも、「〒」などの表記は `// FACILITY_INFO:start`〜`// FACILITY_INFO:end` のブロックの中だけに書く
+
+| キー（`buildContactInfo`） | 内容 | ダミー表記での表示 |
+|---|---|---|
+| `organization` | 会社名 | 株式会社サンプルリゾート |
+| `facilityName` | 施設名 | あおぞらセミナーハウス |
+| `fullName` | 会社名＋施設名 | 株式会社サンプルリゾート あおぞらセミナーハウス |
+| `postal` | 郵便番号 | 〒100-0001 |
+| `address` | 住所 | 東京都千代田区千代田1-1-1 |
+| `tel` | 電話番号 | 03-0000-0000 |
+| `telHref` | 電話のリンク先 | tel:0300000000 |
+| `copyright` | コピーライト | © 2026 株式会社サンプルリゾート あおぞらセミナーハウス |
+
+### 15.4 `portal-logic.js` の主な関数
+
+- `buildFacilitySections(catalog, guides)`：施設を「体育館・グラウンド」（`sports`）と「研修室」（`room`）に分け、区分ごとの料金の単位（`unitNote`）・利用時間（`timeNote`）・カードを返す。紹介文のない施設は体育館・グラウンドに入り、紹介文は空
+- `buildFacilityCard`・`formatPriceRange`（金額がすべて同じなら1つ、違えば「最小〜最大」）・`formatHourRange`（「9〜21時」）・`formatPeriodList`
+- `buildStayPriceRows(catalog)`・`buildMealGroups(catalog)`・`buildStayHighlights(config)`・`buildPortalTitle(info)`・`buildContactInfo(info, year)`
+- `render〇〇Html`：表示用の HTML の文字列を作る。表示する文字はすべてエスケープする
+
+### 15.5 画面の確認のしかた
+
+- `index.html` をブラウザで開く。パソコン上でファイルを直接開く（`file://`）と、`./estimate/` などのリンクはフォルダの中身の一覧になる。GitHub Pages などの Web サーバーでは各フォルダの `index.html` が表示される
+
+### 15.6 動作確認テスト
+
+- `tests/portal.test.js`（ブラウザを使わない静的な確認）
+  - タイトルが施設名入りの公式ホームページであること
+  - ナビゲーションのリンクの文字・リンク先・順番、職員用スケジュール管理への導線（`./schedule/?mode=staff`）
+  - ヒーローの3つのボタンのリンク先と文字、ページ内リンクの行き先のセクションがあること、JavaScript で書き込む場所（`id`・`data-contact`）があること
+  - ご利用の流れが STEP 1〜3 の順であること、ツールのカードが3枚・決められた順番・すべて公開中のリンクであること
+  - リンク先のファイルがすべて存在し（`?mode=staff` などの検索部分は外して確認）、URL に日本語が入っていないこと。読み込む JavaScript の順番とファイルがあること
+  - `index.html` と `portal-logic.js`（`FACILITY_INFO` ブロックの外）に会社名・住所・電話番号らしい表記がないこと
+  - viewport・タブレットとスマホのメディアクエリ・メニューの開閉ボタンがあること
+  - 見積もり・予約・スケジュール管理表の `index.html` の場所、HTML のファイル名・フォルダ名に日本語がないこと
+- `tests/portal-logic.test.js`（純粋関数）
+  - 全8施設の区分分け・順番、紹介文が全施設にあること、3区分／9〜21時の説明、料金目安（例：大体育館 5,370円〜10,060円、ミーティングルーム 330円〜660円）、紹介文のない施設の扱い
+  - 宿泊料金（2,200円・2,500円・3,300円）、受け入れ条件（300名・6団体まで・最大6泊。0 などの値でも作れること）、食事の3グループと料金、空の一覧
+  - `buildContactInfo`・`buildPortalTitle` がダミー表記・上書きした情報の両方で正しい文字列を作ること、HTML のエスケープ、ヒーローの施設数が施設の一覧と合っていること
+- `tests/portal-page.test.js`（画面。ヘッドレスブラウザ。本番と同じフォルダ構成で一時フォルダにコピーして開く）
+  - `facility-config.js` がないときはダミー表記の施設名・所在地・電話番号・コピーライト・タイトルが出て、施設カード8件・宿泊料金3行・食事3グループ・「300名」が並ぶこと
+  - ルートに `facility-config.js` があるときは、その情報で表示され、電話番号のリンクも変わること
