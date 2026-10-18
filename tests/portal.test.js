@@ -22,7 +22,10 @@ const textOf = (html, pattern) => (pattern.exec(html) || [])[1];
 // id を持つ要素の開始タグ（属性の確認に使う）
 const findTagById = (html, id) => textOf(html, new RegExp(`(<[a-z]+ [^>]*id="${id}"[^>]*>)`));
 
-const hrefOf = (tag) => textOf(tag || '', /href="([^"]*)"/);
+// フォルダへのリンクは、末尾の index.html があってもなくても同じ行き先として比べる（./estimate/index.html → ./estimate/）
+const normalizeFolderHref = (href) => href.replace(/\/index\.html(?=$|[?#])/, '/');
+
+const hrefOf = (tag) => normalizeFolderHref(textOf(tag || '', /href="([^"]*)"/) || '');
 
 // 指定した開始タグから、対応する閉じタグの手前までを取り出す（入れ子の同じタグは数えない簡易版）
 const sliceBlock = (html, startPattern, closeTag) => {
@@ -33,13 +36,13 @@ const sliceBlock = (html, startPattern, closeTag) => {
 // ツールのカード一覧（ul.tools）の <li> ごとに、見出し・リンク先・準備中かどうかを取り出す
 const parseToolCards = (html) => [...sliceBlock(html, /<ul class="tools"/, '</ul>').matchAll(/<li>([\s\S]*?)<\/li>/g)].map(([, card]) => ({
     title: textOf(card, /<h3>([^<]*)<\/h3>/),
-    href: textOf(card, /<a class="card" [^>]*href="([^"]*)"/) || null,
+    href: hrefOf(textOf(card, /(<a class="card" [^>]*>)/)) || null,
     isSoon: card.includes('is-soon') && card.includes('準備中')
 }));
 
 // ナビゲーション（nav-list）のリンクを、文字とリンク先の組にする
 const parseNavLinks = (html) => [...sliceBlock(html, /<ul class="nav-list"/, '</ul>').matchAll(/<a [^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g)]
-    .map(([, href, label]) => ({ label: label.trim(), href }));
+    .map(([, href, label]) => ({ label: label.trim(), href: normalizeFolderHref(href) }));
 
 const listHrefs = (html) => [...html.matchAll(/\shref="([^"]*)"/g)].map(([, href]) => href);
 
@@ -128,6 +131,13 @@ test('ポータルのリンク先がすべて存在し、URLに日本語を含�
         assert.match(href, /^[\x21-\x7e]+$/, `リンク先 ${href} にASCII以外の文字があります`);
         assert.ok(fs.existsSync(resolveLinkTarget(href)), `リンク先 ${href} のファイルがありません`);
     });
+});
+
+test('ツールへのリンクは、PC で直接開いた（file://）ときもフォルダ一覧にならないよう、末尾の index.html まで書いてある', () => {
+    const folderHrefs = listHrefs(readPortal()).filter((href) => !href.startsWith('#'));
+    assert.ok(folderHrefs.length > 0);
+    folderHrefs.forEach((href) => assert.match(href, /^\.\/(estimate|reservation|schedule)\/index\.html(\?mode=staff)?$/, `リンク先 ${href} に index.html がありません`));
+    assert.ok(folderHrefs.includes('./schedule/index.html?mode=staff'));
 });
 
 test('ポータルは facility-config.js → reservation-logic.js → portal-logic.js の順に読み込み、読み込むファイルが存在する', () => {
