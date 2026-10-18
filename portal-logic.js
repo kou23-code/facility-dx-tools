@@ -87,6 +87,39 @@
         { label: '連泊', value: `最大${config.maxNights}泊` }
     ];
 
+    // ---------- ヒーローの背景スライドショー ----------
+    // 背景写真が切り替わる間隔（ミリ秒）
+    const HERO_SLIDE_INTERVAL_MS = 5000;
+
+    // 既定の背景写真（フリー素材）。facility-config.js の window.CUSTOM_FACILITY_INFO.heroImages（URL の配列）で差し替えられる
+    const HERO_IMAGE_BASE_URL = 'https://images.unsplash.com/photo-';
+    const HERO_IMAGE_QUERY = '?auto=format&fit=crop&w=1920&q=75';
+    const DEFAULT_HERO_IMAGES = Object.freeze([
+        { url: `${HERO_IMAGE_BASE_URL}1461896836934-ffe607ba8211${HERO_IMAGE_QUERY}`, alt: '陸上競技場のトラックを走る選手' },
+        { url: `${HERO_IMAGE_BASE_URL}1504450758481-7338eba7524a${HERO_IMAGE_QUERY}`, alt: '明るい体育館のコートでの競技' },
+        { url: `${HERO_IMAGE_BASE_URL}1574629810360-7efbbe195018${HERO_IMAGE_QUERY}`, alt: '緑の芝生の球技場でのプレー' },
+        { url: `${HERO_IMAGE_BASE_URL}1517502884422-41eaead166d4${HERO_IMAGE_QUERY}`, alt: '清潔な研修室でのセミナー' }
+    ].map(Object.freeze));
+
+    // 差し替え用の URL の配列から、空でない文字列だけを取り出す（配列でなければ空）
+    const pickHeroImageUrls = (customUrls) => (Array.isArray(customUrls)
+        ? customUrls.filter((url) => typeof url === 'string' && url.trim() !== '').map((url) => url.trim()) : []);
+
+    // 表示する背景写真（差し替え用の URL が1つもなければ既定の写真）
+    const resolveHeroImages = (defaults, customUrls) => {
+        const urls = pickHeroImageUrls(customUrls);
+        return urls.length === 0 ? defaults : urls.map((url, index) => ({ url, alt: `施設の写真 ${index + 1}` }));
+    };
+
+    // 次に表示する写真の番号（最後の次は最初に戻る。写真がなければ 0）
+    const nextSlideIndex = (currentIndex, slideCount) => (slideCount > 0 ? (currentIndex + 1) % slideCount : 0);
+
+    // 前回切り替えた時刻から、切り替える間隔が過ぎたか
+    const isSlideDue = (changedAt, now, intervalMs) => now - changedAt >= intervalMs;
+
+    // CSS の background-image に入れる値（引用符・バックスラッシュ・改行が値を壊さないようにする）
+    const toCssUrl = (url) => `url("${String(url).replace(/[\r\n]/g, '').replace(/["\\]/g, '\\$&')}")`;
+
     // ページのタイトル（施設名入り）
     const buildPortalTitle = (info) => `${info.facilityName} 公式ホームページ｜合宿・スポーツ大会・研修の総合施設`;
 
@@ -123,13 +156,23 @@
     const renderStayHighlightsHtml = (highlights) => highlights
         .map((item) => `<li><span class="highlight-label">${escapeHtml(item.label)}</span><strong class="highlight-value">${escapeHtml(item.value)}</strong></li>`).join('');
 
+    // 背景写真の層（写真は読み込めたものだけ JavaScript で表示するので、ここでは URL を data-src に置くだけ）
+    const renderHeroSlidesHtml = (images) => images
+        .map((image, index) => `<div class="hero-slide" data-slide-index="${index}" data-src="${escapeHtml(image.url)}"></div>`).join('');
+
+    // 表示中の写真を示し、押すと切り替わるドット（写真が1枚以下なら切り替えないので出さない）
+    const renderHeroDotsHtml = (images) => (images.length < 2 ? '' : images
+        .map((image, index) => `<button type="button" class="hero-dot" data-slide-index="${index}" aria-label="背景写真 ${index + 1}（${escapeHtml(image.alt)}）を表示"></button>`).join(''));
+
     // PORTAL_EXPORTS:start
     // ブラウザでは window.PortalLogic、Node.js（テスト）では module.exports で使えるようにする
     const PortalLogic = Object.freeze({
         FACILITY_GUIDES, FACILITY_CATEGORIES, PERIOD_LABELS, escapeHtml, formatYen, formatPriceRange, formatHourRange, formatPeriodList,
         describeBillingUnit, describeUsageTime, buildFacilityCard, buildFacilitySections, buildStayPriceRows, buildMealGroups, buildStayHighlights,
         buildPortalTitle, buildContactInfo,
-        renderFacilityCardHtml, renderFacilitySectionHtml, renderStayPriceRowsHtml, renderMealGroupHtml, renderStayHighlightsHtml
+        HERO_SLIDE_INTERVAL_MS, DEFAULT_HERO_IMAGES, pickHeroImageUrls, resolveHeroImages, nextSlideIndex, isSlideDue, toCssUrl,
+        renderFacilityCardHtml, renderFacilitySectionHtml, renderStayPriceRowsHtml, renderMealGroupHtml, renderStayHighlightsHtml,
+        renderHeroSlidesHtml, renderHeroDotsHtml
     });
     if (typeof module !== 'undefined') module.exports = PortalLogic;
     if (typeof window !== 'undefined') window.PortalLogic = PortalLogic;
