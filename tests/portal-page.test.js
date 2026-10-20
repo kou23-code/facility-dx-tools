@@ -31,6 +31,8 @@ const preparePortal = (configSource) => {
 // data-contact="key" の要素に表示された文字（ページの順に並べる）
 const listContactTexts = (dom, key) => [...dom.matchAll(new RegExp(`data-contact="${key}"[^>]*>([^<]*)<`, 'g'))].map(([, text]) => text);
 const listNewsBadges = (dom) => [...dom.matchAll(/<span class="news-badge"[^>]*>([^<]*)</g)].map(([, label]) => label);
+const listNewsLinks = (dom) => [...dom.matchAll(/<a class="news-link" href="([^"]*)"/g)].map(([, href]) => href.replace(/&amp;/g, '&'));
+const listAttachBadges = (dom) => [...dom.matchAll(/<span class="news-attach"[^>]*>([^<]*)</g)].map(([, label]) => label);
 const sliceNewsSection = (dom) => dom.slice(dom.indexOf('id="news"'), dom.indexOf('id="facilities"'));
 const countMatches = (dom, pattern) => (dom.match(pattern) || []).length;
 
@@ -50,15 +52,17 @@ test('画面：facility-config.js がないときは、ダミー表記の施設�
     assert.strictEqual(countMatches(dom, /<tbody id="stayPriceRows">(<tr>[\s\S]*?<\/tr>){3}<\/tbody>/g), 1);
     assert.strictEqual(countMatches(dom, /<div class="meal-group">/g), 3);
     assert.match(dom, /<strong class="highlight-value">300名<\/strong>/);
-    assert.deepStrictEqual(listNewsBadges(dom), ['重要', 'ご案内', '休館日'], '初期サンプルのお知らせ3件が新しい順に並ぶ');
+    assert.deepStrictEqual(listNewsBadges(dom), ['重要', 'イベント', 'ご案内', 'ご案内', '休館日'], '初期サンプル6件のうち新しい5件が並ぶ');
+    assert.deepStrictEqual(listNewsLinks(dom), ['sample-1', 'sample-4', 'sample-2', 'sample-5', 'sample-3'].map((id) => `./news/index.html#news-${id}`));
+    assert.deepStrictEqual(listAttachBadges(dom), ['📄PDF', '🖼️画像', '📗Excel']);
     assert.doesNotMatch(sliceNewsSection(dom), /<button|<input|<textarea|編集|削除/, 'お知らせに編集の操作を出さない');
 });
 
-test('画面：facility-config.js に news があるときは、そのお知らせを新しい順に表示する（本文の改行は <br>）', { skip: !BROWSER }, () => {
+test('画面：facility-config.js に news があるときは、そのお知らせを新しい順に表示し、記事はお知らせページのその記事へのリンクになる（抜粋の改行は空白）', { skip: !BROWSER }, () => {
     const news = [{ id: 'c-1', date: '2026-04-01', category: 'info', title: '春の利用案内', body: '1行目\n2行目' }, { id: 'c-2', date: '2026-05-01', category: 'event', title: '体験会', body: '本文' }];
     const dom = renderDom(BROWSER, preparePortal(`window.CUSTOM_FACILITY_INFO = ${JSON.stringify({ news })};`));
     assert.deepStrictEqual(listNewsBadges(dom), ['イベント', 'ご案内']);
-    assert.match(sliceNewsSection(dom), /<span class="news-title">春の利用案内<\/span><\/summary><div class="news-body">1行目<br>2行目<\/div>/);
+    assert.match(sliceNewsSection(dom), /<a class="news-link" href="\.\/news\/index\.html#news-c-1">[\s\S]*?<span class="news-title">春の利用案内<\/span><span class="news-excerpt">1行目 2行目<\/span>/);
 });
 
 test('画面：ルートに facility-config.js があるときは、その施設名・所在地・電話番号で表示され、電話番号のリンクも変わる', { skip: !BROWSER }, () => {
