@@ -140,10 +140,10 @@ test('ツールへのリンクは、PC で直接開いた（file://）ときも�
     assert.ok(folderHrefs.includes('./schedule/index.html?mode=staff'));
 });
 
-test('ポータルは facility-config.js → reservation-logic.js → portal-logic.js の順に読み込み、読み込むファイルが存在する', () => {
+test('ポータルは facility-config.js → reservation-logic.js → portal-logic.js → news-logic.js の順に読み込み、読み込むファイルが存在する', () => {
     const html = readPortal();
     const sources = [...html.matchAll(/<script src="([^"]*)"><\/script>/g)].map(([, src]) => src);
-    assert.deepStrictEqual(sources, ['./facility-config.js', './reservation/reservation-logic.js', './portal-logic.js']);
+    assert.deepStrictEqual(sources, ['./facility-config.js', './reservation/reservation-logic.js', './portal-logic.js', './news-logic.js']);
     sources.slice(1).forEach((src) => assert.ok(fs.existsSync(path.join(ROOT_DIR, src)), `${src} がありません`));
 });
 
@@ -250,5 +250,27 @@ test('施設紹介に体育館・グラウンド・研修室、宿泊・お食�
         const banner = sliceBlock(sliceBlock(html, new RegExp(`<section [^>]*id="${sectionId}"`), '</section>'), new RegExp(`id="${bannerId}"`), '<div class="stay-grid">');
         assert.deepStrictEqual([...banner.matchAll(/<figcaption><strong>([^<]*)<\/strong>/g)].map(([, caption]) => caption), captions, `${bannerId} の見出し`);
         assert.strictEqual([...banner.matchAll(/<svg viewBox="0 0 200 140" role="img" aria-label="[^"]+">/g)].length, 3, `${bannerId} のイラスト`);
+    });
+});
+
+test('ヒーローのすぐ下（施設紹介の上）に「お知らせ（News & Topics）」のセクションがあり、一覧の書き込み先（#newsList）がある', () => {
+    const html = readPortal();
+    const [heroEnd, newsStart, facilitiesStart] = [html.indexOf('</section>', html.indexOf('class="hero"')), html.indexOf('id="news"'), html.indexOf('id="facilities"')];
+    assert.ok(heroEnd >= 0 && heroEnd < newsStart && newsStart < facilitiesStart, String([heroEnd, newsStart, facilitiesStart]));
+    assert.strictEqual(html.slice(heroEnd + '</section>'.length, newsStart).match(/<section/g).length, 1, 'ヒーローとお知らせの間に別のセクションがあります');
+    assert.match(sliceBlock(html, /<section class="news-section"/, '</section>'), /<h2 id="newsTitle">お知らせ<\/h2>[\s\S]*<ul class="news-list" id="newsList"/);
+    assert.match(html, /News &amp; Topics/);
+});
+
+test('トップページのお知らせには編集の操作（ボタン・入力欄・編集/削除の文字）を出さない', () => {
+    const newsBlock = sliceBlock(readPortal(), /<section class="news-section"/, '</section>');
+    assert.doesNotMatch(newsBlock, /<button|<input|<textarea|<form|編集|削除|追加/);
+    assert.doesNotMatch(readPortal(), /localStorage\.(setItem|removeItem)/, 'トップページはお知らせを書き換えない');
+});
+
+test('お知らせのカテゴリのバッジは、重要＝赤・ご案内＝青・イベント＝オレンジ・休館日＝緑で色分けする', () => {
+    const html = readPortal();
+    [['important', '#e2412d'], ['info', 'var(--primary)'], ['event', 'var(--accent)'], ['closed', 'var(--green)']].forEach(([key, color]) => {
+        assert.ok(html.includes(`.news-badge[data-news-category="${key}"] { background: ${color};`), key);
     });
 });

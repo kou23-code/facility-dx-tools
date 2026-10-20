@@ -166,6 +166,32 @@
         .section-head h2 { margin: 0; font-size: clamp(1.5rem, 3.4vw, 2.1rem); letter-spacing: .03em; }
         .section-head p { margin: 14px 0 0; color: var(--muted); }
 
+        /* ---------- お知らせ（News & Topics。表示だけ。追加・編集は職員用のスケジュール管理表で行う） ---------- */
+        .news-section { padding: 48px 0 8px; }
+        .news-box {
+            display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 16px 32px; padding: 28px 32px;
+            border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); border-top: 5px solid var(--accent);
+        }
+        .news-head h2 { margin: 0; font-size: 1.45rem; letter-spacing: .03em; }
+        .news-head p { margin: 6px 0 0; color: var(--muted); font-size: .85rem; }
+        .news-list { margin: 0; padding: 0; list-style: none; }
+        .news-item + .news-item { border-top: 1px dashed var(--line); }
+        .news-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 14px 6px; border-radius: 10px; cursor: pointer; list-style: none; }
+        .news-summary::-webkit-details-marker { display: none; }
+        .news-summary::after { content: "＋"; margin-left: auto; color: var(--primary); font-weight: 700; }
+        .news-details[open] .news-summary::after { content: "－"; }
+        .news-summary:hover, .news-summary:focus-visible { background: var(--primary-soft); }
+        .news-summary:focus-visible { outline: 3px solid rgba(56, 189, 248, .6); outline-offset: 2px; }
+        .news-date { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
+        .news-badge { display: inline-block; min-width: 5.2em; padding: 1px 10px; border-radius: 999px; color: #fff; font-size: .75rem; font-weight: 700; line-height: 1.7; text-align: center; }
+        .news-badge[data-news-category="important"] { background: #e2412d; }
+        .news-badge[data-news-category="info"] { background: var(--primary); }
+        .news-badge[data-news-category="event"] { background: var(--accent); color: #2a1600; }
+        .news-badge[data-news-category="closed"] { background: var(--green); }
+        .news-title { flex: 1 1 240px; font-weight: 700; line-height: 1.6; }
+        .news-body { margin: 0 6px 16px; padding: 14px 18px; border-radius: 12px; background: #f5fbff; font-size: .92rem; }
+        .news-empty { padding: 14px 6px; color: var(--muted); }
+
         /* ---------- 施設紹介 ---------- */
         .facility-group + .facility-group { margin-top: 56px; }
         .facility-group-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 0; font-size: 1.3rem; }
@@ -293,6 +319,7 @@
             .nav-list a.nav-cta { text-align: center; margin-top: 4px; }
             .staff-link { align-self: flex-end; margin: 4px 0 0; }
             .stay-grid, .access-grid { grid-template-columns: minmax(0, 1fr); }
+            .news-box { grid-template-columns: minmax(0, 1fr); }
         }
         /* ---------- スマホ ---------- */
         @media (max-width: 680px) {
@@ -306,6 +333,8 @@
             .flow-steps { grid-template-columns: minmax(0, 1fr); gap: 32px; }
             .flow-step:not(:last-child)::after { top: auto; right: 50%; bottom: -24px; transform: translateX(50%) rotate(135deg); }
             .panel { padding: 24px 18px; }
+            .news-section { padding-top: 32px; }
+            .news-box { padding: 22px 16px; }
             .highlights { grid-template-columns: minmax(0, 1fr); }
             .access-list div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
             .logo-org { display: none; }
@@ -386,6 +415,20 @@
             <!-- 表示中の背景写真を示すドット（押すと切り替わる） -->
             <div class="hero-dots" id="heroDots" role="group" aria-label="背景写真の切り替え"></div>
             <svg class="hero-wave" viewBox="0 0 1440 48" preserveAspectRatio="none" aria-hidden="true"><path d="M0 24c240 24 480 24 720 0s480-24 720 0v24H0z"/></svg>
+        </section>
+
+        <!-- お知らせ（一般の利用者向けの表示だけ。news-logic.js で作る。追加・編集・削除は職員用のスケジュール管理表で行う） -->
+        <section class="news-section" id="news" aria-labelledby="newsTitle">
+            <div class="container">
+                <div class="news-box">
+                    <div class="news-head">
+                        <p class="section-label">News &amp; Topics</p>
+                        <h2 id="newsTitle">お知らせ</h2>
+                        <p>タイトルを押すと詳しい内容が開きます。</p>
+                    </div>
+                    <ul class="news-list" id="newsList" aria-live="polite"></ul>
+                </div>
+            </div>
         </section>
 
         <!-- 施設紹介（カードは RESERVATION_CATALOG の施設一覧と料金から作る） -->
@@ -700,6 +743,8 @@
     <script src="./reservation/reservation-logic.js"></script>
     <!-- このページの表示内容を作る純粋関数（window.PortalLogic） -->
     <script src="./portal-logic.js"></script>
+    <!-- お知らせのデータを扱う純粋関数（window.NewsLogic。職員用のスケジュール管理表と共通） -->
+    <script src="./news-logic.js"></script>
     <script>
         // ======================================================
         //  画面の処理（DOM を扱う部分）。表示内容は portal-logic.js の純粋関数で作り、ここでは書き込むだけにする
@@ -725,6 +770,15 @@
             byId('stayHighlights').innerHTML = Portal.renderStayHighlightsHtml(Portal.buildStayHighlights(config));
             byId('stayPriceRows').innerHTML = Portal.renderStayPriceRowsHtml(Portal.buildStayPriceRows(catalog));
             byId('mealGroups').innerHTML = Portal.buildMealGroups(catalog).map(Portal.renderMealGroupHtml).join('');
+        };
+
+        // ---------- お知らせ（読むだけ。保存は職員用のスケジュール管理表が行う） ----------
+        const News = window.NewsLogic;
+        const readStoredNewsText = () => {
+            try { return localStorage.getItem(News.NEWS_STORAGE_KEY); } catch (error) { return null; }
+        };
+        const renderNews = (newsList) => {
+            byId('newsList').innerHTML = News.renderNewsListHtml(newsList, News.PORTAL_NEWS_LIMIT);
         };
 
         // スマホ・タブレットのメニューの開け閉め（メニュー内のリンクを押したら閉じる）
@@ -778,6 +832,7 @@
         };
 
         renderContactInfo(Portal.buildContactInfo(ACTIVE_FACILITY_INFO, new Date().getFullYear()));
+        renderNews(News.resolveNewsList(readStoredNewsText(), window.CUSTOM_FACILITY_INFO?.news, toLocalDateString(new Date())));
         renderFacilitySections(RESERVATION_CATALOG);
         renderStayAndMeals(RESERVATION_CATALOG, ACTIVE_CONFIG);
         bindMenu();

@@ -14,6 +14,7 @@ const RESERVATION_LOGIC_PATH = path.join(RESERVATION_DIR, 'reservation-logic.js'
 const SCHEDULE_DIR = path.join(ROOT_DIR, 'schedule');
 const SCHEDULE_HTML_PATH = path.join(SCHEDULE_DIR, 'index.html');
 const SCHEDULE_LOGIC_PATH = path.join(SCHEDULE_DIR, 'schedule-logic.js');
+const NEWS_LOGIC_PATH = path.join(ROOT_DIR, 'news-logic.js');
 const BROWSER_CANDIDATES = [
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
@@ -48,6 +49,6 @@ const findById = (dom, id) => {
 
 module.exports = {
     ROOT_DIR, HTML_PATH, PORTAL_PATH, RESERVATION_DIR, RESERVATION_HTML_PATH, RESERVATION_LOGIC_PATH,
-    SCHEDULE_DIR, SCHEDULE_HTML_PATH, SCHEDULE_LOGIC_PATH,
+    SCHEDULE_DIR, SCHEDULE_HTML_PATH, SCHEDULE_LOGIC_PATH, NEWS_LOGIC_PATH,
     BROWSER_CANDIDATES, readHtml, findBrowser, renderDom, findById
 };

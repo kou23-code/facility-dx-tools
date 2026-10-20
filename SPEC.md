@@ -19,6 +19,7 @@ GitHub Pages で、複数のツールを一覧で公開できる構成にして�
 | `reservation/facility-config.js` | 予約システムだけの実名・受付ルールの設定（ローカル専用・Git管理外。ルートの `facility-config.js` にない設定のときに使う。13.9を参照） | 公開されない |
 | `schedule/index.html` | スケジュール管理表の画面（14章を参照） | `…/<リポジトリ名>/schedule/` |
 | `schedule/schedule-logic.js` | スケジュール管理表の集計・判定の純粋関数（画面とテストの両方から読み込む） | `…/schedule/schedule-logic.js` |
+| `news-logic.js` | トップページのお知らせ（News & Topics）のデータを扱う純粋関数（トップページ・スケジュール管理表・テストから読み込む。15.7を参照） | `…/<リポジトリ名>/news-logic.js` |
 | `facility-config.js` | 全ツール共通の実名・受付ルールの設定（ローカル専用・Git管理外。見積もり・予約・スケジュール管理表・公式ホームページ兼DXポータルのすべてが読み込む。10.1章を参照） | 公開されない |
 | `tests/` | 動作確認テスト（11章を参照） | — |
 
@@ -644,6 +645,7 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
 1. `../facility-config.js`（ルートに置く実名設定。ローカル専用・Git管理外。ファイルがなければダミー表記で動く。14.9）
 2. `../reservation/reservation-logic.js`（施設・コマ・食事・区分の一覧 `RESERVATION_CATALOG`、予約データの読み込み、サンプル予約、日付の表示、休館日の判定）
 3. `./schedule-logic.js`（スケジュール管理表の集計・判定。ブラウザでは `window.ScheduleLogic`、Node.js では `module.exports`）
+4. `../news-logic.js`（トップページのお知らせのデータの扱い。ブラウザでは `window.NewsLogic`。トップページと共通。14.12・15.7）
 
 - `schedule-logic.js` は全体をブロック `{ }` で囲み、`reservation-logic.js` と同じページで読み込んでも名前がぶつからないようにしている。画面からは `Schedule.〇〇`（`const Schedule = window.ScheduleLogic`）の形で呼ぶ
 - 施設や食事の一覧は `schedule-logic.js` に持たず、引数 `catalog` で `RESERVATION_CATALOG` を受け取る（料金表・施設を変えたときに二重に直さなくてよい）
@@ -656,7 +658,7 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
 - 押されているボタンは `aria-pressed="true"`。公開用は青、職員用はオレンジで表示し、モードの説明を見出しの下に出す
   - 公開用：「空き状況だけを表示しています（団体名などの個人情報は表示しません）」と、表示中のデータの出どころ（14.7）
   - 職員用：「団体名・代表者名・電話番号を表示しています。この画面を利用者に見せないでください」
-- 職員用データ管理パネル（`class="staff-only"`）は職員用モードのときだけ表示する
+- 職員用データ管理パネルとトップページお知らせ管理パネル（どちらも `class="staff-only"`。最初は `hidden`）は職員用モードのときだけ表示し、公開用モードでは完全に隠す
 - 予約データが空（かつ公開用データを読み込んでいない）ときは、どちらのモードでも「サンプル予約を投入」ボタン付きの案内を出す
 
 ### 14.4 月間カレンダー
@@ -761,12 +763,31 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
   - 1行コードの取込（エラーの理由の表示、重複で取り込まない、追加、削除ボタン、削除用のコード）
   - 公開用データの出力（個人情報なし）・正しくないデータの読み込みエラー・読み込んだデータでの表示・解除
   - リセットでサンプル投入の案内が出ること
+  - `../news-logic.js` を `schedule-logic.js` のあとに読み込み、お知らせ管理パネルが `staff-only hidden` であること
+  - お知らせ管理（`?mode=staff` で開く）：最初は初期サンプル3件が新しい順に並び保存はまだないこと、空の入力で「タイトルを入力してください」などが出て保存しないこと、追加（`news-1`。日付の新しい順で先頭に並び、localStorage に保存）・編集（フォームに内容が入り「変更を保存する」になり、保存後は新規追加の状態に戻る）・削除・初期サンプルへのリセット（保存を消す）ができること、公開用モードに切り替えるとパネルが隠れること
+- `tests/news-logic.test.js`：`news-logic.js` の純粋関数（15.7）
 - `tests/portal.test.js`：ポータルの「空き状況カレンダー」のカードが公開中で `./schedule/index.html` へのリンクになっていること（15.6を参照）
 
 ### 14.11 現状の注意点
 
 - 職員用モードにパスワードなどの保護はない（URL やボタンで誰でも切り替えられる）。予約データはそのブラウザの localStorage にしかないため、別のパソコン・ブラウザの利用者には見えないが、職員のパソコンで公開用モードの画面を見せるときは職員用モードに切り替えたままにしないこと
 - 公開用データは、手で貼り付けて読み込む方式。GitHub Pages などで一般の利用者に見せるには、出力した JSON を配る・置く仕組み（例：`schedule/public-schedule.json` を自動で読み込む）が別に必要
+
+### 14.12 トップページお知らせ管理（職員用モードだけ表示）
+
+トップページの「お知らせ（News & Topics）」（15.2・15.7）に出す記事を、職員が追加・編集・削除するパネル（`#newsAdminPanel`）。職員用データ管理パネルの下に置く。
+
+- 見出しの下に、登録件数とトップページに表示される件数（最大5件）を出す（`#newsStorageStatus`）
+- 左：入力フォーム（`#newsForm`）
+  - 日付（`<input type="date">`。最初は今日）・カテゴリ（重要／ご案内／イベント／休館日。選択肢は `NEWS_CATEGORIES` から作る。最初は「ご案内」）・タイトル（60文字以内）・本文（1000文字以内。改行可）
+  - 「追加する」で新しいお知らせを保存する。入力に誤りがあるときは理由を赤字ですべて出し、保存しない（`validateNewsInput`）。保存できたら入力欄を新規追加の状態に戻す
+  - 編集中は見出しが「お知らせを編集」、ボタンが「変更を保存する」になり、「編集をやめる」ボタンが出る。編集中の記事の id はフォームの `data-editing-id` に持つ（空なら新規追加）
+- 右：登録済みのお知らせの一覧（`#newsAdminRows`。新しい順）。日付・カテゴリのバッジ（トップページと同じ色）・タイトル・本文の最初の2行と、「編集」「削除」ボタン
+  - 「編集」：その記事の内容をフォームに入れて、フォームまでスクロールする
+  - 「削除」：確認したうえで消す（編集中の記事を消したときはフォームも新規追加の状態に戻す）
+  - 「トップページで確認する」：`../index.html#news` を別のタブで開く
+  - 「初期サンプルに戻す」：確認したうえで保存したお知らせ（localStorage のキー `facility_dx_news`）を消し、初期の内容（`facility-config.js` の `news`、なければサンプル3件）に戻す
+- お知らせはこのブラウザの localStorage に保存する。トップページは同じブラウザ（同じ公開場所）で開いたときにその内容を表示する
 
 ## 15. 公式ホームページ兼DXポータル（`index.html`）
 
@@ -800,24 +821,29 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
      - 写真は JavaScript で先に読み込み、読み込めたものだけ表示する（`is-loaded`）。オフラインや読み込み失敗のときは写真の層が透明のままで、もとのブルーのグラデーション背景がそのまま見える
    - **スライドドット**（`#heroDots`。ヒーローの右下、スマホでは下部中央）：表示中の写真のドットが横長の白（`is-active`・`aria-current="true"`）になる。押すとその写真に切り替わり、そこから5秒後に次へ進む。写真が1枚以下ならドットは出さず、自動の切り替えもしない
    - **写真の差し替え**：ルートの `facility-config.js` の `window.CUSTOM_FACILITY_INFO.heroImages` に URL の配列を書くと、その写真に差し替わる（ローカルの写真も可。例：`heroImages: ['./images/gym.jpg', './images/field.jpg']`）。前後の空白は取り、空の文字列・文字列以外は除く。有効な URL が1つもない（書かない・空の配列・配列でない）ときは既定の4枚
-3. **施設紹介**（`#facilities`。カードは `#facilitySections` に JavaScript で作る）
+3. **お知らせ（News & Topics）**（`#news`。ヒーローのすぐ下・施設紹介の上。一覧は `#newsList` に JavaScript で作る。15.7）
+   - 白いカード（上辺がサンシャインオレンジの線）の左に見出し「News & Topics／お知らせ」、右に新しい日付の順で最大5件（`PORTAL_NEWS_LIMIT`）を並べる。スマホ・タブレットでは見出しの下に一覧
+   - 1件ごとに日付（`2026.10.20` の形）・カテゴリのバッジ（重要＝赤、ご案内＝青、イベント＝オレンジ、休館日＝緑）・タイトルを出し、タイトルを押すと本文が開く（`<details>`。右端の「＋／－」で開閉がわかる。本文の改行はそのまま表示）
+   - お知らせが1件もないときは「現在、お知らせはありません。」
+   - 一般の利用者向けの画面なので、追加・編集・削除のボタンや入力欄は一切出さない。トップページはお知らせを読むだけで、保存（`localStorage` の書き換え）はしない
+4. **施設紹介**（`#facilities`。カードは `#facilitySections` に JavaScript で作る）
    - 見出しの下に、イラストのビジュアルバナー（`#facilityIllustrations`。スカイブルー〜ミント〜オレンジの淡いグラデーション）：「体育館」（建物とバスケットボール）・「グラウンド・球技場」（陸上トラックと芝生のフィールド、サッカーボール、旗）・「研修室」（ホワイトボードと机に並ぶ人）のカラフルなイラスト（インラインの SVG。`role="img"` と `aria-label` で内容を伝える）
    - 体育館・グラウンドのカードはスカイブルー、研修室のカードはミントグリーンの線で色分けする
    - 体育館・グラウンド（午前・午後・夜間の3区分。各区分の時間も表示）：大体育館・小体育館・陸上グラウンド・球技場
    - 研修室（9〜21時の1時間単位）：大研修室（第１研修室）・大研修室（第３研修室）・小研修室（第２研修室）・ミーティングルーム
    - 各カードに施設名・主な用途・特徴・料金目安（料金表の一番安い額〜一番高い額。「1区分あたり」「1時間あたり」、税込・目安）を出す。用途と特徴の文章は `portal-logic.js` の `FACILITY_GUIDES` に書く
-4. **宿泊・お食事**（`#stay`）
+5. **宿泊・お食事**（`#stay`）
    - 見出しの下に、イラストのビジュアルバナー（`#stayIllustrations`）：「ふかふかの客室でぐっすり」（窓のある客室のベッドで眠る人）・「できたて・あったか食堂ごはん」（湯気の立つカレーライスとみそ汁）・「お弁当・おにぎり・お茶」（お弁当箱・おにぎり・湯のみ）のカラフルなイラスト（インラインの SVG）
    - 宿泊のご案内（`.panel-stay`）はスカイブルー、お食事のご案内（`.panel-meal`）はオレンジの線で色分けし、食事のグループもオレンジ・ミント・スカイブルーで色分けする
    - 受け入れ条件（`#stayHighlights`）：最大宿泊人数（`stayCapacity`。既定 300名）・同時受け入れ（`maxStayGroups`。既定 6団体まで）・連泊（`maxNights`。既定 最大6泊）。`facility-config.js` の `window.CUSTOM_RESERVATION_CONFIG` で変えると表示も変わる
    - 宿泊料金の表（`#stayPriceRows`）：小学生・中学生／高校生／大学生・一般の1名1泊の料金
    - お食事（`#mealGroups`）：「食堂の食事」（朝食・昼食・夕食）・「弁当」・「お茶・おにぎり」のグループごとに品目と料金
-5. **ご利用の流れ＆DXツール案内**（`#flow`）
+6. **ご利用の流れ＆DXツール案内**（`#flow`）
    - STEP 1「空き状況を確認」→ STEP 2「概算見積もり」→ STEP 3「Web予約を申し込む」の3ステップを矢印つきで図解（`ol.flow-steps`）
    - ツールのカード（`ul.tools#toolCards` の `<li>`。カード全体が `a.card` のリンク、見出しは `h3`）：「空き状況カレンダー」`./schedule/index.html`／「料金シミュレーター（概算見積もり）」`./estimate/index.html`／「Web予約」`./reservation/index.html`
    - ツールを追加するときは、`<li>` を1つコピーして増やし、英数字のフォルダ（例：`xxx/index.html`）を作る。リンク先は `./xxx/index.html` と `index.html` まで書く
-6. **アクセス・お問い合わせ**（`#access`）：施設名（会社名＋施設名）・所在地（〒郵便番号＋住所）・電話番号・主な施設、電話番号のリンク（`#contactTelLink`。`tel:` の後ろは数字だけ）と、空き状況・Web予約へのボタン
-7. **フッター**：施設名・所在地・電話番号、サイト内リンク（末尾に控えめな「職員用」`./schedule/index.html?mode=staff`）、コピーライト（`#copyright`。「© 西暦 会社名 施設名」。西暦は表示した日の年）
+7. **アクセス・お問い合わせ**（`#access`）：施設名（会社名＋施設名）・所在地（〒郵便番号＋住所）・電話番号・主な施設、電話番号のリンク（`#contactTelLink`。`tel:` の後ろは数字だけ）と、空き状況・Web予約へのボタン
+8. **フッター**：施設名・所在地・電話番号、サイト内リンク（末尾に控えめな「職員用」`./schedule/index.html?mode=staff`）、コピーライト（`#copyright`。「© 西暦 会社名 施設名」。西暦は表示した日の年）
 
 ### 15.3 施設名・所在地・電話番号の表示（`facility-config.js` 連動）
 
@@ -871,3 +897,25 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
 - `tests/portal-page.test.js`（画面。ヘッドレスブラウザ。本番と同じフォルダ構成で一時フォルダにコピーして開く）
   - `facility-config.js` がないときはダミー表記の施設名・所在地・電話番号・コピーライト・タイトルが出て、施設カード8件・宿泊料金3行・食事3グループ・「300名」が並ぶこと
   - ルートに `facility-config.js` があるときは、その情報で表示され、電話番号のリンクも変わること
+  - お知らせ：`facility-config.js` がないときは初期サンプル3件（重要・ご案内・休館日の順）が出て、編集のボタン・入力欄がないこと。`news` を書いたときはそのお知らせが新しい順に出て、本文の改行が `<br>` になること
+- `tests/portal.test.js` のお知らせの確認：ヒーローのすぐ下・施設紹介の上に `#news` のセクションと `#newsList` があること、お知らせのセクションにボタン・入力欄・「編集」「削除」「追加」の文字がなく、トップページに `localStorage.setItem`・`removeItem` がないこと、カテゴリのバッジの色（重要＝赤・ご案内＝青・イベント＝オレンジ・休館日＝緑）、`news-logic.js` を `portal-logic.js` のあとに読み込むこと
+
+### 15.7 お知らせ（News & Topics）のデータ（`news-logic.js`）
+
+トップページ（表示だけ）とスケジュール管理表の職員用モード（追加・編集・削除。14.12）で共通に使う純粋関数。DOM・localStorage には触らず、保存されている文字列・今日の日付・`facility-config.js` の値は引数で受け取る。全体をブロック `{ }` で囲み、ブラウザでは `window.NewsLogic`、Node.js では `module.exports` で使う。
+
+- お知らせ1件の形：`{ id, date: 'YYYY-MM-DD', category: 'important' | 'info' | 'event' | 'closed', title, body }`
+- カテゴリ（`NEWS_CATEGORIES`）：`important`＝重要（赤）、`info`＝ご案内（青）、`event`＝イベント（オレンジ）、`closed`＝休館日（緑）
+- 保存：localStorage のキー `facility_dx_news`（`NEWS_STORAGE_KEY`）に `{"type":"facility_dx_news","version":1,"items":[…]}` の形で保存する（`serializeNews`・`parseStoredNews`）。保存がない・壊れている・種類が違うときは「保存なし」（`null`）として扱い、全部削除した空の一覧（`[]`）とは区別する
+- 表示するお知らせ（`resolveNewsList(保存の文字列, CUSTOM_FACILITY_INFO.news, 今日)`）：
+  1. 職員が保存したお知らせがあればそれ（空なら「お知らせはありません」）
+  2. なければ、ルートの `facility-config.js` の `window.CUSTOM_FACILITY_INFO.news`（お知らせの配列）に正しいお知らせがあればそれ（`resolveInitialNews`）
+  3. それもなければ、初期サンプル3件（`createSampleNews(今日)`。重要「Web予約の受付を開始しました」＝今日、ご案内「合宿向けのお弁当メニューを新しくしました」＝7日前、休館日「設備点検に伴う休館日のお知らせ」＝14日前）
+- 入力のチェック（`validateNewsInput`）：実在する日付（`isValidDateString`。2026-02-30 などは不可）、4つのカテゴリのどれか、タイトル（前後の空白を除いて1〜60文字）、本文（1〜1000文字）
+- 整形（`normalizeNewsList`）：保存や `facility-config.js` のお知らせのうち、正しくないもの・id が重複する2件目以降は除き、id がない・英数字と `-` `_` 以外を含むときは `news-番号` を付ける
+- 並べ替え（`sortNewsByDateDesc`）：日付の新しい順。同じ日付なら id の番号の大きい順（あとから追加したものが上）
+- 追加・編集・削除（`addNewsItem`・`updateNewsItem`・`removeNewsItem`。元の配列は変えず新しい配列を返す）：追加の id は `news-番号` のうち一番大きい番号の次（`createNewsId`）。追加・編集のあとは新しい順に並べ直す
+- 表示用の HTML（`renderNewsListHtml(一覧, 件数)`・`renderNewsItemHtml`・`renderNewsBadgeHtml`）：文字はすべてエスケープし、本文の改行は `<br>` にする。編集のボタンは作らない
+- 例（`facility-config.js`）：`window.CUSTOM_FACILITY_INFO = { …, news: [{ date: '2026-12-01', category: 'closed', title: '年末年始の休館日', body: '…' }] };`
+- 注意：保存先は職員のブラウザの localStorage のため、GitHub Pages で一般の利用者に同じお知らせを見せるには、`facility-config.js` の `news` に書いて公開するか、お知らせのデータを配る仕組みが別に必要
+- テスト（`tests/news-logic.test.js`）：保存キーとカテゴリ、初期サンプル3件の日付（月・年またぎ）、日付の判定（うるう年・存在しない日）、入力チェック（空・null・60/61文字・1000/1001文字）、並べ替え・id の採番・追加・編集・削除（元の配列を変えないこと、ない id）、整形（重複・不正な id）、保存と読み込み（空の一覧・壊れたデータ）、表示するお知らせの優先順位、HTML（件数の上限・エスケープ・編集の操作がないこと）、`let`・`var` と会社名・住所・電話番号らしい表記がないこと
