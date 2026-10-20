@@ -318,6 +318,27 @@ test('お知らせページの HTML は、画像の説明・ファイル名な�
     assert.strictEqual(News.renderNewsCardsHtml([], '../'), '<p class="news-empty">該当するお知らせはありません。</p>');
 });
 
+// ---------- 職員用の入力フォームに出す説明 ----------
+test('estimateDataUrlBytes は DataURL の base64 部分からおおよそのバイト数を出す', () => {
+    assert.strictEqual(News.estimateDataUrlBytes('data:application/pdf;base64,QUJD'), 3);
+    assert.strictEqual(News.estimateDataUrlBytes(`data:image/jpeg;base64,${'A'.repeat(4096)}`), 3072);
+    assert.strictEqual(News.estimateDataUrlBytes('data:,'), 0);
+});
+
+test('describeNewsImage は、画像なし・ファイルから読み込んだ画像（容量）・URL・正しくない場所を説明する', () => {
+    assert.strictEqual(News.describeNewsImage(''), '');
+    assert.strictEqual(News.describeNewsImage(`data:image/jpeg;base64,${'A'.repeat(4096)}`), 'ファイルから読み込み済み（軽量化後 約3KB）');
+    assert.strictEqual(News.describeNewsImage('./files/flyer.jpg'), 'URL・相対パスの画像を掲載します');
+    assert.match(News.describeNewsImage('javascript:x'), /^画像の場所が正しくありません/);
+});
+
+test('describeNewsFile は、資料なし・自動判別した種類・ファイルから読み込んだ容量・判別できないことを説明する', () => {
+    assert.strictEqual(News.describeNewsFile('', '名簿.xlsx'), '');
+    assert.strictEqual(News.describeNewsFile('./files/meibo.xlsx', ''), '種類：📗Excel（自動判別）');
+    assert.strictEqual(News.describeNewsFile('data:application/octet-stream;base64,QUJD', '申込書.docx'), '種類：📘Word（自動判別）・ファイルから読み込み済み（約1KB）');
+    assert.match(News.describeNewsFile('./files/memo.txt', ''), /^種類を判別できません/);
+});
+
 // ---------- ファイルの中身 ----------
 test('news-logic.js は let・var を使わず、会社名・住所・電話番号らしい表記を含まない', () => {
     const source = fs.readFileSync(NEWS_LOGIC_PATH, 'utf8');

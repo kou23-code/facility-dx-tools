@@ -62,6 +62,13 @@
         .news-badge[data-news-category="info"] { background: #0a74b8; }
         .news-badge[data-news-category="event"] { background: #ff9f1c; color: #2a1600; }
         .news-badge[data-news-category="closed"] { background: #0a7f5f; }
+        .news-attach { display: inline-block; margin: 2px 2px 0 0; padding: 0 6px; border: 1px solid; border-radius: 4px; font-size: 10px; font-weight: 700; line-height: 1.6; white-space: nowrap; }
+        .news-attach[data-attach="image"] { border-color: #f5b25b; background: #fff1dc; color: #9a4a00; }
+        .news-attach[data-attach="pdf"] { border-color: #f3a39a; background: #fdecea; color: #b42318; }
+        .news-attach[data-attach="word"] { border-color: #9cc3ef; background: #e8f1fc; color: #1d4f91; }
+        .news-attach[data-attach="excel"] { border-color: #8fd3b4; background: #e2f8f0; color: #0b6b45; }
+        .news-attach-box { margin: 0 0 .6rem; padding: .4rem .6rem .6rem; border: 1px dashed #cbd5e1; border-radius: .375rem; background: #fff; }
+        .news-image-preview { width: 96px; height: 96px; object-fit: contain; border: 1px solid #e5e7eb; border-radius: .25rem; background: #f9fafb; }
         .news-admin-body { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: pre-line; }
         .panel-textarea { width: 100%; min-height: 4.5rem; padding: .5rem; border: 1px solid #d1d5db; border-radius: .25rem; font-family: ui-monospace, monospace; font-size: 12px; }
     </style>
@@ -189,6 +196,29 @@
                     </div>
                     <label class="block mb-2"><span class="text-xs font-bold text-gray-700">タイトル（60文字以内）</span><input type="text" id="newsTitleInput" class="news-input" maxlength="60" placeholder="例：夏休み期間の受付時間のお知らせ"></label>
                     <label class="block mb-2"><span class="text-xs font-bold text-gray-700">本文（1000文字以内。改行もそのまま表示されます）</span><textarea id="newsBodyInput" class="news-input" rows="5" maxlength="1000"></textarea></label>
+                    <!-- ① 画像（任意）：ファイルを選ぶと軽量化して読み込む（DataURL は隠し欄に持つ）。または URL・相対パスを入力 -->
+                    <fieldset class="news-attach-box">
+                        <legend class="font-bold text-sm px-1">🖼️ 画像（チラシ・写真）<span class="font-normal text-xs text-gray-500">任意</span></legend>
+                        <label class="block mb-1"><span class="text-xs font-bold text-gray-700">画像ファイルを選ぶ（長い辺 1280px の JPEG に自動で軽量化します）</span><input type="file" id="newsImageFileInput" class="news-input" accept="image/*" onchange="handleNewsImageFileChange(this)"></label>
+                        <label class="block mb-1"><span class="text-xs font-bold text-gray-700">または画像の URL・相対パス</span><input type="text" id="newsImageUrlInput" class="news-input" placeholder="例：./files/flyer.jpg" oninput="handleNewsImageUrlInput()"></label>
+                        <label class="block mb-1"><span class="text-xs font-bold text-gray-700">画像の説明（読み上げ・拡大表示に使います。100文字以内）</span><input type="text" id="newsImageNameInput" class="news-input" maxlength="100" placeholder="例：スポーツ体験会のチラシ"></label>
+                        <input type="hidden" id="newsImageDataInput" value="">
+                        <div class="flex items-start gap-2 mt-1">
+                            <img id="newsImagePreview" class="news-image-preview hidden" src="data:," alt="選んだ画像のプレビュー">
+                            <p id="newsImageStatus" class="text-xs text-gray-600"></p>
+                        </div>
+                        <button type="button" id="newsImageClearButton" onclick="clearNewsImage()" class="mt-1 px-2 py-0.5 rounded border border-gray-300 text-xs hover:bg-gray-100">画像を外す</button>
+                    </fieldset>
+                    <!-- ② 添付資料（任意）：PDF・Word・Excel のファイルを選ぶと DataURL で読み込む（2MBまで）。または URL・相対パスを入力 -->
+                    <fieldset class="news-attach-box">
+                        <legend class="font-bold text-sm px-1">📎 添付資料（PDF・Word・Excel）<span class="font-normal text-xs text-gray-500">任意</span></legend>
+                        <label class="block mb-1"><span class="text-xs font-bold text-gray-700">ファイルを選ぶ（.pdf .doc .docx .xls .xlsx、2MBまで）</span><input type="file" id="newsFileInput" class="news-input" accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onchange="handleNewsFileChange(this)"></label>
+                        <label class="block mb-1"><span class="text-xs font-bold text-gray-700">またはファイルの URL・相対パス</span><input type="text" id="newsFileUrlInput" class="news-input" placeholder="例：./files/meibo.xlsx" oninput="handleNewsFileUrlInput()"></label>
+                        <label class="block mb-1"><span class="text-xs font-bold text-gray-700">表示するファイル名（空なら URL から作ります。100文字以内）</span><input type="text" id="newsFileNameInput" class="news-input" maxlength="100" placeholder="例：宿泊者名簿.xlsx" oninput="renderNewsFileStatus()"></label>
+                        <input type="hidden" id="newsFileDataInput" value="">
+                        <p id="newsFileStatus" class="text-xs text-gray-600"></p>
+                        <button type="button" id="newsFileClearButton" onclick="clearNewsFile()" class="mt-1 px-2 py-0.5 rounded border border-gray-300 text-xs hover:bg-gray-100">添付を外す</button>
+                    </fieldset>
                     <div class="flex gap-2 flex-wrap">
                         <button type="submit" id="newsSubmitButton" class="px-4 py-1.5 rounded bg-sky-600 text-white font-bold hover:bg-sky-700">追加する</button>
                         <button type="button" id="newsCancelButton" onclick="clearNewsForm()" class="hidden px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-100">編集をやめる</button>
@@ -206,6 +236,7 @@
                     </div>
                     <div class="mt-3 pt-3 border-t border-dashed flex gap-2 flex-wrap">
                         <a id="newsPreviewLink" href="../index.html#news" target="_blank" rel="noopener" class="px-3 py-1.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">トップページで確認する</a>
+                        <a id="newsPagePreviewLink" href="../news/index.html" target="_blank" rel="noopener" class="px-3 py-1.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">お知らせ一覧ページで確認する</a>
                         <button type="button" id="newsResetButton" onclick="resetNews()" class="px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50">初期サンプルに戻す</button>
                     </div>
                 </div>
@@ -527,7 +558,7 @@
         const buildNewsCategoryOptionsHtml = (categories) => categories.map((category) => `<option value="${escapeHtml(category.key)}">${escapeHtml(category.label)}</option>`).join('');
         // 一覧の1行（id は英数字・-・_ だけなので、そのまま onclick に入れられる）
         const buildNewsAdminRowHtml = (item) => `<tr class="border-t align-top" data-news-id="${escapeHtml(item.id)}">`
-            + `<td class="py-1.5 pr-2 whitespace-nowrap">${escapeHtml(News.formatNewsDate(item.date))}</td><td class="py-1.5 pr-2">${News.renderNewsBadgeHtml(item.category)}</td>`
+            + `<td class="py-1.5 pr-2 whitespace-nowrap">${escapeHtml(News.formatNewsDate(item.date))}</td><td class="py-1.5 pr-2">${News.renderNewsBadgeHtml(item.category)}<div>${News.renderAttachmentBadgesHtml(item)}</div></td>`
             + `<td class="py-1.5 pr-2"><div class="font-bold">${escapeHtml(item.title)}</div><div class="news-admin-body text-gray-600">${escapeHtml(item.body)}</div></td>`
             + `<td class="py-1.5 whitespace-nowrap"><button type="button" class="news-edit-button px-2 py-0.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50" onclick="editNews('${escapeHtml(item.id)}')">編集</button> `
             + `<button type="button" class="news-delete-button px-2 py-0.5 rounded border border-red-300 text-red-600 hover:bg-red-50" onclick="deleteNews('${escapeHtml(item.id)}')">削除</button></td></tr>`;
@@ -539,12 +570,91 @@
             byId('newsAdminRows').innerHTML = buildNewsAdminRowsHtml(newsList);
             byId('newsStorageStatus').textContent = `（登録 ${newsList.length}件・トップページに表示 ${Math.min(newsList.length, News.PORTAL_NEWS_LIMIT)}件）`;
         };
+        // 画像・添付資料は、ファイルから読み込んだ DataURL（隠し欄）があればそれ、なければ URL・相対パスの欄
+        const readNewsImageUrl = () => byId('newsImageDataInput').value || byId('newsImageUrlInput').value.trim();
+        const readNewsFileUrl = () => byId('newsFileDataInput').value || byId('newsFileUrlInput').value.trim();
         const readNewsForm = () => ({
-            date: byId('newsDateInput').value, category: byId('newsCategoryInput').value, title: byId('newsTitleInput').value, body: byId('newsBodyInput').value
+            date: byId('newsDateInput').value, category: byId('newsCategoryInput').value, title: byId('newsTitleInput').value, body: byId('newsBodyInput').value,
+            imageUrl: readNewsImageUrl(), imageName: byId('newsImageNameInput').value, fileUrl: readNewsFileUrl(), fileName: byId('newsFileNameInput').value
         });
+
+        // ---------- 画像・添付資料の入力欄 ----------
+        const renderNewsImageStatus = () => {
+            const imageUrl = readNewsImageUrl();
+            const canPreview = Boolean(imageUrl) && News.isValidImageUrl(imageUrl);
+            byId('newsImagePreview').src = canPreview ? News.resolveNewsAssetUrl(imageUrl, '../') : 'data:,';
+            byId('newsImagePreview').classList.toggle('hidden', !canPreview);
+            byId('newsImageStatus').textContent = News.describeNewsImage(imageUrl);
+        };
+        const renderNewsFileStatus = () => { byId('newsFileStatus').textContent = News.describeNewsFile(readNewsFileUrl(), byId('newsFileNameInput').value.trim()); };
+        // 画像を入れる（DataURL は隠し欄、それ以外は URL の欄に入れる）
+        const setNewsImage = (imageUrl, imageName) => {
+            const isDataUrl = imageUrl.startsWith('data:');
+            [['newsImageDataInput', isDataUrl ? imageUrl : ''], ['newsImageUrlInput', isDataUrl ? '' : imageUrl], ['newsImageNameInput', imageName], ['newsImageFileInput', '']]
+                .forEach(([id, value]) => { byId(id).value = value; });
+            renderNewsImageStatus();
+        };
+        const setNewsFile = (fileUrl, fileName) => {
+            const isDataUrl = fileUrl.startsWith('data:');
+            [['newsFileDataInput', isDataUrl ? fileUrl : ''], ['newsFileUrlInput', isDataUrl ? '' : fileUrl], ['newsFileNameInput', fileName], ['newsFileInput', '']]
+                .forEach(([id, value]) => { byId(id).value = value; });
+            renderNewsFileStatus();
+        };
+        const clearNewsImage = () => setNewsImage('', '');
+        const clearNewsFile = () => setNewsFile('', '');
+        // URL の欄に入力したら、ファイルから読み込んだものは使わない
+        const handleNewsImageUrlInput = () => { byId('newsImageDataInput').value = ''; renderNewsImageStatus(); };
+        const handleNewsFileUrlInput = () => { byId('newsFileDataInput').value = ''; renderNewsFileStatus(); };
+        const showNewsAttachmentErrors = (errors) => { byId('newsFormResult').innerHTML = buildResultHtml({ ok: false, errors }, '', '添付できませんでした'); };
+
+        const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.addEventListener('load', () => resolve(String(reader.result)));
+            reader.addEventListener('error', () => reject(reader.error));
+            reader.readAsDataURL(file);
+        });
+        const loadImageElement = (src) => new Promise((resolve, reject) => {
+            const image = new Image();
+            image.addEventListener('load', () => resolve(image));
+            image.addEventListener('error', reject);
+            image.src = src;
+        });
+        // 画像を長い辺 IMAGE_MAX_SIDE の JPEG に軽量化する（透明な部分は白にする）
+        const compressImageFile = async (file) => {
+            const image = await loadImageElement(await readFileAsDataUrl(file));
+            const size = News.calculateResizedSize(image.naturalWidth, image.naturalHeight, News.IMAGE_MAX_SIDE);
+            const canvas = Object.assign(document.createElement('canvas'), size);
+            const context = Object.assign(canvas.getContext('2d'), { fillStyle: '#fff' });
+            context.fillRect(0, 0, size.width, size.height);
+            context.drawImage(image, 0, 0, size.width, size.height);
+            return canvas.toDataURL('image/jpeg', News.IMAGE_JPEG_QUALITY);
+        };
+        const loadNewsImageFile = async (file) => {
+            const errors = News.checkImageFile(file);
+            if (errors.length > 0) return showNewsAttachmentErrors(errors);
+            setNewsImage(await compressImageFile(file), byId('newsImageNameInput').value.trim() || file.name.replace(/\.[^.]+$/, ''));
+            byId('newsFormResult').innerHTML = '';
+        };
+        const loadNewsAttachmentFile = async (file) => {
+            const errors = News.checkAttachmentFile(file);
+            if (errors.length > 0) return showNewsAttachmentErrors(errors);
+            setNewsFile(News.normalizeFileDataUrl(await readFileAsDataUrl(file), file.name), file.name);
+            byId('newsFormResult').innerHTML = '';
+        };
+        const handleNewsImageFileChange = (input) => {
+            const file = input.files[0];
+            if (file) loadNewsImageFile(file).catch(() => showNewsAttachmentErrors(['画像を読み込めませんでした。別の画像を選んでください'])).finally(() => { input.value = ''; });
+        };
+        const handleNewsFileChange = (input) => {
+            const file = input.files[0];
+            if (file) loadNewsAttachmentFile(file).catch(() => showNewsAttachmentErrors(['ファイルを読み込めませんでした'])).finally(() => { input.value = ''; });
+        };
+
         // フォームに記事の内容を入れる（editingId が空なら新規追加、あればその記事の編集）
         const fillNewsForm = (item, editingId) => {
             [['newsDateInput', item.date], ['newsCategoryInput', item.category], ['newsTitleInput', item.title], ['newsBodyInput', item.body]].forEach(([id, value]) => { byId(id).value = value; });
+            setNewsImage(item.imageUrl || '', item.imageName || '');
+            setNewsFile(item.fileUrl || '', item.fileName || '');
             byId('newsForm').dataset.editingId = editingId;
             byId('newsFormHeading').textContent = editingId ? 'お知らせを編集' : '新しいお知らせを追加';
             byId('newsSubmitButton').textContent = editingId ? '変更を保存する' : '追加する';
@@ -557,7 +667,7 @@
             const [input, editingId] = [readNewsForm(), byId('newsForm').dataset.editingId];
             const errors = News.validateNewsInput(input);
             const isSaved = errors.length === 0 && saveNewsList(applyNewsInput(loadNewsList(), editingId, input));
-            const result = isSaved ? { ok: true } : { ok: false, errors: errors.length > 0 ? errors : ['このブラウザでは保存できませんでした'] };
+            const result = isSaved ? { ok: true } : { ok: false, errors: errors.length > 0 ? errors : ['このブラウザでは保存できませんでした（画像・資料の容量が大きいと、ブラウザの保存容量を超えることがあります）'] };
             byId('newsFormResult').innerHTML = buildResultHtml(result, editingId ? 'お知らせを更新しました（トップページに反映されます）' : 'お知らせを追加しました（トップページに反映されます）', '保存できませんでした');
             if (isSaved) clearNewsForm();
             renderNewsAdmin();
@@ -576,9 +686,9 @@
             if (byId('newsForm').dataset.editingId === id) clearNewsForm();
             renderNewsAdmin();
         };
-        // 保存したお知らせを消し、初期の内容（facility-config.js の news、なければサンプル3件）に戻す
+        // 保存したお知らせを消し、初期の内容（facility-config.js の news、なければサンプル）に戻す
         const resetNews = () => {
-            if (!confirm('お知らせを初期の内容（サンプル3件）に戻しますか？\n追加・編集したお知らせはすべて消えます（元に戻せません）')) return;
+            if (!confirm('お知らせを初期の内容（サンプル）に戻しますか？\n追加・編集したお知らせはすべて消えます（元に戻せません）')) return;
             removeStoredItem(News.NEWS_STORAGE_KEY);
             clearNewsForm();
             showToast('お知らせを初期サンプルに戻しました');

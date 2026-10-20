@@ -335,6 +335,25 @@
         ? '<p class="news-empty">該当するお知らせはありません。</p>'
         : sortNewsByDateDesc(list).map((item) => renderNewsCardHtml(item, rootPrefix)).join(''));
 
+    // ---------- 職員用の入力フォームに出す説明 ----------
+    // DataURL のおおよそのバイト数（base64 の部分の 3/4）
+    const estimateDataUrlBytes = (dataUrl) => Math.floor(Math.max(0, String(dataUrl).length - String(dataUrl).indexOf(',') - 1) * 3 / 4);
+
+    // 画像の状態（なし：''。ファイルから読み込んだ画像は容量、URL・相対パスは正しいかどうか）
+    const describeNewsImage = (imageUrl) => {
+        if (!imageUrl) return '';
+        if (isDataUrl(imageUrl)) return `ファイルから読み込み済み（軽量化後 約${formatBytes(estimateDataUrlBytes(imageUrl))}）`;
+        return isValidImageUrl(imageUrl) ? 'URL・相対パスの画像を掲載します' : '画像の場所が正しくありません（https:// で始まるURLか、英数字の相対パス）';
+    };
+
+    // 添付資料の状態（なし：''。自動判別した種類と、ファイルから読み込んだときは容量）
+    const describeNewsFile = (fileUrl, fileName) => {
+        const typeInfo = findFileTypeInfo(fileUrl ? resolveFileType({ fileUrl, fileName }) : '');
+        if (!fileUrl) return '';
+        if (!typeInfo) return '種類を判別できません（.pdf .doc .docx .xls .xlsx のファイルを指定してください）';
+        return `種類：${typeInfo.icon}${typeInfo.label}（自動判別）${isDataUrl(fileUrl) ? `・ファイルから読み込み済み（約${formatBytes(estimateDataUrlBytes(fileUrl))}）` : ''}`;
+    };
+
     // NEWS_EXPORTS:start
     // ブラウザでは window.NewsLogic、Node.js（テスト）では module.exports で使えるようにする
     const NewsLogic = Object.freeze({
@@ -350,7 +369,8 @@
         addNewsItem, updateNewsItem, removeNewsItem, findNewsItem, serializeNews, parseStoredNews, resolveInitialNews, resolveNewsList,
         filterNewsByCategory, buildCategoryFilters, buildNewsAnchorId, parseNewsAnchorId, buildNewsPageHref, buildNewsExcerpt,
         renderNewsBadgeHtml, formatNewsBodyHtml, renderAttachmentBadgesHtml, renderNewsItemHtml, renderNewsListHtml,
-        renderCategoryFilterHtml, renderNewsImageHtml, renderNewsFileButtonHtml, renderNewsCardHtml, renderNewsCardsHtml
+        renderCategoryFilterHtml, renderNewsImageHtml, renderNewsFileButtonHtml, renderNewsCardHtml, renderNewsCardsHtml,
+        estimateDataUrlBytes, describeNewsImage, describeNewsFile
     });
     if (typeof module !== 'undefined') module.exports = NewsLogic;
     if (typeof window !== 'undefined') window.NewsLogic = NewsLogic;

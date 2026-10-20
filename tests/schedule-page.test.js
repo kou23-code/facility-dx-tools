@@ -60,6 +60,9 @@ const CAPTURE_SOURCE = `const capture = () => ({
     newsRows: Array.from(document.querySelectorAll('#newsAdminRows tr[data-news-id]'), (row) => row.dataset.newsId + ':' + row.querySelector('.news-badge').textContent + ':' + row.querySelector('.font-bold').textContent),
     newsForm: [document.getElementById('newsFormHeading').textContent, document.getElementById('newsTitleInput').value, document.getElementById('newsCategoryInput').value, document.getElementById('newsSubmitButton').textContent],
     newsResult: document.getElementById('newsFormResult').textContent,
+    newsRowBadges: Array.from(document.querySelectorAll('#newsAdminRows tr[data-news-id]'), (row) => Array.from(row.querySelectorAll('.news-attach'), (badge) => badge.textContent).join('')),
+    newsAttach: ['newsImageUrlInput', 'newsImageDataInput', 'newsImageNameInput', 'newsFileUrlInput', 'newsFileDataInput', 'newsFileNameInput'].map((id) => document.getElementById(id).value)
+        .concat([document.getElementById('newsImageStatus').textContent, document.getElementById('newsFileStatus').textContent, String(document.getElementById('newsImagePreview').classList.contains('hidden'))]),
     newsStorage: localStorage.getItem('facility_dx_news'),
     title: document.title
 });
@@ -112,6 +115,10 @@ test('スケジュール画面は schedule-logic.js のあとに ../news-logic.j
     assert.ok(html.indexOf('<script src="schedule-logic.js">') < html.indexOf('<script src="../news-logic.js">'));
     assert.match(html, /<section id="newsAdminPanel" class="staff-only hidden [^"]*"/);
     assert.match(html, /<h2 id="newsAdminTitle"[^>]*>トップページお知らせ管理<\/h2>/);
+    assert.match(html, /<input type="file" id="newsImageFileInput"[^>]*accept="image\/\*"/);
+    assert.match(html, /<input type="file" id="newsFileInput"[^>]*accept="\.pdf,\.doc,\.docx,\.xls,\.xlsx,/);
+    ['newsImageUrlInput', 'newsImageNameInput', 'newsImageDataInput', 'newsImageClearButton', 'newsFileUrlInput', 'newsFileNameInput', 'newsFileDataInput', 'newsFileClearButton', 'newsPagePreviewLink']
+        .forEach((id) => assert.match(html, new RegExp(`id="${id}"`), id));
 });
 
 test('スケジュール画面にポータルへ戻るリンクと Web予約画面へのリンクがある', () => {
@@ -312,15 +319,29 @@ test('画面：予約データをリセットすると、サンプル投入の�
 
 test('画面：職員用モードのお知らせ管理で、入力チェック・追加・編集・削除・初期サンプルへのリセットができ、公開用モードでは隠れる', { skip: !BROWSER }, () => {
     const { dates, states } = renderStates(`
+        const setValues = (pairs) => pairs.forEach(([id, value]) => { document.getElementById(id).value = value; });
         states.push(capture());
         submitNewsForm();
         states.push(capture());
-        [['newsDateInput', day20], ['newsCategoryInput', 'event'], ['newsTitleInput', '体験会のご案内'], ['newsBodyInput', '本文です']].forEach(([id, value]) => { document.getElementById(id).value = value; });
+        setValues([['newsDateInput', day20], ['newsCategoryInput', 'event'], ['newsTitleInput', '体験会のご案内'], ['newsBodyInput', '本文です'], ['newsImageUrlInput', './files/sample-flyer.svg'], ['newsFileUrlInput', './files/memo.txt']]);
+        handleNewsImageUrlInput();
+        handleNewsFileUrlInput();
         submitNewsForm();
         states.push(capture());
-        editNews('sample-2');
+        setValues([['newsFileUrlInput', './files/meibo.xlsx']]);
+        handleNewsFileUrlInput();
+        submitNewsForm();
         states.push(capture());
-        document.getElementById('newsTitleInput').value = '変更後のタイトル';
+        editNews('sample-5');
+        states.push(capture());
+        clearNewsFile();
+        setValues([['newsTitleInput', '変更後のタイトル']]);
+        submitNewsForm();
+        states.push(capture());
+        setValues([['newsTitleInput', '資料を直接読み込んだ記事'], ['newsBodyInput', '本文'], ['newsFileDataInput', 'data:application/pdf;base64,JVBERi0='], ['newsFileNameInput', '要項'], ['newsImageDataInput', 'data:image/png;base64,iVBORw0KGgo=']]);
+        renderNewsImageStatus();
+        renderNewsFileStatus();
+        states.push(capture());
         submitNewsForm();
         states.push(capture());
         deleteNews('sample-3');
@@ -330,19 +351,33 @@ test('画面：職員用モードのお知らせ管理で、入力チェック�
         switchMode('public');
         states.push(capture());
     `, '?mode=staff');
-    const [initial, invalid, added, editing, updated, deleted, reset, publicMode] = states;
-    const sampleRows = ['sample-1:重要:Web予約の受付を開始しました', 'sample-2:ご案内:合宿向けのお弁当メニューを新しくしました', 'sample-3:休館日:設備点検に伴う休館日のお知らせ'];
+    const [initial, invalid, invalidFile, added, editing, updated, dataLoaded, dataSaved, deleted, reset, publicMode] = states;
+    const sampleRows = ['sample-1:重要:Web予約の受付を開始しました', 'sample-4:イベント:秋のスポーツ体験会を開催します', 'sample-2:ご案内:合宿向けのお弁当メニューを新しくしました',
+        'sample-5:ご案内:宿泊者名簿の様式（Excel）を掲載しました', 'sample-3:休館日:設備点検に伴う休館日のお知らせ', 'sample-6:ご案内:利用申込書（Word）をダウンロードできるようになりました'];
+    const storedItem = (state, id) => JSON.parse(state.newsStorage).items.find((item) => item.id === id);
     assert.deepStrictEqual([initial.newsPanelHidden, initial.newsRows, initial.newsStorage], [false, sampleRows, null]);
+    assert.deepStrictEqual(initial.newsRowBadges, ['📄PDF', '🖼️画像', '', '📗Excel', '', '📘Word']);
     assert.deepStrictEqual(initial.newsForm, ['新しいお知らせを追加', '', 'info', '追加する']);
+    assert.deepStrictEqual(initial.newsAttach, ['', '', '', '', '', '', '', '', 'true']);
     assert.match(invalid.newsResult, /保存できませんでした.*タイトルを入力してください.*本文を入力してください/);
     assert.strictEqual(invalid.newsStorage, null, '入力が足りないときは保存しない');
-    assert.deepStrictEqual(added.newsRows, ['news-1:イベント:体験会のご案内', ...sampleRows]);
+    assert.match(invalidFile.newsResult, /添付資料は PDF・Word・Excel/);
+    assert.deepStrictEqual(invalidFile.newsAttach.slice(6), ['URL・相対パスの画像を掲載します', '種類を判別できません（.pdf .doc .docx .xls .xlsx のファイルを指定してください）', 'false']);
+    assert.strictEqual(invalidFile.newsStorage, null);
+    assert.deepStrictEqual([added.newsRows[0], added.newsRowBadges[0]], ['news-1:イベント:体験会のご案内', '🖼️画像📗Excel']);
     assert.match(added.newsResult, /お知らせを追加しました/);
-    assert.deepStrictEqual(JSON.parse(added.newsStorage).items[0], { id: 'news-1', date: dates.day20, category: 'event', title: '体験会のご案内', body: '本文です' });
-    assert.deepStrictEqual(editing.newsForm, ['お知らせを編集', '合宿向けのお弁当メニューを新しくしました', 'info', '変更を保存する']);
-    assert.strictEqual(updated.newsRows[2], 'sample-2:ご案内:変更後のタイトル');
+    assert.deepStrictEqual(storedItem(added, 'news-1'), {
+        id: 'news-1', date: dates.day20, category: 'event', title: '体験会のご案内', body: '本文です',
+        imageUrl: './files/sample-flyer.svg', imageName: '', fileUrl: './files/meibo.xlsx', fileName: 'meibo.xlsx', fileType: 'excel'
+    });
+    assert.deepStrictEqual(editing.newsForm, ['お知らせを編集', '宿泊者名簿の様式（Excel）を掲載しました', 'info', '変更を保存する']);
+    assert.deepStrictEqual(editing.newsAttach.slice(3), ['./files/meibo.xlsx', '', '宿泊者名簿.xlsx', '', '種類：📗Excel（自動判別）', 'true']);
+    assert.deepStrictEqual([storedItem(updated, 'sample-5').title, storedItem(updated, 'sample-5').fileUrl, storedItem(updated, 'sample-5').fileType], ['変更後のタイトル', '', ''], '添付を外して保存できる');
     assert.deepStrictEqual(updated.newsForm, ['新しいお知らせを追加', '', 'info', '追加する']);
-    assert.deepStrictEqual(deleted.newsRows.map((row) => row.split(':')[0]), ['news-1', 'sample-1', 'sample-2']);
+    assert.deepStrictEqual(dataLoaded.newsAttach.slice(6), ['ファイルから読み込み済み（軽量化後 約1KB）', '種類：📄PDF（自動判別）・ファイルから読み込み済み（約1KB）', 'false']);
+    assert.deepStrictEqual([storedItem(dataSaved, 'news-2').fileUrl, storedItem(dataSaved, 'news-2').fileType, storedItem(dataSaved, 'news-2').imageUrl],
+        ['data:application/pdf;base64,JVBERi0=', 'pdf', 'data:image/png;base64,iVBORw0KGgo='], 'ファイルから読み込んだ DataURL を保存する');
+    assert.ok(!deleted.newsRows.some((row) => row.startsWith('sample-3:')));
     assert.deepStrictEqual([reset.newsRows, reset.newsStorage], [sampleRows, null]);
     assert.strictEqual(publicMode.newsPanelHidden, true, '公開用モードではお知らせ管理を出さない');
 });
