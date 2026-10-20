@@ -52,8 +52,9 @@ test('画面：facility-config.js がないときは、ダミー表記の施設�
     assert.strictEqual(countMatches(dom, /<tbody id="stayPriceRows">(<tr>[\s\S]*?<\/tr>){3}<\/tbody>/g), 1);
     assert.strictEqual(countMatches(dom, /<div class="meal-group">/g), 3);
     assert.match(dom, /<strong class="highlight-value">300名<\/strong>/);
-    assert.deepStrictEqual(listNewsBadges(dom), ['重要', 'イベント', 'ご案内', 'ご案内', '休館日'], '初期サンプル6件のうち新しい5件が並ぶ');
-    assert.deepStrictEqual(listNewsLinks(dom), ['sample-1', 'sample-4', 'sample-2', 'sample-5', 'sample-3'].map((id) => `./news/index.html#news-${id}`));
+    assert.deepStrictEqual(listNewsBadges(dom), ['ご案内', '休館日', '重要', 'イベント', 'ご案内'], '固定の2件を先頭に、初期サンプル6件のうち5件が並ぶ');
+    assert.deepStrictEqual(listNewsLinks(dom), ['sample-2', 'sample-3', 'sample-1', 'sample-4', 'sample-5'].map((id) => `./news/index.html#news-${id}`));
+    assert.deepStrictEqual([...dom.matchAll(/<li class="news-item" data-news-id="([^"]*)"[^>]*data-pinned="true"><a class="news-link"[^>]*><span class="news-pin">📌 固定（ピックアップ）<\/span>/g)].map(([, id]) => id), ['sample-2', 'sample-3'], '固定の記事にバッジが付く');
     assert.deepStrictEqual(listAttachBadges(dom), ['📄PDF', '🖼️画像', '📗Excel']);
     assert.doesNotMatch(sliceNewsSection(dom), /<button|<input|<textarea|編集|削除/, 'お知らせに編集の操作を出さない');
 });

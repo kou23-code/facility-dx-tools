@@ -288,3 +288,9 @@ test('添付があることを示すバッジ（画像・PDF・Word・Excel）�
     const html = readPortal();
     ['image', 'pdf', 'word', 'excel'].forEach((key) => assert.ok(html.includes(`.news-attach[data-attach="${key}"] {`), key));
 });
+
+test('固定（ピックアップ）の記事のバッジと、行の背景・左の線のハイライトがある', () => {
+    const html = readPortal();
+    assert.ok(html.includes('.news-item[data-pinned="true"] .news-link {'), '固定の行のハイライト');
+    assert.ok(html.includes('.news-pin {'), '固定のバッジ');
+});

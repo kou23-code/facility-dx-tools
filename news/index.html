@@ -120,6 +120,9 @@
         .news-card[data-news-category="closed"] { border-left-color: var(--green); }
         /* URL のハッシュ（#news-<id>）で開いた記事 */
         .news-card.is-target { box-shadow: 0 0 0 4px rgba(255, 159, 28, .45), var(--shadow); }
+        /* 固定（ピックアップ）の記事：日付に関わらず一番上に並び、背景と左の線をほんのりオレンジにする */
+        .news-card[data-pinned="true"] { border-left-color: var(--accent); background: linear-gradient(135deg, #fff4df 0%, #ffffff 55%); }
+        .news-pin { display: inline-block; padding: 1px 12px; border-radius: 999px; background: var(--accent); color: #2a1600; font-size: .78rem; font-weight: 800; line-height: 1.7; white-space: nowrap; box-shadow: 0 2px 6px rgba(255, 159, 28, .35); }
         .news-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
         .news-date { color: var(--muted); font-size: .88rem; font-variant-numeric: tabular-nums; }
         .news-badge { display: inline-block; min-width: 5.2em; padding: 1px 10px; border-radius: 999px; color: #fff; font-size: .75rem; font-weight: 700; line-height: 1.7; text-align: center; }

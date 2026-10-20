@@ -51,6 +51,7 @@ window.addEventListener('load', () => {
     const capture = () => ({
         filters: Array.from(document.querySelectorAll('#newsFilters .filter-button'), (button) => button.textContent + ':' + button.getAttribute('aria-pressed')),
         cards: Array.from(document.querySelectorAll('#newsCards .news-card'), (card) => card.id),
+        pinned: Array.from(document.querySelectorAll('#newsCards .news-card[data-pinned="true"]'), (card) => card.id + ':' + card.querySelector('.news-pin').textContent),
         targets: Array.from(document.querySelectorAll('.news-card.is-target'), (card) => card.id),
         images: Array.from(document.querySelectorAll('.news-image-button img'), (image) => image.getAttribute('src') + '|' + image.alt),
         files: Array.from(document.querySelectorAll('a.file-button'), (link) => [link.dataset.fileType, link.getAttribute('href'), link.getAttribute('download'), link.textContent].join('|')),
@@ -89,7 +90,8 @@ const renderNewsPageStates = (configSource, hash) => {
 test('画面：初期サンプル6件が新しい順に並び、絞り込み・画像の拡大表示・資料のボタン・#news-<id> での記事の指定ができる', { skip: !BROWSER }, () => {
     const [initial, closedOnly, zoomed] = renderNewsPageStates(null, '#news-sample-5');
     assert.deepStrictEqual(initial.filters, ['すべて6:true', '重要1:false', 'ご案内3:false', 'イベント1:false', '休館日1:false']);
-    assert.deepStrictEqual(initial.cards, ['news-sample-1', 'news-sample-4', 'news-sample-2', 'news-sample-5', 'news-sample-3', 'news-sample-6']);
+    assert.deepStrictEqual(initial.cards, ['news-sample-2', 'news-sample-3', 'news-sample-1', 'news-sample-4', 'news-sample-5', 'news-sample-6'], '固定の記事が先頭');
+    assert.deepStrictEqual(initial.pinned, ['news-sample-2:📌 固定（ピックアップ）', 'news-sample-3:📌 固定（ピックアップ）']);
     assert.deepStrictEqual(initial.targets, ['news-sample-5'], 'URL のハッシュの記事が強調される');
     assert.deepStrictEqual(initial.images, ['../files/sample-flyer.svg|秋のスポーツ体験会のチラシ']);
     assert.deepStrictEqual(initial.files, [
@@ -108,4 +110,10 @@ test('画面：facility-config.js の施設名と news（旧形式の pdfUrl を
     const [initial] = renderNewsPageStates(`window.CUSTOM_FACILITY_INFO = ${JSON.stringify({ facilityName: 'みどり研修センター', news })};`, '');
     assert.deepStrictEqual([initial.title, initial.facilityName, initial.cards, initial.targets], ['お知らせ一覧｜みどり研修センター', 'みどり研修センター', ['news-old'], []]);
     assert.deepStrictEqual(initial.files, ['pdf|../files/riyou-youkou.pdf|riyou-youkou.pdf|📄PDFを開く・ダウンロードriyou-youkou.pdf']);
+});
+
+test('お知らせページに、固定（ピックアップ）の記事のバッジと、カードの背景・左の線のハイライトがある', () => {
+    const html = readPage();
+    assert.ok(html.includes('.news-card[data-pinned="true"] { border-left-color: var(--accent);'), '固定のカードのハイライト');
+    assert.ok(html.includes('.news-pin {'), '固定のバッジ');
 });

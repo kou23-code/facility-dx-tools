@@ -184,6 +184,10 @@
         .news-link:hover .news-title { color: var(--primary); }
         .news-link:focus-visible { outline: 3px solid rgba(56, 189, 248, .6); outline-offset: 2px; }
         .news-excerpt { flex-basis: 100%; color: var(--muted); font-size: .85rem; line-height: 1.6; }
+        /* 固定（ピックアップ）の記事：日付に関わらず一番上に並び、背景と左の線をほんのりオレンジにする */
+        .news-item[data-pinned="true"] .news-link { margin: 4px 0; background: linear-gradient(90deg, #fff4df 0%, #fffaf2 100%); box-shadow: inset 5px 0 0 var(--accent); padding-left: 16px; }
+        .news-item[data-pinned="true"] .news-link:hover, .news-item[data-pinned="true"] .news-link:focus-visible { background: #ffecc7; }
+        .news-pin { display: inline-block; padding: 1px 10px; border-radius: 999px; background: var(--accent); color: #2a1600; font-size: .75rem; font-weight: 800; line-height: 1.7; white-space: nowrap; box-shadow: 0 2px 6px rgba(255, 159, 28, .35); }
         /* 添付があることを示すバッジ（🖼️画像・📄PDF・📘Word・📗Excel） */
         .news-attach { display: inline-block; margin-left: 8px; padding: 0 8px; border: 1px solid; border-radius: 6px; font-size: .72rem; font-weight: 700; line-height: 1.7; vertical-align: 2px; white-space: nowrap; }
         .news-attach[data-attach="image"] { border-color: #f5b25b; background: var(--accent-soft); color: var(--accent-text); }
