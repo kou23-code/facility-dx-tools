@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 848" width="600" height="848" role="img" aria-label="秋のスポーツ体験会のチラシ（サンプル）">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#e0f4fd"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="848" fill="url(#sky)"/>
+  <circle cx="500" cy="110" r="64" fill="#ffd166"/>
+  <path d="M0 560c120-60 240-60 360-10s180 40 240 10v288H0z" fill="#34d3a6"/>
+  <path d="M0 620c140-40 260-30 380 10s160 30 220 0v218H0z" fill="#0a7f5f" opacity=".55"/>
+  <g font-family="'Hiragino Sans','Yu Gothic UI','Meiryo',sans-serif" text-anchor="middle">
+    <text x="300" y="92" font-size="26" font-weight="700" fill="#08598d">どなたでも参加できます・参加無料</text>
+    <text x="300" y="190" font-size="64" font-weight="800" fill="#fff" stroke="#08598d" stroke-width="3" paint-order="stroke">秋のスポーツ</text>
+    <text x="300" y="270" font-size="72" font-weight="800" fill="#ff9f1c" stroke="#fff" stroke-width="4" paint-order="stroke">体験会</text>
+    <rect x="90" y="310" width="420" height="190" rx="24" fill="#fff" opacity=".92"/>
+    <text x="300" y="365" font-size="28" font-weight="700" fill="#1e293b">バドミントン・卓球・ボッチャ</text>
+    <text x="300" y="415" font-size="24" fill="#1e293b">会場：大体育館</text>
+    <text x="300" y="460" font-size="24" fill="#1e293b">時間：10:00〜15:00（出入り自由）</text>
+    <circle cx="150" cy="680" r="46" fill="#fff"/>
+    <path d="M110 665q40 18 80 0M110 695q40-18 80 0" stroke="#ff9f1c" stroke-width="5" fill="none"/>
+    <circle cx="450" cy="690" r="40" fill="#fff"/>
+    <path d="M450 650v80M410 690h80" stroke="#0a74b8" stroke-width="5"/>
+    <text x="300" y="800" font-size="22" font-weight="700" fill="#fff">※このチラシは動作確認用のサンプルです</text>
+  </g>
+</svg>
