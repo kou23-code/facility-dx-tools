@@ -67,6 +67,10 @@
         .news-attach[data-attach="pdf"] { border-color: #f3a39a; background: #fdecea; color: #b42318; }
         .news-attach[data-attach="word"] { border-color: #9cc3ef; background: #e8f1fc; color: #1d4f91; }
         .news-attach[data-attach="excel"] { border-color: #8fd3b4; background: #e2f8f0; color: #0b6b45; }
+        /* 固定表示（📌）。固定中の行はほんのり黄色にする */
+        .news-pin-option { display: flex; align-items: center; gap: .5rem; margin: 0 0 .6rem; padding: .45rem .6rem; border: 1px solid #fcd34d; border-radius: .375rem; background: #fffbeb; color: #92400e; font-size: 13px; font-weight: 700; cursor: pointer; }
+        .news-pin-badge { display: inline-block; margin: 2px 2px 0 0; padding: 0 6px; border-radius: 4px; background: #f59e0b; color: #fff; font-size: 10px; font-weight: 700; line-height: 1.6; white-space: nowrap; }
+        #newsAdminRows tr[data-pinned="true"] { background: #fffbeb; box-shadow: inset 4px 0 0 #f59e0b; }
         .news-attach-box { margin: 0 0 .6rem; padding: .4rem .6rem .6rem; border: 1px dashed #cbd5e1; border-radius: .375rem; background: #fff; }
         .news-image-preview { width: 96px; height: 96px; object-fit: contain; border: 1px solid #e5e7eb; border-radius: .25rem; background: #f9fafb; }
         .news-admin-body { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: pre-line; }
@@ -196,6 +200,8 @@
                     </div>
                     <label class="block mb-2"><span class="text-xs font-bold text-gray-700">タイトル（60文字以内）</span><input type="text" id="newsTitleInput" class="news-input" maxlength="60" placeholder="例：夏休み期間の受付時間のお知らせ"></label>
                     <label class="block mb-2"><span class="text-xs font-bold text-gray-700">本文（1000文字以内。改行もそのまま表示されます）</span><textarea id="newsBodyInput" class="news-input" rows="5" maxlength="1000"></textarea></label>
+                    <!-- 固定表示：日付に関わらず、トップページ・お知らせページの一番上に出す -->
+                    <label class="news-pin-option"><input type="checkbox" id="newsPinnedInput" class="w-4 h-4 accent-amber-600"><span>📌 一番上に固定表示する（今月の献立・休館日など）</span></label>
                     <!-- ① 画像（任意）：ファイルを選ぶと軽量化して読み込む（DataURL は隠し欄に持つ）。または URL・相対パスを入力 -->
                     <fieldset class="news-attach-box">
                         <legend class="font-bold text-sm px-1">🖼️ 画像（チラシ・写真）<span class="font-normal text-xs text-gray-500">任意</span></legend>
@@ -557,10 +563,14 @@
         };
         const buildNewsCategoryOptionsHtml = (categories) => categories.map((category) => `<option value="${escapeHtml(category.key)}">${escapeHtml(category.label)}</option>`).join('');
         // 一覧の1行（id は英数字・-・_ だけなので、そのまま onclick に入れられる）
-        const buildNewsAdminRowHtml = (item) => `<tr class="border-t align-top" data-news-id="${escapeHtml(item.id)}">`
-            + `<td class="py-1.5 pr-2 whitespace-nowrap">${escapeHtml(News.formatNewsDate(item.date))}</td><td class="py-1.5 pr-2">${News.renderNewsBadgeHtml(item.category)}<div>${News.renderAttachmentBadgesHtml(item)}</div></td>`
+        // 固定を切り替えるボタン（固定中なら「解除」、そうでなければ「📌 固定」）
+        const buildNewsPinButtonHtml = (item) => `<button type="button" class="news-pin-button px-2 py-0.5 rounded border ${item.pinned ? 'border-amber-500 bg-amber-500 text-white hover:bg-amber-600' : 'border-amber-400 text-amber-700 hover:bg-amber-50'}"`
+            + ` aria-pressed="${Boolean(item.pinned)}" title="${item.pinned ? '一番上への固定を解除する' : '一番上に固定表示する'}" onclick="toggleNewsPin('${escapeHtml(item.id)}')">${item.pinned ? '解除' : '📌 固定'}</button> `;
+        const buildNewsAdminRowHtml = (item) => `<tr class="border-t align-top" data-news-id="${escapeHtml(item.id)}" data-pinned="${Boolean(item.pinned)}">`
+            + `<td class="py-1.5 pr-2 whitespace-nowrap">${escapeHtml(News.formatNewsDate(item.date))}</td><td class="py-1.5 pr-2">${News.renderNewsBadgeHtml(item.category)}`
+            + `<div>${item.pinned ? '<span class="news-pin-badge">📌固定中</span>' : ''}${News.renderAttachmentBadgesHtml(item)}</div></td>`
             + `<td class="py-1.5 pr-2"><div class="font-bold">${escapeHtml(item.title)}</div><div class="news-admin-body text-gray-600">${escapeHtml(item.body)}</div></td>`
-            + `<td class="py-1.5 whitespace-nowrap"><button type="button" class="news-edit-button px-2 py-0.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50" onclick="editNews('${escapeHtml(item.id)}')">編集</button> `
+            + `<td class="py-1.5 whitespace-nowrap">${buildNewsPinButtonHtml(item)}<button type="button" class="news-edit-button px-2 py-0.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50" onclick="editNews('${escapeHtml(item.id)}')">編集</button> `
             + `<button type="button" class="news-delete-button px-2 py-0.5 rounded border border-red-300 text-red-600 hover:bg-red-50" onclick="deleteNews('${escapeHtml(item.id)}')">削除</button></td></tr>`;
         const buildNewsAdminRowsHtml = (newsList) => (newsList.length === 0
             ? '<tr><td colspan="4" class="py-3 text-center text-gray-500">お知らせはありません（トップページには「現在、お知らせはありません。」と表示されます）</td></tr>'
@@ -568,14 +578,15 @@
         const renderNewsAdmin = () => {
             const newsList = loadNewsList();
             byId('newsAdminRows').innerHTML = buildNewsAdminRowsHtml(newsList);
-            byId('newsStorageStatus').textContent = `（登録 ${newsList.length}件・トップページに表示 ${Math.min(newsList.length, News.PORTAL_NEWS_LIMIT)}件）`;
+            byId('newsStorageStatus').textContent = `（登録 ${newsList.length}件・固定 ${News.countPinnedNews(newsList)}件・トップページに表示 ${Math.min(newsList.length, News.PORTAL_NEWS_LIMIT)}件）`;
         };
         // 画像・添付資料は、ファイルから読み込んだ DataURL（隠し欄）があればそれ、なければ URL・相対パスの欄
         const readNewsImageUrl = () => byId('newsImageDataInput').value || byId('newsImageUrlInput').value.trim();
         const readNewsFileUrl = () => byId('newsFileDataInput').value || byId('newsFileUrlInput').value.trim();
         const readNewsForm = () => ({
             date: byId('newsDateInput').value, category: byId('newsCategoryInput').value, title: byId('newsTitleInput').value, body: byId('newsBodyInput').value,
-            imageUrl: readNewsImageUrl(), imageName: byId('newsImageNameInput').value, fileUrl: readNewsFileUrl(), fileName: byId('newsFileNameInput').value
+            imageUrl: readNewsImageUrl(), imageName: byId('newsImageNameInput').value, fileUrl: readNewsFileUrl(), fileName: byId('newsFileNameInput').value,
+            pinned: byId('newsPinnedInput').checked
         });
 
         // ---------- 画像・添付資料の入力欄 ----------
@@ -655,6 +666,7 @@
             [['newsDateInput', item.date], ['newsCategoryInput', item.category], ['newsTitleInput', item.title], ['newsBodyInput', item.body]].forEach(([id, value]) => { byId(id).value = value; });
             setNewsImage(item.imageUrl || '', item.imageName || '');
             setNewsFile(item.fileUrl || '', item.fileName || '');
+            byId('newsPinnedInput').checked = Boolean(item.pinned);
             byId('newsForm').dataset.editingId = editingId;
             byId('newsFormHeading').textContent = editingId ? 'お知らせを編集' : '新しいお知らせを追加';
             byId('newsSubmitButton').textContent = editingId ? '変更を保存する' : '追加する';
@@ -678,6 +690,16 @@
             fillNewsForm(item, id);
             byId('newsFormResult').innerHTML = '';
             byId('newsForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+        const buildNewsPinMessage = (item) => (item.pinned ? `「${item.title}」を一番上に固定しました` : `「${item.title}」の固定を解除しました`);
+        // 一覧の「固定 / 解除」：ワンクリックで固定を切り替えて保存する（編集中の記事ならチェックボックスも合わせる）
+        const toggleNewsPin = (id) => {
+            const newsList = News.togglePinNews(loadNewsList(), id);
+            const item = News.findNewsItem(newsList, id);
+            if (!item) return;
+            showToast(saveNewsList(newsList) ? buildNewsPinMessage(item) : 'このブラウザでは保存できませんでした');
+            if (byId('newsForm').dataset.editingId === id) byId('newsPinnedInput').checked = item.pinned;
+            renderNewsAdmin();
         };
         const deleteNews = (id) => {
             const item = News.findNewsItem(loadNewsList(), id);

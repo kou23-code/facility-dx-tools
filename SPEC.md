@@ -767,7 +767,8 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
   - リセットでサンプル投入の案内が出ること
   - `../news-logic.js` を `schedule-logic.js` のあとに読み込み、お知らせ管理パネルが `staff-only hidden` であること
   - お知らせ管理の画像・添付資料の入力欄（画像は `accept="image/*"`、資料は `.pdf,.doc,.docx,.xls,.xlsx`、URL・ファイル名・隠し欄・外すボタン）とお知らせ一覧ページへのリンクがあること
-  - お知らせ管理（`?mode=staff` で開く）：最初は初期サンプル6件が新しい順に並び（添付のバッジつき）保存はまだないこと、画像の URL と判別できない資料（`.txt`）では保存せず理由と状態を出すこと、画像の URL・Excel の相対パス付きで追加できること、編集で添付資料が入力欄に戻り「添付を外す」で外して保存できること、ファイルから読み込んだ DataURL（PDF・画像）を状態の表示つきで保存できること、空の入力で「タイトルを入力してください」などが出て保存しないこと、追加（`news-1`。日付の新しい順で先頭に並び、localStorage に保存）・編集（フォームに内容が入り「変更を保存する」になり、保存後は新規追加の状態に戻る）・削除・初期サンプルへのリセット（保存を消す）ができること、公開用モードに切り替えるとパネルが隠れること
+  - お知らせ管理の固定：最初は固定の2件（sample-2・sample-3）に「📌固定中」と「解除」が出て「固定 2件」と表示されること、「固定」で固定の中の日付順に並ぶこと、「解除」で外れて保存されること、チェックボックスを付けて追加すると先頭に固定されること、固定中の記事の編集でチェックが付いていて、編集中に「解除」するとチェックも外れること
+  - お知らせ管理（`?mode=staff` で開く）：最初は初期サンプル6件が固定の記事を先頭に並び（添付のバッジつき）保存はまだないこと、画像の URL と判別できない資料（`.txt`）では保存せず理由と状態を出すこと、画像の URL・Excel の相対パス付きで追加できること、編集で添付資料が入力欄に戻り「添付を外す」で外して保存できること、ファイルから読み込んだ DataURL（PDF・画像）を状態の表示つきで保存できること、空の入力で「タイトルを入力してください」などが出て保存しないこと、追加（`news-1`。日付の新しい順で先頭に並び、localStorage に保存）・編集（フォームに内容が入り「変更を保存する」になり、保存後は新規追加の状態に戻る）・削除・初期サンプルへのリセット（保存を消す）ができること、公開用モードに切り替えるとパネルが隠れること
 - `tests/news-logic.test.js`：`news-logic.js` の純粋関数（15.7）
 - `tests/portal.test.js`：ポータルの「空き状況カレンダー」のカードが公開中で `./schedule/index.html` へのリンクになっていること（15.6を参照）
 
@@ -780,9 +781,10 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
 
 トップページの「お知らせ（News & Topics）」（15.2・15.7）に出す記事を、職員が追加・編集・削除するパネル（`#newsAdminPanel`）。職員用データ管理パネルの下に置く。
 
-- 見出しの下に、登録件数とトップページに表示される件数（最大5件）を出す（`#newsStorageStatus`）
+- 見出しの下に、登録件数・固定の件数とトップページに表示される件数（最大5件）を出す（`#newsStorageStatus`）
 - 左：入力フォーム（`#newsForm`）
   - 日付（`<input type="date">`。最初は今日）・カテゴリ（重要／ご案内／イベント／休館日。選択肢は `NEWS_CATEGORIES` から作る。最初は「ご案内」）・タイトル（60文字以内）・本文（1000文字以内。改行可）
+  - 「📌 一番上に固定表示する（今月の献立・休館日など）」のチェックボックス（`#newsPinnedInput`）：付けて保存すると、日付に関わらずトップページ・お知らせページの一番上に固定する。新規追加では外れていて、編集ではその記事の固定の状態が入る
   - ① 画像（チラシ・写真。任意）：
     - 「画像ファイルを選ぶ」（`#newsImageFileInput`。`accept="image/*"`）：選んだ画像を読み込み、長い辺 1280px（`IMAGE_MAX_SIDE`）の JPEG（品質 0.8。透明な部分は白）に自動で軽量化して DataURL にし、隠し欄（`#newsImageDataInput`）に持つ。軽量化する前の画像は 15MB まで（`checkImageFile`）。画像の説明が空なら、ファイル名（拡張子を除く）を入れる
     - 「または画像の URL・相対パス」（`#newsImageUrlInput`。例：`./files/flyer.jpg`）。入力するとファイルから読み込んだ画像は使わない
@@ -795,7 +797,9 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
   - 画像・資料をファイルから読み込むと localStorage の容量（ブラウザごとに 5MB 前後）を使うため、保存できなかったときは「画像・資料の容量が大きいと、ブラウザの保存容量を超えることがあります」と出す
   - 「追加する」で新しいお知らせを保存する。入力に誤りがあるときは理由を赤字ですべて出し、保存しない（`validateNewsInput`）。保存できたら入力欄を新規追加の状態に戻す
   - 編集中は見出しが「お知らせを編集」、ボタンが「変更を保存する」になり、「編集をやめる」ボタンが出る。編集中の記事の id はフォームの `data-editing-id` に持つ（空なら新規追加）
-- 右：登録済みのお知らせの一覧（`#newsAdminRows`。新しい順）。日付・カテゴリのバッジ（トップページと同じ色）と添付のバッジ（🖼️画像・📄PDF・📘Word・📗Excel）・タイトル・本文の最初の2行と、「編集」「削除」ボタン
+- 右：登録済みのお知らせの一覧（`#newsAdminRows`。固定の記事が先頭、その中と残りは新しい順）。日付・カテゴリのバッジ（トップページと同じ色）と添付のバッジ（🖼️画像・📄PDF・📘Word・📗Excel）・タイトル・本文の最初の2行と、「固定 / 解除」「編集」「削除」ボタン
+  - 固定中の行は、「📌固定中」のバッジ（`.news-pin-badge`）を出し、行の背景をほんのり黄色・左端をオレンジの線にする（`<tr data-pinned="true">`）
+  - 「固定 / 解除」（`.news-pin-button`。固定していなければ「📌 固定」、固定中なら「解除」。`aria-pressed`）：ワンクリックで固定を切り替えて保存し（`togglePinNews`）、並べ直す。編集中の記事なら、フォームのチェックボックスも合わせる
   - 「編集」では、画像・添付資料も入力欄に戻す（ファイルから読み込んだものは隠し欄、URL・相対パスは URL の欄）
   - 「編集」：その記事の内容をフォームに入れて、フォームまでスクロールする
   - 「削除」：確認したうえで消す（編集中の記事を消したときはフォームも新規追加の状態に戻す）
@@ -838,6 +842,7 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
 3. **お知らせ（News & Topics）**（`#news`。ヒーローのすぐ下・施設紹介の上。一覧は `#newsList` に JavaScript で作る。15.7）
    - 白いカード（上辺がサンシャインオレンジの線）の左に見出し「News & Topics／お知らせ」、右に新しい日付の順で最大5件（`PORTAL_NEWS_LIMIT`）を並べる。スマホ・タブレットでは見出しの下に一覧
    - 1件ごとに日付（`2026.10.20` の形）・カテゴリのバッジ（重要＝赤、ご案内＝青、イベント＝オレンジ、休館日＝緑）・タイトル・本文の抜粋（48文字まで。改行は空白）を出す
+   - 固定（`pinned`）の記事は日付に関わらず一番上に並び、行の先頭に「📌 固定（ピックアップ）」のバッジ（`.news-pin`。サンシャインオレンジ）を付け、行の背景をほんのりオレンジ・左端をオレンジの線にする（`<li data-pinned="true">`）
    - 画像・添付資料がある記事は、タイトルの横に「🖼️画像」「📄PDF」「📘Word」「📗Excel」のバッジ（`.news-attach`。画像＝オレンジ、PDF＝赤、Word＝青、Excel＝緑）を添える
    - 記事を押すと、お知らせ一覧・詳細ページのその記事（`./news/index.html#news-<id>`）へ移る。見出しの下の「お知らせ一覧・詳細ページへ →」（`#newsMoreButton`）で一覧ページを開く
    - お知らせが1件もないときは「現在、お知らせはありません。」
@@ -913,15 +918,16 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
 - `tests/portal-page.test.js`（画面。ヘッドレスブラウザ。本番と同じフォルダ構成で一時フォルダにコピーして開く）
   - `facility-config.js` がないときはダミー表記の施設名・所在地・電話番号・コピーライト・タイトルが出て、施設カード8件・宿泊料金3行・食事3グループ・「300名」が並ぶこと
   - ルートに `facility-config.js` があるときは、その情報で表示され、電話番号のリンクも変わること
-  - お知らせ：`facility-config.js` がないときは初期サンプル6件のうち新しい5件（重要・イベント・ご案内・ご案内・休館日の順）が出て、それぞれ `./news/index.html#news-<id>` へのリンクになり、添付のバッジ（📄PDF・🖼️画像・📗Excel）が付き、編集のボタン・入力欄がないこと。`news` を書いたときはそのお知らせが新しい順に出て、抜粋の改行が空白になること
+  - お知らせ：`facility-config.js` がないときは初期サンプル6件のうち、固定の2件（ご案内・休館日）を先頭に5件（ご案内・休館日・重要・イベント・ご案内の順）が出て、固定の2件に「📌 固定（ピックアップ）」が付き、それぞれ `./news/index.html#news-<id>` へのリンクになり、添付のバッジ（📄PDF・🖼️画像・📗Excel）が付き、編集のボタン・入力欄がないこと。`news` を書いたときはそのお知らせが新しい順に出て、抜粋の改行が空白になること
 - `tests/portal.test.js` のお知らせの確認：ヒーローのすぐ下・施設紹介の上に `#news` のセクションと `#newsList` があること、お知らせのセクションにボタン・入力欄・「編集」「削除」「追加」の文字がなく、トップページに `localStorage.setItem`・`removeItem` がないこと、カテゴリのバッジの色（重要＝赤・ご案内＝青・イベント＝オレンジ・休館日＝緑）と添付のバッジの色、「お知らせ一覧・詳細ページへ →」が `./news/index.html` へのリンクであること、`news-logic.js` を `portal-logic.js` のあとに読み込むこと
 
 ### 15.7 お知らせ（News & Topics）のデータ（`news-logic.js`）
 
 トップページ（最新の一覧だけ）・お知らせ一覧・詳細ページ（15.8）とスケジュール管理表の職員用モード（追加・編集・削除。14.12）で共通に使う純粋関数。DOM・localStorage には触らず、保存されている文字列・今日の日付・`facility-config.js` の値・ページの位置は引数で受け取る。全体をブロック `{ }` で囲み、ブラウザでは `window.NewsLogic`、Node.js では `module.exports` で使う。
 
-- お知らせ1件の形：`{ id, date: 'YYYY-MM-DD', category: 'important' | 'info' | 'event' | 'closed', title, body, imageUrl, imageName, fileUrl, fileName, fileType: 'pdf' | 'word' | 'excel' | '' }`
+- お知らせ1件の形：`{ id, date: 'YYYY-MM-DD', category: 'important' | 'info' | 'event' | 'closed', title, body, imageUrl, imageName, fileUrl, fileName, fileType: 'pdf' | 'word' | 'excel' | '', pinned: true | false }`
   - 画像（`imageUrl`・`imageName`）と添付資料（`fileUrl`・`fileName`・`fileType`）は任意。ないときは空の文字列
+  - `pinned`（真偽値。既定は `false`）：`true` なら日付に関わらず一番上に固定表示する（今月の献立・休館日のお知らせなど）。`true` 以外（指定なし・文字列の `'true'`・数値など）は `false` として扱う
   - 場所は、`https://` などの URL、サイトのルートからの英数字の相対パス（例：`./files/meibo.xlsx`。`..` で上のフォルダには出られない）、またはファイルから読み込んだ DataURL（画像は PNG・JPEG・GIF・WebP の base64、資料は base64）。`javascript:` などは受け付けない（`isValidImageUrl`・`isValidFileUrl`）
   - 画面に出すときは、相対パスにそのページからルートまでの道のり（トップページ `./`、お知らせページ・スケジュール管理表 `../`）を付ける（`resolveNewsAssetUrl`）
   - 添付資料の種類（`FILE_TYPES`）：PDF（`.pdf`。📄・赤）／Word（`.doc` `.docx`。📘・青）／Excel（`.xls` `.xlsx`。📗・緑）。`fileType` の指定が正しくなければ、ファイル名の拡張子 → URL の拡張子 → MIME タイプ（DataURL の MIME を含む）の順に自動判別する（`detectFileType`）
@@ -935,28 +941,31 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
   2. なければ、ルートの `facility-config.js` の `window.CUSTOM_FACILITY_INFO.news`（お知らせの配列）に正しいお知らせがあればそれ（`resolveInitialNews`）
   3. それもなければ、初期サンプル6件（`createSampleNews(今日)`）
 
-     | id | 日付 | カテゴリ | タイトル | 添付 |
-     |---|---|---|---|---|
-     | sample-1 | 今日 | 重要 | Web予約の受付を開始しました | 📄 施設利用要項.pdf（`./files/riyou-youkou.pdf`） |
-     | sample-4 | 3日前 | イベント | 秋のスポーツ体験会を開催します | 🖼️ チラシ（`./files/sample-flyer.svg`） |
-     | sample-2 | 7日前 | ご案内 | 合宿向けのお弁当メニューを新しくしました | なし |
-     | sample-5 | 10日前 | ご案内 | 宿泊者名簿の様式（Excel）を掲載しました | 📗 宿泊者名簿.xlsx（`./files/meibo.xlsx`） |
-     | sample-3 | 14日前 | 休館日 | 設備点検に伴う休館日のお知らせ | なし |
-     | sample-6 | 21日前 | ご案内 | 利用申込書（Word）をダウンロードできるようになりました | 📘 施設利用申込書.docx（`./files/moushikomi.docx`） |
+     表示の順番（固定の記事が先頭、その中と残りは新しい順）に並べると次のとおり
+
+     | id | 日付 | カテゴリ | 固定 | タイトル | 添付 |
+     |---|---|---|---|---|---|
+     | sample-2 | 7日前 | ご案内 | 📌 | 合宿向けのお弁当メニューを新しくしました | なし |
+     | sample-3 | 14日前 | 休館日 | 📌 | 設備点検に伴う休館日のお知らせ | なし |
+     | sample-1 | 今日 | 重要 | | Web予約の受付を開始しました | 📄 施設利用要項.pdf（`./files/riyou-youkou.pdf`） |
+     | sample-4 | 3日前 | イベント | | 秋のスポーツ体験会を開催します | 🖼️ チラシ（`./files/sample-flyer.svg`） |
+     | sample-5 | 10日前 | ご案内 | | 宿泊者名簿の様式（Excel）を掲載しました | 📗 宿泊者名簿.xlsx（`./files/meibo.xlsx`） |
+     | sample-6 | 21日前 | ご案内 | | 利用申込書（Word）をダウンロードできるようになりました | 📘 施設利用申込書.docx（`./files/moushikomi.docx`） |
 
      サンプルの資料・チラシは `files/` にあるダミーの内容（実名は含まない）
 - 入力のチェック（`validateNewsInput`）：実在する日付（`isValidDateString`。2026-02-30 などは不可）、4つのカテゴリのどれか、タイトル（前後の空白を除いて1〜60文字）、本文（1〜1000文字）、画像・資料の場所と容量、資料の種類が PDF・Word・Excel であること、画像の説明・資料のファイル名（100文字以内）
 - 職員用の入力フォームで使う関数：`checkImageFile`・`checkAttachmentFile`（選んだファイルの種類と容量）、`calculateResizedSize`（縦横比を保って長い辺を上限以下に。小さい画像は拡大しない）、`normalizeFileDataUrl`、`describeNewsImage`・`describeNewsFile`（状態の説明）、`estimateDataUrlBytes`・`formatBytes`
 - 整形（`normalizeNewsList`）：保存や `facility-config.js` のお知らせのうち、正しくないもの・id が重複する2件目以降は除き、id がない・英数字と `-` `_` 以外を含むときは `news-番号` を付ける
-- 並べ替え（`sortNewsByDateDesc`）：日付の新しい順。同じ日付なら id の番号の大きい順（あとから追加したものが上）
-- 追加・編集・削除（`addNewsItem`・`updateNewsItem`・`removeNewsItem`。元の配列は変えず新しい配列を返す）：追加の id は `news-番号` のうち一番大きい番号の次（`createNewsId`）。追加・編集のあとは新しい順に並べ直す
+- 並べ替え（`sortNewsForDisplay`）：固定（`pinned: true`）の記事を日付に関わらず先頭にし、固定どうし・固定していないものどうしの中は日付の新しい順。同じ日付なら id の番号の大きい順（あとから追加したものが上）。トップページの最大5件も、この順で先頭から取るので、固定の記事は必ず出る
+- 追加・編集・削除（`addNewsItem`・`updateNewsItem`・`removeNewsItem`。元の配列は変えず新しい配列を返す）：追加の id は `news-番号` のうち一番大きい番号の次（`createNewsId`）。追加・編集のあとは表示の順番に並べ直す
+- 固定の切り替え（`togglePinNews(一覧, id)`）：指定した id の `pinned` を反転し、表示の順番に並べ直した新しい配列を返す（ない id なら並べ直すだけ）。`countPinnedNews(一覧)` は固定の件数
 - 絞り込み・直接リンク：`filterNewsByCategory(一覧, 'all' かカテゴリ)`・`buildCategoryFilters(一覧)`（「すべて」と各カテゴリの件数）・`buildNewsAnchorId(id)`（`news-<id>`）・`parseNewsAnchorId(ハッシュ)`・`buildNewsPageHref(ページ, id)`・`buildNewsExcerpt(本文, 文字数)`
 - 表示用の HTML（文字はすべてエスケープし、編集のボタンは作らない）
   - トップページ：`renderNewsListHtml(一覧, 件数, お知らせページの場所)`・`renderNewsItemHtml`・`renderNewsBadgeHtml`・`renderAttachmentBadgesHtml`
   - お知らせページ：`renderCategoryFilterHtml`・`renderNewsCardsHtml(一覧, ルートまでの道のり)`・`renderNewsCardHtml`（本文の改行は `<br>`）・`renderNewsImageHtml`・`renderNewsFileButtonHtml`
 - 例（`facility-config.js`）：`window.CUSTOM_FACILITY_INFO = { …, news: [{ date: '2026-12-01', category: 'closed', title: '年末年始の休館日', body: '…', fileUrl: './files/nenmatsu.pdf', fileName: '年末年始の営業案内.pdf' }] };`
 - 注意：保存先は職員のブラウザの localStorage のため、GitHub Pages で一般の利用者に同じお知らせを見せるには、`facility-config.js` の `news` に書いて公開するか、お知らせのデータを配る仕組みが別に必要。ファイルから読み込んだ画像・資料も同じ（公開する資料は `files/` に置いて相対パスで指定するのがよい）
-- テスト（`tests/news-logic.test.js`）：保存キー・カテゴリ・資料の種類、初期サンプル6件の日付（月・年またぎ）と添付（`files/` にファイルがあること）、日付の判定、資料の種類の自動判別（拡張子・URL・MIME・DataURL の順、大文字の拡張子、`?` `#` の後ろを見ないこと）、DataURL の MIME の補正、URL のチェック（`javascript:`・`..`・`//`・SVG の DataURL・日本語・空白・引用符を受け付けない）と表示用の URL、選んだファイルのチェック（2MB・15MB の境目）、軽量化の大きさ、入力チェック（空・null・60/61文字・1000/1001文字・画像と資料の場所・種類・容量・100/101文字）、旧形式の `pdfUrl` の読み替え、ダウンロード名、並べ替え・id の採番・追加・編集（添付を外す）・削除、整形（重複・不正な id・不正な画像）、保存と読み込み、表示するお知らせの優先順位、絞り込みと件数、直接リンクのハッシュ、抜粋、トップページ・お知らせページの HTML（件数の上限・リンク・添付のバッジ・画像・資料のボタン・エスケープ・編集の操作がないこと）、フォームの状態の説明、`let`・`var` と会社名・住所・電話番号らしい表記がないこと
+- テスト（`tests/news-logic.test.js`）：保存キー・カテゴリ・資料の種類、初期サンプル6件の日付（月・年またぎ）と添付（`files/` にファイルがあること）、日付の判定、資料の種類の自動判別（拡張子・URL・MIME・DataURL の順、大文字の拡張子、`?` `#` の後ろを見ないこと）、DataURL の MIME の補正、URL のチェック（`javascript:`・`..`・`//`・SVG の DataURL・日本語・空白・引用符を受け付けない）と表示用の URL、選んだファイルのチェック（2MB・15MB の境目）、軽量化の大きさ、入力チェック（空・null・60/61文字・1000/1001文字・画像と資料の場所・種類・容量・100/101文字）、旧形式の `pdfUrl` の読み替え、ダウンロード名、並べ替え（固定の記事を先頭・その中は新しい順）・初期サンプルの固定（sample-2・sample-3）・`pinned` は `true` のときだけ固定・固定の切り替え（反転・並べ直し・2回で元に戻る・ない id・空の一覧）・id の採番・追加（固定の記事の次に入る）・編集（添付を外す・固定にする）・削除、整形（重複・不正な id・不正な画像）、保存と読み込み、表示するお知らせの優先順位、絞り込みと件数、直接リンクのハッシュ、抜粋、トップページ・お知らせページの HTML（件数の上限・リンク・添付のバッジ・固定のバッジと `data-pinned`・画像・資料のボタン・エスケープ・編集の操作がないこと）、フォームの状態の説明、`let`・`var` と会社名・住所・電話番号らしい表記がないこと
 
 ### 15.8 お知らせ一覧・詳細ページ（`news/index.html`）
 
@@ -966,7 +975,8 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
 - 配色の変数・固定ヘッダー（ロゴは `../index.html`、メニューは `../index.html#facilities` などトップページと同じ項目）・フッターはトップページと同じ
 - 見出し：パンくず（トップ › お知らせ）、「News & Topics／お知らせ一覧」
 - カテゴリの絞り込み（`#newsFilters`）：「すべて」「重要」「ご案内」「イベント」「休館日」のボタン（件数つき。選んでいるボタンは `aria-pressed="true"`）。選んでいるカテゴリは `#newsPage` の `data-filter` に持つ
-- 記事のカード（`#newsCards`。新しい順。`<article id="news-<id>">`。カテゴリの色の左線）
+- 記事のカード（`#newsCards`。固定の記事が先頭、その中と残りは新しい順。`<article id="news-<id>">`。カテゴリの色の左線）
+  - 固定の記事は「📌 固定（ピックアップ）」のバッジを付け、カードの背景をほんのりオレンジのグラデーション・左の線をオレンジにする（`<article data-pinned="true">`）。カテゴリで絞り込んでも、その中で固定の記事が先頭
   - 日付・カテゴリのバッジ・添付のバッジ・タイトル・本文（改行はそのまま）
   - 画像があれば大きなプレビュー（最大幅 560px）と説明。押すと拡大表示（`<dialog id="imageModal">`。「× 閉じる」・Esc・画像の外側で閉じる）
   - 添付資料があれば、種類ごとの色とアイコンのボタン（`a.file-button`。「📄 PDFを開く・ダウンロード」「📘 Wordファイルをダウンロード」「📗 Excelファイルをダウンロード」とファイル名。`download` 属性にファイル名、別のタブで開く）
@@ -974,4 +984,4 @@ window.CUSTOM_RESERVATION_CONFIG = { stayCapacity: 250, maxStayGroups: 5, closed
 - 該当する記事がないときは「該当するお知らせはありません。」
 - テスト（`tests/news-page.test.js`）
   - 読み込みの順番、`let`・`var` を使っていないこと、トップページと同じ配色の変数・ヘッダー・フッターなどの場所、入力欄・「編集」「削除」・`localStorage` の書き換えがないこと、リンク先がすべて存在し日本語を含まないこと、会社名・住所・電話番号らしい表記がないこと
-  - 画面（ヘッドレスブラウザ。`news/`・`reservation/`・`files/` を一時フォルダにコピーして開く）：初期サンプル6件が新しい順に並び、絞り込みボタンの件数、`#news-sample-5` の記事の強調、チラシ画像（`../files/sample-flyer.svg`）、PDF・Excel・Word のボタン（リンク先・`download` のファイル名・文言）、「休館日」で1件に絞り込めること、画像を押すと拡大表示が開くこと。`facility-config.js` の施設名と `news`（旧形式の `pdfUrl`）で表示できること
+  - 画面（ヘッドレスブラウザ。`news/`・`reservation/`・`files/` を一時フォルダにコピーして開く）：初期サンプル6件が固定の2件を先頭に並び（固定のバッジつき）、絞り込みボタンの件数、`#news-sample-5` の記事の強調、チラシ画像（`../files/sample-flyer.svg`）、PDF・Excel・Word のボタン（リンク先・`download` のファイル名・文言）、「休館日」で1件に絞り込めること、画像を押すと拡大表示が開くこと。`facility-config.js` の施設名と `news`（旧形式の `pdfUrl`）で表示できること

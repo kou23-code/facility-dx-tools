@@ -60,6 +60,9 @@ const CAPTURE_SOURCE = `const capture = () => ({
     newsRows: Array.from(document.querySelectorAll('#newsAdminRows tr[data-news-id]'), (row) => row.dataset.newsId + ':' + row.querySelector('.news-badge').textContent + ':' + row.querySelector('.font-bold').textContent),
     newsForm: [document.getElementById('newsFormHeading').textContent, document.getElementById('newsTitleInput').value, document.getElementById('newsCategoryInput').value, document.getElementById('newsSubmitButton').textContent],
     newsResult: document.getElementById('newsFormResult').textContent,
+    newsPins: Array.from(document.querySelectorAll('#newsAdminRows tr[data-news-id]'), (row) => [row.dataset.newsId, row.dataset.pinned, (row.querySelector('.news-pin-badge') || {}).textContent || '', row.querySelector('.news-pin-button').textContent].join(':')),
+    newsPinnedChecked: document.getElementById('newsPinnedInput').checked,
+    newsStatus: document.getElementById('newsStorageStatus').textContent,
     newsRowBadges: Array.from(document.querySelectorAll('#newsAdminRows tr[data-news-id]'), (row) => Array.from(row.querySelectorAll('.news-attach'), (badge) => badge.textContent).join('')),
     newsAttach: ['newsImageUrlInput', 'newsImageDataInput', 'newsImageNameInput', 'newsFileUrlInput', 'newsFileDataInput', 'newsFileNameInput'].map((id) => document.getElementById(id).value)
         .concat([document.getElementById('newsImageStatus').textContent, document.getElementById('newsFileStatus').textContent, String(document.getElementById('newsImagePreview').classList.contains('hidden'))]),
@@ -117,7 +120,7 @@ test('スケジュール画面は schedule-logic.js のあとに ../news-logic.j
     assert.match(html, /<h2 id="newsAdminTitle"[^>]*>トップページお知らせ管理<\/h2>/);
     assert.match(html, /<input type="file" id="newsImageFileInput"[^>]*accept="image\/\*"/);
     assert.match(html, /<input type="file" id="newsFileInput"[^>]*accept="\.pdf,\.doc,\.docx,\.xls,\.xlsx,/);
-    ['newsImageUrlInput', 'newsImageNameInput', 'newsImageDataInput', 'newsImageClearButton', 'newsFileUrlInput', 'newsFileNameInput', 'newsFileDataInput', 'newsFileClearButton', 'newsPagePreviewLink']
+    ['newsImageUrlInput', 'newsImageNameInput', 'newsImageDataInput', 'newsImageClearButton', 'newsFileUrlInput', 'newsFileNameInput', 'newsFileDataInput', 'newsFileClearButton', 'newsPagePreviewLink', 'newsPinnedInput']
         .forEach((id) => assert.match(html, new RegExp(`id="${id}"`), id));
 });
 
@@ -352,11 +355,11 @@ test('画面：職員用モードのお知らせ管理で、入力チェック�
         states.push(capture());
     `, '?mode=staff');
     const [initial, invalid, invalidFile, added, editing, updated, dataLoaded, dataSaved, deleted, reset, publicMode] = states;
-    const sampleRows = ['sample-1:重要:Web予約の受付を開始しました', 'sample-4:イベント:秋のスポーツ体験会を開催します', 'sample-2:ご案内:合宿向けのお弁当メニューを新しくしました',
-        'sample-5:ご案内:宿泊者名簿の様式（Excel）を掲載しました', 'sample-3:休館日:設備点検に伴う休館日のお知らせ', 'sample-6:ご案内:利用申込書（Word）をダウンロードできるようになりました'];
+    const sampleRows = ['sample-2:ご案内:合宿向けのお弁当メニューを新しくしました', 'sample-3:休館日:設備点検に伴う休館日のお知らせ', 'sample-1:重要:Web予約の受付を開始しました', 'sample-4:イベント:秋のスポーツ体験会を開催します',
+        'sample-5:ご案内:宿泊者名簿の様式（Excel）を掲載しました', 'sample-6:ご案内:利用申込書（Word）をダウンロードできるようになりました'];
     const storedItem = (state, id) => JSON.parse(state.newsStorage).items.find((item) => item.id === id);
     assert.deepStrictEqual([initial.newsPanelHidden, initial.newsRows, initial.newsStorage], [false, sampleRows, null]);
-    assert.deepStrictEqual(initial.newsRowBadges, ['📄PDF', '🖼️画像', '', '📗Excel', '', '📘Word']);
+    assert.deepStrictEqual(initial.newsRowBadges, ['', '', '📄PDF', '🖼️画像', '📗Excel', '📘Word']);
     assert.deepStrictEqual(initial.newsForm, ['新しいお知らせを追加', '', 'info', '追加する']);
     assert.deepStrictEqual(initial.newsAttach, ['', '', '', '', '', '', '', '', 'true']);
     assert.match(invalid.newsResult, /保存できませんでした.*タイトルを入力してください.*本文を入力してください/);
@@ -364,11 +367,11 @@ test('画面：職員用モードのお知らせ管理で、入力チェック�
     assert.match(invalidFile.newsResult, /添付資料は PDF・Word・Excel/);
     assert.deepStrictEqual(invalidFile.newsAttach.slice(6), ['URL・相対パスの画像を掲載します', '種類を判別できません（.pdf .doc .docx .xls .xlsx のファイルを指定してください）', 'false']);
     assert.strictEqual(invalidFile.newsStorage, null);
-    assert.deepStrictEqual([added.newsRows[0], added.newsRowBadges[0]], ['news-1:イベント:体験会のご案内', '🖼️画像📗Excel']);
+    assert.deepStrictEqual([added.newsRows[2], added.newsRowBadges[2]], ['news-1:イベント:体験会のご案内', '🖼️画像📗Excel'], '固定の記事の次に入る');
     assert.match(added.newsResult, /お知らせを追加しました/);
     assert.deepStrictEqual(storedItem(added, 'news-1'), {
         id: 'news-1', date: dates.day20, category: 'event', title: '体験会のご案内', body: '本文です',
-        imageUrl: './files/sample-flyer.svg', imageName: '', fileUrl: './files/meibo.xlsx', fileName: 'meibo.xlsx', fileType: 'excel'
+        imageUrl: './files/sample-flyer.svg', imageName: '', fileUrl: './files/meibo.xlsx', fileName: 'meibo.xlsx', fileType: 'excel', pinned: false
     });
     assert.deepStrictEqual(editing.newsForm, ['お知らせを編集', '宿泊者名簿の様式（Excel）を掲載しました', 'info', '変更を保存する']);
     assert.deepStrictEqual(editing.newsAttach.slice(3), ['./files/meibo.xlsx', '', '宿泊者名簿.xlsx', '', '種類：📗Excel（自動判別）', 'true']);
@@ -380,4 +383,34 @@ test('画面：職員用モードのお知らせ管理で、入力チェック�
     assert.ok(!deleted.newsRows.some((row) => row.startsWith('sample-3:')));
     assert.deepStrictEqual([reset.newsRows, reset.newsStorage], [sampleRows, null]);
     assert.strictEqual(publicMode.newsPanelHidden, true, '公開用モードではお知らせ管理を出さない');
+});
+
+test('画面：お知らせ管理で、固定中の行に「📌固定中」が出て、「固定 / 解除」ボタンとチェックボックスで一番上への固定を切り替えられる', { skip: !BROWSER }, () => {
+    const { states } = renderStates(`
+        states.push(capture());
+        toggleNewsPin('sample-6');
+        states.push(capture());
+        toggleNewsPin('sample-2');
+        states.push(capture());
+        [['newsTitleInput', '今月の献立'], ['newsBodyInput', '献立の本文']].forEach(([id, value]) => { document.getElementById(id).value = value; });
+        document.getElementById('newsPinnedInput').checked = true;
+        submitNewsForm();
+        states.push(capture());
+        editNews('sample-3');
+        states.push(capture());
+        toggleNewsPin('sample-3');
+        states.push(capture());
+    `, '?mode=staff');
+    const [initial, pinned6, unpinned2, addedPinned, editing3, toggledWhileEditing] = states;
+    const pinnedIds = (state) => state.newsPins.filter((row) => row.split(':')[1] === 'true').map((row) => row.split(':')[0]);
+    assert.deepStrictEqual(initial.newsPins.slice(0, 3), ['sample-2:true:📌固定中:解除', 'sample-3:true:📌固定中:解除', 'sample-1:false::📌 固定']);
+    assert.match(initial.newsStatus, /登録 6件・固定 2件/);
+    assert.strictEqual(initial.newsPinnedChecked, false, '新規追加のときは固定しない');
+    assert.deepStrictEqual(pinned6.newsRows.map((row) => row.split(':')[0]), ['sample-2', 'sample-3', 'sample-6', 'sample-1', 'sample-4', 'sample-5'], '固定した記事が固定の中で日付順に並ぶ');
+    assert.deepStrictEqual(pinnedIds(unpinned2), ['sample-3', 'sample-6']);
+    assert.deepStrictEqual(JSON.parse(unpinned2.newsStorage).items.filter((item) => item.pinned).map((item) => item.id), ['sample-3', 'sample-6'], '切り替えを保存する');
+    assert.deepStrictEqual([addedPinned.newsRows[0], addedPinned.newsPins[0]], ['news-1:ご案内:今月の献立', 'news-1:true:📌固定中:解除'], 'チェックを付けて追加すると先頭に固定される');
+    assert.strictEqual(addedPinned.newsPinnedChecked, false, '追加のあとはチェックを外す');
+    assert.strictEqual(editing3.newsPinnedChecked, true, '固定中の記事を編集するとチェックが付いている');
+    assert.deepStrictEqual([toggledWhileEditing.newsPinnedChecked, pinnedIds(toggledWhileEditing)], [false, ['news-1', 'sample-6']]);
 });
