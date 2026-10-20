@@ -55,6 +55,14 @@
         .grid-table td.is-booked { background: #fef2f2; color: #b91c1c; font-weight: 700; }
         .grid-table td.staff-booking { background: #fff7ed; color: #7c2d12; font-weight: 400; text-align: left; white-space: normal; min-width: 7rem; font-size: 11px; line-height: 1.35; }
         .grid-table tfoot td, .grid-table tfoot th { background: #f3f4f6; font-weight: 700; }
+        /* トップページお知らせ管理（職員用モードだけ表示。バッジの色はトップページと同じ） */
+        .news-input { display: block; width: 100%; margin-top: 2px; padding: .4rem .5rem; border: 1px solid #d1d5db; border-radius: .25rem; background: #fff; font-size: 14px; }
+        .news-badge { display: inline-block; min-width: 4.8em; padding: 0 8px; border-radius: 9999px; color: #fff; font-size: 11px; font-weight: 700; line-height: 1.7; text-align: center; white-space: nowrap; }
+        .news-badge[data-news-category="important"] { background: #e2412d; }
+        .news-badge[data-news-category="info"] { background: #0a74b8; }
+        .news-badge[data-news-category="event"] { background: #ff9f1c; color: #2a1600; }
+        .news-badge[data-news-category="closed"] { background: #0a7f5f; }
+        .news-admin-body { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: pre-line; }
         .panel-textarea { width: 100%; min-height: 4.5rem; padding: .5rem; border: 1px solid #d1d5db; border-radius: .25rem; font-family: ui-monospace, monospace; font-size: 12px; }
     </style>
 </head>
@@ -166,6 +174,43 @@
                 </div>
             </details>
         </section>
+
+        <!-- ===================== トップページお知らせ管理（職員用モードだけ表示） ===================== -->
+        <section id="newsAdminPanel" class="staff-only hidden mt-6 bg-white rounded-lg shadow-md p-4 border-t-4 border-sky-500" aria-labelledby="newsAdminTitle">
+            <h2 id="newsAdminTitle" class="text-lg font-bold mb-1">トップページお知らせ管理</h2>
+            <p class="text-xs text-gray-600 mb-3">トップページの「お知らせ（News &amp; Topics）」に出す記事を追加・編集・削除します。新しい日付の順に最大5件がトップページに表示されます。お知らせはこのブラウザ（localStorage）に保存されます。<span id="newsStorageStatus" class="font-bold"></span></p>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm">
+                <!-- 入力フォーム（編集中の記事の id は data-editing-id に持つ。空なら新規追加） -->
+                <form id="newsForm" class="bg-gray-50 border rounded p-3" data-editing-id="" onsubmit="event.preventDefault(); submitNewsForm();" novalidate>
+                    <h3 id="newsFormHeading" class="font-bold text-base mb-2">新しいお知らせを追加</h3>
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <label class="block"><span class="text-xs font-bold text-gray-700">日付</span><input type="date" id="newsDateInput" class="news-input"></label>
+                        <label class="block"><span class="text-xs font-bold text-gray-700">カテゴリ</span><select id="newsCategoryInput" class="news-input"></select></label>
+                    </div>
+                    <label class="block mb-2"><span class="text-xs font-bold text-gray-700">タイトル（60文字以内）</span><input type="text" id="newsTitleInput" class="news-input" maxlength="60" placeholder="例：夏休み期間の受付時間のお知らせ"></label>
+                    <label class="block mb-2"><span class="text-xs font-bold text-gray-700">本文（1000文字以内。改行もそのまま表示されます）</span><textarea id="newsBodyInput" class="news-input" rows="5" maxlength="1000"></textarea></label>
+                    <div class="flex gap-2 flex-wrap">
+                        <button type="submit" id="newsSubmitButton" class="px-4 py-1.5 rounded bg-sky-600 text-white font-bold hover:bg-sky-700">追加する</button>
+                        <button type="button" id="newsCancelButton" onclick="clearNewsForm()" class="hidden px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-100">編集をやめる</button>
+                    </div>
+                    <div id="newsFormResult" class="mt-2 text-xs"></div>
+                </form>
+                <!-- 登録済みのお知らせの一覧 -->
+                <div class="bg-gray-50 border rounded p-3">
+                    <h3 class="font-bold text-base mb-2">登録済みのお知らせ（新しい順）</h3>
+                    <div class="overflow-x-auto">
+                        <table id="newsAdminTable" class="w-full text-left text-xs">
+                            <thead><tr class="text-gray-600"><th class="py-1 pr-2">日付</th><th class="py-1 pr-2">カテゴリ</th><th class="py-1 pr-2">タイトル・本文</th><th class="py-1">操作</th></tr></thead>
+                            <tbody id="newsAdminRows"></tbody>
+                        </table>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-dashed flex gap-2 flex-wrap">
+                        <a id="newsPreviewLink" href="../index.html#news" target="_blank" rel="noopener" class="px-3 py-1.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">トップページで確認する</a>
+                        <button type="button" id="newsResetButton" onclick="resetNews()" class="px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50">初期サンプルに戻す</button>
+                    </div>
+                </div>
+            </div>
+        </section>
     </div>
 
     <!-- お知らせ表示 -->
@@ -177,6 +222,8 @@
     <script src="../reservation/reservation-logic.js"></script>
     <!-- スケジュール管理表の集計・判定の純粋関数（window.ScheduleLogic） -->
     <script src="schedule-logic.js"></script>
+    <!-- トップページのお知らせのデータを扱う純粋関数（window.NewsLogic。トップページと共通） -->
+    <script src="../news-logic.js"></script>
     <script>
         // ======================================================
         //  画面の処理（DOM・localStorage を扱う部分）
@@ -468,6 +515,81 @@
             refreshView();
         };
 
+        // ---------- トップページお知らせ管理（職員用モードだけ表示。データの扱いは news-logic.js に任せる） ----------
+        const News = window.NewsLogic;
+        const readStoredNewsText = () => {
+            try { return localStorage.getItem(News.NEWS_STORAGE_KEY); } catch (error) { return null; }
+        };
+        const loadNewsList = () => News.resolveNewsList(readStoredNewsText(), window.CUSTOM_FACILITY_INFO?.news, getToday());
+        const saveNewsList = (newsList) => {
+            try { localStorage.setItem(News.NEWS_STORAGE_KEY, News.serializeNews(newsList)); return true; } catch (error) { return false; }
+        };
+        const buildNewsCategoryOptionsHtml = (categories) => categories.map((category) => `<option value="${escapeHtml(category.key)}">${escapeHtml(category.label)}</option>`).join('');
+        // 一覧の1行（id は英数字・-・_ だけなので、そのまま onclick に入れられる）
+        const buildNewsAdminRowHtml = (item) => `<tr class="border-t align-top" data-news-id="${escapeHtml(item.id)}">`
+            + `<td class="py-1.5 pr-2 whitespace-nowrap">${escapeHtml(News.formatNewsDate(item.date))}</td><td class="py-1.5 pr-2">${News.renderNewsBadgeHtml(item.category)}</td>`
+            + `<td class="py-1.5 pr-2"><div class="font-bold">${escapeHtml(item.title)}</div><div class="news-admin-body text-gray-600">${escapeHtml(item.body)}</div></td>`
+            + `<td class="py-1.5 whitespace-nowrap"><button type="button" class="news-edit-button px-2 py-0.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50" onclick="editNews('${escapeHtml(item.id)}')">編集</button> `
+            + `<button type="button" class="news-delete-button px-2 py-0.5 rounded border border-red-300 text-red-600 hover:bg-red-50" onclick="deleteNews('${escapeHtml(item.id)}')">削除</button></td></tr>`;
+        const buildNewsAdminRowsHtml = (newsList) => (newsList.length === 0
+            ? '<tr><td colspan="4" class="py-3 text-center text-gray-500">お知らせはありません（トップページには「現在、お知らせはありません。」と表示されます）</td></tr>'
+            : newsList.map(buildNewsAdminRowHtml).join(''));
+        const renderNewsAdmin = () => {
+            const newsList = loadNewsList();
+            byId('newsAdminRows').innerHTML = buildNewsAdminRowsHtml(newsList);
+            byId('newsStorageStatus').textContent = `（登録 ${newsList.length}件・トップページに表示 ${Math.min(newsList.length, News.PORTAL_NEWS_LIMIT)}件）`;
+        };
+        const readNewsForm = () => ({
+            date: byId('newsDateInput').value, category: byId('newsCategoryInput').value, title: byId('newsTitleInput').value, body: byId('newsBodyInput').value
+        });
+        // フォームに記事の内容を入れる（editingId が空なら新規追加、あればその記事の編集）
+        const fillNewsForm = (item, editingId) => {
+            [['newsDateInput', item.date], ['newsCategoryInput', item.category], ['newsTitleInput', item.title], ['newsBodyInput', item.body]].forEach(([id, value]) => { byId(id).value = value; });
+            byId('newsForm').dataset.editingId = editingId;
+            byId('newsFormHeading').textContent = editingId ? 'お知らせを編集' : '新しいお知らせを追加';
+            byId('newsSubmitButton').textContent = editingId ? '変更を保存する' : '追加する';
+            byId('newsCancelButton').classList.toggle('hidden', !editingId);
+        };
+        const clearNewsForm = () => fillNewsForm({ date: getToday(), category: 'info', title: '', body: '' }, '');
+        const applyNewsInput = (newsList, editingId, input) => (editingId ? News.updateNewsItem(newsList, editingId, input) : News.addNewsItem(newsList, input));
+        // 入力内容で追加（編集中ならその記事を書き換え）して保存する
+        const submitNewsForm = () => {
+            const [input, editingId] = [readNewsForm(), byId('newsForm').dataset.editingId];
+            const errors = News.validateNewsInput(input);
+            const isSaved = errors.length === 0 && saveNewsList(applyNewsInput(loadNewsList(), editingId, input));
+            const result = isSaved ? { ok: true } : { ok: false, errors: errors.length > 0 ? errors : ['このブラウザでは保存できませんでした'] };
+            byId('newsFormResult').innerHTML = buildResultHtml(result, editingId ? 'お知らせを更新しました（トップページに反映されます）' : 'お知らせを追加しました（トップページに反映されます）', '保存できませんでした');
+            if (isSaved) clearNewsForm();
+            renderNewsAdmin();
+        };
+        const editNews = (id) => {
+            const item = News.findNewsItem(loadNewsList(), id);
+            if (!item) return;
+            fillNewsForm(item, id);
+            byId('newsFormResult').innerHTML = '';
+            byId('newsForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+        const deleteNews = (id) => {
+            const item = News.findNewsItem(loadNewsList(), id);
+            if (!item || !confirm(`お知らせ「${item.title}」を削除しますか？\nトップページからも消えます（元に戻せません）`)) return;
+            showToast(saveNewsList(News.removeNewsItem(loadNewsList(), id)) ? 'お知らせを削除しました' : 'このブラウザでは保存できませんでした');
+            if (byId('newsForm').dataset.editingId === id) clearNewsForm();
+            renderNewsAdmin();
+        };
+        // 保存したお知らせを消し、初期の内容（facility-config.js の news、なければサンプル3件）に戻す
+        const resetNews = () => {
+            if (!confirm('お知らせを初期の内容（サンプル3件）に戻しますか？\n追加・編集したお知らせはすべて消えます（元に戻せません）')) return;
+            removeStoredItem(News.NEWS_STORAGE_KEY);
+            clearNewsForm();
+            showToast('お知らせを初期サンプルに戻しました');
+            renderNewsAdmin();
+        };
+        const initNewsAdmin = () => {
+            byId('newsCategoryInput').innerHTML = buildNewsCategoryOptionsHtml(News.NEWS_CATEGORIES);
+            clearNewsForm();
+            renderNewsAdmin();
+        };
+
         // ---------- 画面の操作 ----------
         const refreshView = () => {
             const context = buildViewContext();
@@ -514,6 +636,7 @@
         const initApp = () => {
             renderFacilityInfo(ACTIVE_FACILITY_INFO);
             writeViewState({ mode: Schedule.resolveInitialMode(location.search), month: Schedule.toMonthKeyOfDate(getToday()), selectedDate: getToday() });
+            initNewsAdmin();
             refreshView();
         };
         document.addEventListener('DOMContentLoaded', initApp);

@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {
-    SCHEDULE_HTML_PATH, SCHEDULE_LOGIC_PATH, RESERVATION_LOGIC_PATH, BROWSER_CANDIDATES, findBrowser, renderDom, findById
+    SCHEDULE_HTML_PATH, SCHEDULE_LOGIC_PATH, RESERVATION_LOGIC_PATH, NEWS_LOGIC_PATH, BROWSER_CANDIDATES, findBrowser, renderDom, findById
 } = require('./helpers');
 const { RESERVATION_CATALOG: CATALOG, createSampleReservations } = require(RESERVATION_LOGIC_PATH);
 
@@ -56,6 +56,11 @@ const CAPTURE_SOURCE = `const capture = () => ({
     publicSourceLabel: (document.getElementById('publicSourceLabel') || {}).textContent || null,
     publicJson: document.getElementById('publicJsonOutput').value,
     storage: localStorage.getItem('facility_dx_reservations'),
+    newsPanelHidden: document.getElementById('newsAdminPanel').classList.contains('hidden'),
+    newsRows: Array.from(document.querySelectorAll('#newsAdminRows tr[data-news-id]'), (row) => row.dataset.newsId + ':' + row.querySelector('.news-badge').textContent + ':' + row.querySelector('.font-bold').textContent),
+    newsForm: [document.getElementById('newsFormHeading').textContent, document.getElementById('newsTitleInput').value, document.getElementById('newsCategoryInput').value, document.getElementById('newsSubmitButton').textContent],
+    newsResult: document.getElementById('newsFormResult').textContent,
+    newsStorage: localStorage.getItem('facility_dx_news'),
     title: document.title
 });
 // その日のある月を開いて、日付を選ぶ
@@ -88,6 +93,7 @@ const renderStates = (steps, search = '') => {
     fs.writeFileSync(path.join(dir, 'schedule', 'index.html'), readPage().replace('</body>', `${buildScript(steps)}\n</body>`), 'utf8');
     fs.copyFileSync(SCHEDULE_LOGIC_PATH, path.join(dir, 'schedule', 'schedule-logic.js'));
     fs.copyFileSync(RESERVATION_LOGIC_PATH, path.join(dir, 'reservation', 'reservation-logic.js'));
+    fs.copyFileSync(NEWS_LOGIC_PATH, path.join(dir, 'news-logic.js'));
     return JSON.parse(decodeURIComponent(findById(renderDom(BROWSER, path.join(dir, 'schedule', 'index.html'), search), 'test_dump')));
 };
 
@@ -99,6 +105,13 @@ test('スケジュール画面は facility-config.js・reservation-logic.js・sc
     assert.deepStrictEqual([...order].sort((first, second) => first - second), order);
     assert.doesNotMatch(readInlineScript(html), /\b(let|var)\s/);
     assert.doesNotMatch(fs.readFileSync(SCHEDULE_LOGIC_PATH, 'utf8'), /\b(let|var)\s/);
+});
+
+test('スケジュール画面は schedule-logic.js のあとに ../news-logic.js を読み込み、お知らせ管理パネルは職員用（staff-only・最初は hidden）にしてある', () => {
+    const html = readPage();
+    assert.ok(html.indexOf('<script src="schedule-logic.js">') < html.indexOf('<script src="../news-logic.js">'));
+    assert.match(html, /<section id="newsAdminPanel" class="staff-only hidden [^"]*"/);
+    assert.match(html, /<h2 id="newsAdminTitle"[^>]*>トップページお知らせ管理<\/h2>/);
 });
 
 test('スケジュール画面にポータルへ戻るリンクと Web予約画面へのリンクがある', () => {
@@ -295,4 +308,41 @@ test('画面：予約データをリセットすると、サンプル投入の�
     `);
     assert.deepStrictEqual(states.map((state) => state.emptyHidden), [true, false]);
     assert.strictEqual(states[1].storage, null);
+});
+
+test('画面：職員用モードのお知らせ管理で、入力チェック・追加・編集・削除・初期サンプルへのリセットができ、公開用モードでは隠れる', { skip: !BROWSER }, () => {
+    const { dates, states } = renderStates(`
+        states.push(capture());
+        submitNewsForm();
+        states.push(capture());
+        [['newsDateInput', day20], ['newsCategoryInput', 'event'], ['newsTitleInput', '体験会のご案内'], ['newsBodyInput', '本文です']].forEach(([id, value]) => { document.getElementById(id).value = value; });
+        submitNewsForm();
+        states.push(capture());
+        editNews('sample-2');
+        states.push(capture());
+        document.getElementById('newsTitleInput').value = '変更後のタイトル';
+        submitNewsForm();
+        states.push(capture());
+        deleteNews('sample-3');
+        states.push(capture());
+        resetNews();
+        states.push(capture());
+        switchMode('public');
+        states.push(capture());
+    `, '?mode=staff');
+    const [initial, invalid, added, editing, updated, deleted, reset, publicMode] = states;
+    const sampleRows = ['sample-1:重要:Web予約の受付を開始しました', 'sample-2:ご案内:合宿向けのお弁当メニューを新しくしました', 'sample-3:休館日:設備点検に伴う休館日のお知らせ'];
+    assert.deepStrictEqual([initial.newsPanelHidden, initial.newsRows, initial.newsStorage], [false, sampleRows, null]);
+    assert.deepStrictEqual(initial.newsForm, ['新しいお知らせを追加', '', 'info', '追加する']);
+    assert.match(invalid.newsResult, /保存できませんでした.*タイトルを入力してください.*本文を入力してください/);
+    assert.strictEqual(invalid.newsStorage, null, '入力が足りないときは保存しない');
+    assert.deepStrictEqual(added.newsRows, ['news-1:イベント:体験会のご案内', ...sampleRows]);
+    assert.match(added.newsResult, /お知らせを追加しました/);
+    assert.deepStrictEqual(JSON.parse(added.newsStorage).items[0], { id: 'news-1', date: dates.day20, category: 'event', title: '体験会のご案内', body: '本文です' });
+    assert.deepStrictEqual(editing.newsForm, ['お知らせを編集', '合宿向けのお弁当メニューを新しくしました', 'info', '変更を保存する']);
+    assert.strictEqual(updated.newsRows[2], 'sample-2:ご案内:変更後のタイトル');
+    assert.deepStrictEqual(updated.newsForm, ['新しいお知らせを追加', '', 'info', '追加する']);
+    assert.deepStrictEqual(deleted.newsRows.map((row) => row.split(':')[0]), ['news-1', 'sample-1', 'sample-2']);
+    assert.deepStrictEqual([reset.newsRows, reset.newsStorage], [sampleRows, null]);
+    assert.strictEqual(publicMode.newsPanelHidden, true, '公開用モードではお知らせ管理を出さない');
 });
