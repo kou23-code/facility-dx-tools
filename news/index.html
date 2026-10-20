@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="施設からのお知らせ（重要なお知らせ・ご案内・イベント・休館日）の一覧です。チラシの画像や、利用要項・名簿などの資料もご覧いただけます。">
+    <!-- タイトルの施設名は、JavaScript で FACILITY_INFO（または facility-config.js）の施設名に差し替える -->
+    <title>お知らせ一覧｜あおぞらセミナーハウス</title>
+    <style>
+        /* 配色・ヘッダー・フッターはトップページ（../index.html）と同じ */
+        :root {
+            --bg: #f3fafe;
+            --surface: #ffffff;
+            --text: #1e293b;
+            --muted: #5b6b80;
+            --line: #dbe8f1;
+            --primary: #0a74b8;
+            --primary-dark: #08598d;
+            --primary-soft: #e3f4fd;
+            --sky: #38bdf8;
+            --accent: #ff9f1c;
+            --accent-dark: #f08a00;
+            --accent-soft: #fff1dc;
+            --accent-text: #9a4a00;
+            --green: #0a7f5f;
+            --green-soft: #e2f8f0;
+            --mint: #34d3a6;
+            --radius: 18px;
+            --header-height: 68px;
+            --shadow: 0 10px 30px rgba(10, 116, 184, .10);
+        }
+        * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", sans-serif;
+            line-height: 1.8;
+            -webkit-font-smoothing: antialiased;
+        }
+        img, svg { display: block; }
+        a { color: var(--primary); }
+        .container { width: min(1120px, 100% - 40px); margin: 0 auto; }
+        .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+        /* ---------- ボタン ---------- */
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 12px 22px; border-radius: 999px; border: 2px solid transparent;
+            font-weight: 700; font-size: .95rem; text-decoration: none; line-height: 1.4;
+            transition: background-color .15s, color .15s, border-color .15s, transform .15s;
+        }
+        .btn:hover, .btn:focus-visible { transform: translateY(-1px); }
+        .btn:focus-visible { outline: 3px solid rgba(245, 158, 11, .6); outline-offset: 2px; }
+        .btn-solid { background: var(--primary); color: #fff; }
+        .btn-solid:hover, .btn-solid:focus-visible { background: var(--primary-dark); }
+
+        /* ---------- 固定ヘッダー ---------- */
+        .site-header {
+            position: fixed; inset: 0 0 auto 0; z-index: 50; height: var(--header-height);
+            background: rgba(255, 255, 255, .94); backdrop-filter: saturate(160%) blur(10px);
+            border-bottom: 1px solid var(--line);
+        }
+        .header-inner { display: flex; align-items: center; gap: 16px; height: 100%; }
+        .site-logo { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; min-width: 0; }
+        .logo-mark { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, var(--sky), var(--mint)); color: #fff; }
+        .logo-mark svg { width: 24px; height: 24px; }
+        .logo-text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+        .logo-org { font-size: .7rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .logo-name { font-weight: 800; font-size: 1.05rem; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .global-nav { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+        .nav-list { display: flex; align-items: center; gap: 2px; margin: 0; padding: 0; list-style: none; }
+        .nav-list a { display: block; padding: 8px 12px; border-radius: 999px; color: var(--text); font-size: .9rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
+        .nav-list a:hover, .nav-list a:focus-visible { background: var(--primary-soft); color: var(--primary); outline: none; }
+        .nav-list a.nav-cta { background: var(--accent); color: #2a1600; padding: 8px 16px; box-shadow: 0 4px 12px rgba(255, 159, 28, .35); }
+        .nav-list a.nav-cta:hover, .nav-list a.nav-cta:focus-visible { background: var(--accent-dark); color: #2a1600; }
+        .menu-toggle {
+            display: none; margin-left: auto; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 12px;
+            background: var(--surface); color: var(--text); cursor: pointer;
+        }
+        .menu-toggle svg { width: 24px; height: 24px; margin: auto; }
+
+        /* ---------- ページの見出し ---------- */
+        .page-hero {
+            padding: calc(var(--header-height) + 44px) 0 40px; color: #fff;
+            background: radial-gradient(circle at 85% 15%, rgba(125, 211, 252, .45), transparent 45%),
+                        radial-gradient(circle at 10% 90%, rgba(52, 211, 153, .35), transparent 45%),
+                        linear-gradient(135deg, #0a5a92 0%, #0e86c4 55%, #1aa7c9 100%);
+        }
+        .breadcrumb { display: flex; gap: 8px; margin: 0 0 12px; padding: 0; list-style: none; font-size: .85rem; }
+        .breadcrumb li + li::before { content: "›"; margin-right: 8px; opacity: .8; }
+        .breadcrumb a { color: #fff; }
+        .page-label { display: inline-block; margin: 0 0 8px; padding: 2px 14px; border-radius: 999px; background: rgba(255, 255, 255, .2); font-size: .8rem; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; }
+        .page-hero h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 2.4rem); letter-spacing: .04em; }
+        .page-hero p { margin: 8px 0 0; opacity: .95; }
+
+        /* ---------- カテゴリの絞り込み ---------- */
+        .news-main { padding: 36px 0 72px; }
+        .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 28px; }
+        .filter-button {
+            display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: 2px solid var(--line); border-radius: 999px;
+            background: var(--surface); color: var(--text); font: inherit; font-size: .9rem; font-weight: 700; cursor: pointer;
+        }
+        .filter-button:hover, .filter-button:focus-visible { border-color: var(--sky); }
+        .filter-button:focus-visible { outline: 3px solid rgba(56, 189, 248, .5); outline-offset: 2px; }
+        .filter-button[aria-pressed="true"] { border-color: var(--primary); background: var(--primary); color: #fff; }
+        .filter-count { min-width: 1.6em; padding: 0 6px; border-radius: 999px; background: var(--primary-soft); color: var(--primary); font-size: .75rem; text-align: center; }
+        .filter-button[aria-pressed="true"] .filter-count { background: rgba(255, 255, 255, .25); color: #fff; }
+
+        /* ---------- 記事カード ---------- */
+        .news-cards { display: grid; gap: 24px; }
+        .news-card {
+            padding: 28px 32px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow);
+            border-left: 6px solid var(--sky); scroll-margin-top: calc(var(--header-height) + 16px); outline: none;
+        }
+        .news-card[data-news-category="important"] { border-left-color: #e2412d; }
+        .news-card[data-news-category="info"] { border-left-color: var(--primary); }
+        .news-card[data-news-category="event"] { border-left-color: var(--accent); }
+        .news-card[data-news-category="closed"] { border-left-color: var(--green); }
+        /* URL のハッシュ（#news-<id>）で開いた記事 */
+        .news-card.is-target { box-shadow: 0 0 0 4px rgba(255, 159, 28, .45), var(--shadow); }
+        .news-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+        .news-date { color: var(--muted); font-size: .88rem; font-variant-numeric: tabular-nums; }
+        .news-badge { display: inline-block; min-width: 5.2em; padding: 1px 10px; border-radius: 999px; color: #fff; font-size: .75rem; font-weight: 700; line-height: 1.7; text-align: center; }
+        .news-badge[data-news-category="important"] { background: #e2412d; }
+        .news-badge[data-news-category="info"] { background: var(--primary); }
+        .news-badge[data-news-category="event"] { background: var(--accent); color: #2a1600; }
+        .news-badge[data-news-category="closed"] { background: var(--green); }
+        .news-attach { display: inline-block; padding: 0 8px; border: 1px solid; border-radius: 6px; font-size: .72rem; font-weight: 700; line-height: 1.7; white-space: nowrap; }
+        .news-attach[data-attach="image"] { border-color: #f5b25b; background: var(--accent-soft); color: var(--accent-text); }
+        .news-attach[data-attach="pdf"] { border-color: #f3a39a; background: #fdecea; color: #b42318; }
+        .news-attach[data-attach="word"] { border-color: #9cc3ef; background: #e8f1fc; color: #1d4f91; }
+        .news-attach[data-attach="excel"] { border-color: #8fd3b4; background: var(--green-soft); color: #0b6b45; }
+        .news-card-title { margin: 10px 0 12px; font-size: clamp(1.15rem, 2.6vw, 1.4rem); line-height: 1.5; }
+        .news-card-body { font-size: .98rem; }
+        .news-empty { padding: 32px; border-radius: var(--radius); background: var(--surface); color: var(--muted); text-align: center; }
+
+        /* 画像（押すと拡大） */
+        .news-figure { margin: 20px 0 0; }
+        .news-image-button { position: relative; display: block; width: 100%; max-width: 560px; padding: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #f5fbff; cursor: zoom-in; }
+        .news-image-button img { width: 100%; height: auto; max-height: 640px; object-fit: contain; }
+        .news-image-button:focus-visible { outline: 3px solid rgba(56, 189, 248, .6); outline-offset: 2px; }
+        .zoom-hint { position: absolute; right: 10px; bottom: 10px; padding: 2px 10px; border-radius: 999px; background: rgba(11, 47, 74, .75); color: #fff; font-size: .78rem; }
+        .news-figure figcaption { margin-top: 6px; color: var(--muted); font-size: .85rem; }
+
+        /* 添付資料のボタン（PDF＝赤、Word＝青、Excel＝緑） */
+        .file-button {
+            display: inline-flex; align-items: center; gap: 12px; margin-top: 20px; padding: 12px 20px; border: 2px solid; border-radius: 14px;
+            text-decoration: none; font-weight: 700; transition: transform .15s, box-shadow .15s;
+        }
+        .file-button:hover, .file-button:focus-visible { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(15, 23, 42, .12); }
+        .file-button:focus-visible { outline: 3px solid rgba(56, 189, 248, .6); outline-offset: 2px; }
+        .file-icon { font-size: 1.7rem; line-height: 1; }
+        .file-text { display: flex; flex-direction: column; line-height: 1.4; }
+        .file-name { font-size: .8rem; font-weight: 500; opacity: .85; word-break: break-all; }
+        .file-button[data-file-type="pdf"] { border-color: #e2412d; background: #fdecea; color: #b42318; }
+        .file-button[data-file-type="word"] { border-color: #2b6cc4; background: #e8f1fc; color: #1d4f91; }
+        .file-button[data-file-type="excel"] { border-color: #1a8a5a; background: var(--green-soft); color: #0b6b45; }
+        .back-link { margin: 40px 0 0; text-align: center; }
+
+        /* ---------- 画像の拡大表示（モーダル） ---------- */
+        .image-modal { width: min(1000px, 94vw); max-height: 94vh; padding: 16px; border: none; border-radius: 16px; background: #0b2f4a; color: #fff; }
+        .image-modal::backdrop { background: rgba(5, 20, 35, .82); }
+        .image-modal img { max-width: 100%; max-height: calc(94vh - 110px); margin: 0 auto; object-fit: contain; background: #fff; border-radius: 8px; }
+        .image-modal p { margin: 8px 0 0; text-align: center; font-size: .9rem; }
+        .modal-close { display: block; margin: 0 0 10px auto; padding: 6px 16px; border: 1px solid rgba(255, 255, 255, .7); border-radius: 999px; background: transparent; color: #fff; font: inherit; font-size: .88rem; cursor: pointer; }
+        .modal-close:hover, .modal-close:focus-visible { background: #fff; color: #0b2f4a; }
+
+        /* ---------- フッター ---------- */
+        .site-footer { padding: 48px 0 32px; background: #0b2f4a; color: #cbd5e1; font-size: .88rem; border-top: 6px solid var(--mint); }
+        .footer-inner { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 32px; }
+        .footer-name { margin: 0 0 8px; color: #fff; font-size: 1.05rem; font-weight: 800; }
+        .footer-info p { margin: 0; }
+        .footer-links { display: grid; grid-template-columns: repeat(2, auto); gap: 6px 32px; margin: 0; padding: 0; list-style: none; }
+        .footer-links a { color: #cbd5e1; text-decoration: none; }
+        .footer-links a:hover, .footer-links a:focus-visible { color: #fff; text-decoration: underline; }
+        .copyright { margin: 32px 0 0; padding-top: 20px; border-top: 1px solid #16476b; color: #8aa4bb; font-size: .78rem; text-align: center; }
+
+        /* ---------- タブレット ---------- */
+        @media (max-width: 1020px) {
+            .menu-toggle { display: grid; }
+            .global-nav {
+                position: absolute; top: var(--header-height); left: 0; right: 0; display: none; flex-direction: column; align-items: stretch; gap: 8px;
+                padding: 16px 20px 20px; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow);
+            }
+            .site-header.is-open .global-nav { display: flex; }
+            .nav-list { flex-direction: column; align-items: stretch; }
+            .nav-list a { padding: 12px 16px; border-radius: 10px; }
+            .nav-list a.nav-cta { text-align: center; margin-top: 4px; }
+        }
+        /* ---------- スマホ ---------- */
+        @media (max-width: 680px) {
+            .news-card { padding: 22px 18px; }
+            .file-button { width: 100%; }
+            .logo-org { display: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            html { scroll-behavior: auto; }
+            .btn, .file-button { transition: none; }
+        }
+    </style>
+</head>
+<body>
+    <!-- 施設名・会社名・所在地・電話番号は data-contact の付いた要素に JavaScript で表示する
+         （FACILITY_INFO のダミー表記。実名はルートの facility-config.js の window.CUSTOM_FACILITY_INFO に書く） -->
+    <header class="site-header" id="siteHeader">
+        <div class="container header-inner">
+            <a class="site-logo" href="../index.html" aria-label="トップページへ">
+                <span class="logo-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M5 20V10l7-5 7 5v10"/><path d="M10 20v-5h4v5"/></svg>
+                </span>
+                <span class="logo-text">
+                    <span class="logo-org" data-contact="organization"></span>
+                    <span class="logo-name" data-contact="facilityName">あおぞらセミナーハウス</span>
+                </span>
+            </a>
+            <button type="button" class="menu-toggle" id="menuToggle" aria-controls="globalNav" aria-expanded="false">
+                <span class="visually-hidden">メニューを開く</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+            </button>
+            <nav class="global-nav" id="globalNav" aria-label="サイト内メニュー">
+                <ul class="nav-list">
+                    <li><a href="../index.html#facilities">施設紹介</a></li>
+                    <li><a href="../index.html#stay">宿泊・食事</a></li>
+                    <li><a href="../index.html#flow">ご利用の流れ</a></li>
+                    <li><a href="../estimate/index.html">料金シミュレーター</a></li>
+                    <li><a href="../schedule/index.html">空き状況</a></li>
+                    <li><a class="nav-cta" href="../reservation/index.html">Web予約</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main id="top">
+        <section class="page-hero" aria-labelledby="pageTitle">
+            <div class="container">
+                <ol class="breadcrumb" aria-label="現在の位置">
+                    <li><a href="../index.html">トップ</a></li>
+                    <li aria-current="page">お知らせ</li>
+                </ol>
+                <p class="page-label">News &amp; Topics</p>
+                <h1 id="pageTitle">お知らせ一覧</h1>
+                <p>重要なお知らせ・ご案内・イベント・休館日の情報をお届けします。チラシや資料もこちらからご覧いただけます。</p>
+            </div>
+        </section>
+
+        <!-- 記事の一覧（news-logic.js で作る。表示中のカテゴリは #newsPage の data-filter に持つ） -->
+        <div class="container news-main" id="newsPage" data-filter="all">
+            <div class="filter-bar" id="newsFilters" role="group" aria-label="カテゴリで絞り込む"></div>
+            <div class="news-cards" id="newsCards" aria-live="polite"></div>
+            <p class="back-link"><a class="btn btn-solid" href="../index.html">← トップページへ戻る</a></p>
+        </div>
+    </main>
+
+    <!-- 画像の拡大表示（記事の画像を押すと開く。閉じるボタン・Esc・画像の外側で閉じる） -->
+    <dialog class="image-modal" id="imageModal" aria-label="画像の拡大表示">
+        <button type="button" class="modal-close" id="imageModalClose">× 閉じる</button>
+        <img id="imageModalImage" src="data:," alt="">
+        <p id="imageModalCaption"></p>
+    </dialog>
+
+    <footer class="site-footer">
+        <div class="container">
+            <div class="footer-inner">
+                <div class="footer-info">
+                    <p class="footer-name" data-contact="fullName">あおぞらセミナーハウス</p>
+                    <p><span data-contact="postal"></span> <span data-contact="address"></span></p>
+                    <p>TEL <span data-contact="tel"></span></p>
+                </div>
+                <ul class="footer-links">
+                    <li><a href="../index.html">トップページ</a></li>
+                    <li><a href="../schedule/index.html">空き状況</a></li>
+                    <li><a href="../index.html#facilities">施設紹介</a></li>
+                    <li><a href="../estimate/index.html">料金シミュレーター</a></li>
+                    <li><a href="../index.html#stay">宿泊・食事</a></li>
+                    <li><a href="../reservation/index.html">Web予約</a></li>
+                    <li><a href="../index.html#access">アクセス</a></li>
+                </ul>
+            </div>
+            <p class="copyright" id="copyright" data-contact="copyright">&copy; あおぞらセミナーハウス</p>
+        </div>
+    </footer>
+
+    <!-- ローカル専用の実名の設定（Git管理外）。ファイルがなければダミー表記で動く -->
+    <script src="../facility-config.js"></script>
+    <!-- 発行元のダミー表記・日付の関数（Web予約システムと共通の純粋関数） -->
+    <script src="../reservation/reservation-logic.js"></script>
+    <!-- 施設名・所在地・電話番号の表記を作る純粋関数（window.PortalLogic。トップページと共通） -->
+    <script src="../portal-logic.js"></script>
+    <!-- お知らせのデータを扱う純粋関数（window.NewsLogic。トップページ・職員用のスケジュール管理表と共通） -->
+    <script src="../news-logic.js"></script>
+    <script>
+        // ======================================================
+        //  画面の処理（DOM を扱う部分）。表示内容は news-logic.js・portal-logic.js の純粋関数で作り、ここでは書き込むだけにする
+        //  お知らせは読むだけ（保存は職員用のスケジュール管理表が行う）
+        // ======================================================
+        const Portal = window.PortalLogic;
+        const News = window.NewsLogic;
+        const ACTIVE_FACILITY_INFO = resolveFacilityInfo(FACILITY_INFO, window.CUSTOM_FACILITY_INFO);
+        const ROOT_PREFIX = '../'; // このページからサイトのルートまで（画像・資料の相対パスに付ける）
+
+        const byId = (id) => document.getElementById(id);
+
+        // 施設名・所在地・電話番号（data-contact の要素の文字）とページのタイトル
+        const renderContactInfo = (contact, info) => {
+            document.querySelectorAll('[data-contact]').forEach((element) => { element.textContent = contact[element.dataset.contact]; });
+            document.title = `お知らせ一覧｜${info.facilityName}`;
+        };
+
+        // ---------- お知らせ ----------
+        const readStoredNewsText = () => {
+            try { return localStorage.getItem(News.NEWS_STORAGE_KEY); } catch (error) { return null; }
+        };
+        const loadNewsList = () => News.resolveNewsList(readStoredNewsText(), window.CUSTOM_FACILITY_INFO?.news, toLocalDateString(new Date()));
+
+        // 絞り込みボタンと記事のカードを書き込む（filterKey：'all' か カテゴリの key）
+        const renderNewsPage = (newsList, filterKey) => {
+            byId('newsPage').dataset.filter = filterKey;
+            byId('newsFilters').innerHTML = News.renderCategoryFilterHtml(News.buildCategoryFilters(newsList), filterKey);
+            byId('newsCards').innerHTML = News.renderNewsCardsHtml(News.filterNewsByCategory(newsList, filterKey), ROOT_PREFIX);
+        };
+
+        const highlightNewsCard = (card) => {
+            document.querySelectorAll('.news-card.is-target').forEach((element) => element.classList.remove('is-target'));
+            card.classList.add('is-target');
+            card.scrollIntoView({ block: 'start' });
+            card.focus({ preventScroll: true });
+        };
+
+        // URL のハッシュ（#news-<id>）の記事へ移る（絞り込み中で見えなければ「すべて」に戻す）
+        const showNewsFromHash = (newsList) => {
+            const newsId = News.parseNewsAnchorId(location.hash);
+            if (!newsId || !News.findNewsItem(newsList, newsId)) return;
+            if (byId('newsPage').dataset.filter !== News.NEWS_FILTER_ALL) renderNewsPage(newsList, News.NEWS_FILTER_ALL);
+            highlightNewsCard(byId(News.buildNewsAnchorId(newsId)));
+        };
+
+        // ---------- 画像の拡大表示 ----------
+        const openImageModal = (src, alt) => {
+            byId('imageModalImage').src = src;
+            byId('imageModalImage').alt = alt;
+            byId('imageModalCaption').textContent = alt;
+            if (typeof byId('imageModal').showModal === 'function') byId('imageModal').showModal(); else byId('imageModal').setAttribute('open', '');
+        };
+        const closeImageModal = () => {
+            if (typeof byId('imageModal').close === 'function') byId('imageModal').close(); else byId('imageModal').removeAttribute('open');
+        };
+
+        // ---------- 操作 ----------
+        const bindNewsPage = () => {
+            byId('newsFilters').addEventListener('click', (event) => { const button = event.target.closest('.filter-button'); if (button) renderNewsPage(loadNewsList(), button.dataset.filter); });
+            byId('newsCards').addEventListener('click', (event) => { const button = event.target.closest('.news-image-button'); if (button) openImageModal(button.dataset.imageSrc, button.dataset.imageAlt); });
+            byId('imageModalClose').addEventListener('click', closeImageModal);
+            byId('imageModal').addEventListener('click', (event) => { if (event.target === byId('imageModal')) closeImageModal(); });
+            window.addEventListener('hashchange', () => showNewsFromHash(loadNewsList()));
+        };
+
+        // スマホ・タブレットのメニューの開け閉め（メニュー内のリンクを押したら閉じる）
+        const setMenuOpen = (isOpen) => {
+            byId('siteHeader').classList.toggle('is-open', isOpen);
+            byId('menuToggle').setAttribute('aria-expanded', String(isOpen));
+        };
+        const bindMenu = () => {
+            byId('menuToggle').addEventListener('click', () => setMenuOpen(byId('menuToggle').getAttribute('aria-expanded') !== 'true'));
+            byId('globalNav').addEventListener('click', (event) => { if (event.target.closest('a')) setMenuOpen(false); });
+        };
+
+        renderContactInfo(Portal.buildContactInfo(ACTIVE_FACILITY_INFO, new Date().getFullYear()), ACTIVE_FACILITY_INFO);
+        renderNewsPage(loadNewsList(), News.NEWS_FILTER_ALL);
+        bindNewsPage();
+        bindMenu();
+        showNewsFromHash(loadNewsList());
+    </script>
+</body>
+</html>
