@@ -47,11 +47,12 @@
     ].map(Object.freeze));
     const IMAGE_BADGE = Object.freeze({ icon: '🖼️', label: '画像' });
 
-    // 初期サンプルのお知らせ（daysAgo：今日から何日前の日付にするか。画像・資料の場所はサイトのルートからの相対パス）
+    // 初期サンプルのお知らせ（daysAgo：今日から何日前の日付にするか。画像・資料の場所はサイトのルートからの相対パス。
+    // pinned：日付に関わらず一番上に固定する記事。食事メニューの案内と休館日のお知らせを固定しておく）
     const SAMPLE_NEWS_TEMPLATES = Object.freeze([
         { id: 'sample-1', daysAgo: 0, category: 'important', title: 'Web予約の受付を開始しました', body: '空き状況の確認から概算見積もり、お申し込みまで、Webで24時間受け付けています。\nお電話・窓口でのご予約も、これまでどおり承ります。\nご利用の前に、施設利用要項（PDF）をご確認ください。', fileUrl: './files/riyou-youkou.pdf', fileName: '施設利用要項.pdf' },
-        { id: 'sample-2', daysAgo: 7, category: 'info', title: '合宿向けのお弁当メニューを新しくしました', body: '練習の合間に食べやすい、ボリュームのあるお弁当をご用意しました。\nご注文は、ご利用日の5日前までにお申し込みください。' },
-        { id: 'sample-3', daysAgo: 14, category: 'closed', title: '設備点検に伴う休館日のお知らせ', body: '設備の定期点検のため、来月の第2月曜日は全館休館とさせていただきます。\nご不便をおかけしますが、ご理解のほどよろしくお願いいたします。' },
+        { id: 'sample-2', daysAgo: 7, category: 'info', pinned: true, title: '合宿向けのお弁当メニューを新しくしました', body: '練習の合間に食べやすい、ボリュームのあるお弁当をご用意しました。\nご注文は、ご利用日の5日前までにお申し込みください。' },
+        { id: 'sample-3', daysAgo: 14, category: 'closed', pinned: true, title: '設備点検に伴う休館日のお知らせ', body: '設備の定期点検のため、来月の第2月曜日は全館休館とさせていただきます。\nご不便をおかけしますが、ご理解のほどよろしくお願いいたします。' },
         { id: 'sample-4', daysAgo: 3, category: 'event', title: '秋のスポーツ体験会を開催します', body: 'バドミントン・卓球・ボッチャを、どなたでも気軽に体験できます。\n参加は無料、申し込みは不要です。動きやすい服装と室内履きでお越しください。', imageUrl: './files/sample-flyer.svg', imageName: '秋のスポーツ体験会のチラシ' },
         { id: 'sample-5', daysAgo: 10, category: 'info', title: '宿泊者名簿の様式（Excel）を掲載しました', body: '宿泊を伴うご利用の際は、宿泊者名簿をご利用日の7日前までにご提出ください。\n下のボタンから Excel の様式をダウンロードできます。', fileUrl: './files/meibo.xlsx', fileName: '宿泊者名簿.xlsx' },
         { id: 'sample-6', daysAgo: 21, category: 'info', title: '利用申込書（Word）をダウンロードできるようになりました', body: '窓口・郵送・FAXでお申し込みの方は、利用申込書の様式をご利用ください。\nWeb予約からもお申し込みいただけます。', fileUrl: './files/moushikomi.docx', fileName: '施設利用申込書.docx' }
@@ -207,7 +208,7 @@
 
     const toNewsFields = (input) => ({
         date: toTrimmedText(input.date), category: input.category, title: toTrimmedText(input.title), body: toTrimmedText(input.body),
-        ...toImageFields(input), ...toFileFields(input)
+        ...toImageFields(input), ...toFileFields(input), pinned: input.pinned === true
     });
 
     // ---------- 初期サンプル ----------
@@ -227,15 +228,20 @@
     // ---------- 並べ替え・追加・編集・削除（いずれも新しい配列を返す） ----------
     // 日付の新しい順（同じ日付なら id の大きい順＝あとから追加した順）
     const compareNewsByDateDesc = (first, second) => second.date.localeCompare(first.date) || second.id.localeCompare(first.id, 'en', { numeric: true });
-    const sortNewsByDateDesc = (list) => [...list].sort(compareNewsByDateDesc);
+    // 表示の順番：固定（pinned: true）の記事を先頭にし、固定どうし・固定していないものどうしの中は日付の新しい順
+    const compareNewsForDisplay = (first, second) => Number(Boolean(second.pinned)) - Number(Boolean(first.pinned)) || compareNewsByDateDesc(first, second);
+    const sortNewsForDisplay = (list) => [...list].sort(compareNewsForDisplay);
 
     // 新しいお知らせの id（"news-番号" のうち一番大きい番号の次）
     const createNewsId = (list) => `news-${list.reduce((max, item) => Math.max(max, Number((/^news-(\d+)$/.exec(item.id) || [])[1] || 0)), 0) + 1}`;
 
-    const addNewsItem = (list, input) => sortNewsByDateDesc([...list, { id: createNewsId(list), ...toNewsFields(input) }]);
-    const updateNewsItem = (list, id, input) => sortNewsByDateDesc(list.map((item) => (item.id === id ? { id, ...toNewsFields(input) } : item)));
+    const addNewsItem = (list, input) => sortNewsForDisplay([...list, { id: createNewsId(list), ...toNewsFields(input) }]);
+    const updateNewsItem = (list, id, input) => sortNewsForDisplay(list.map((item) => (item.id === id ? { id, ...toNewsFields(input) } : item)));
     const removeNewsItem = (list, id) => list.filter((item) => item.id !== id);
     const findNewsItem = (list, id) => list.find((item) => item.id === id) || null;
+    // 指定した id のお知らせの固定（pinned）を反転して並べ直す（ない id なら並べ直すだけ）
+    const togglePinNews = (list, id) => sortNewsForDisplay(list.map((item) => (item.id === id ? { ...item, pinned: !item.pinned } : item)));
+    const countPinnedNews = (list) => list.filter((item) => item.pinned).length;
 
     // ---------- 保存・読み込み・表示するお知らせの決定 ----------
     const serializeNews = (list) => JSON.stringify({ type: NEWS_DATA_TYPE, version: NEWS_DATA_VERSION, items: list });
@@ -251,13 +257,13 @@
     // 初期のお知らせ（facility-config.js の window.CUSTOM_FACILITY_INFO.news に正しいお知らせがあればそれ、なければサンプル）
     const resolveInitialNews = (customNews, today) => {
         const customList = normalizeNewsList(customNews);
-        return sortNewsByDateDesc(customList.length > 0 ? customList : createSampleNews(today));
+        return sortNewsForDisplay(customList.length > 0 ? customList : createSampleNews(today));
     };
 
     // 表示するお知らせ（職員が保存したものがあればそれ、なければ初期のお知らせ）
     const resolveNewsList = (storedText, customNews, today) => {
         const storedList = parseStoredNews(storedText);
-        return storedList === null ? resolveInitialNews(customNews, today) : sortNewsByDateDesc(storedList);
+        return storedList === null ? resolveInitialNews(customNews, today) : sortNewsForDisplay(storedList);
     };
 
     // ---------- カテゴリの絞り込み・記事への直接リンク ----------
@@ -290,17 +296,22 @@
         item.fileType ? `<span class="news-attach" data-attach="${escapeHtml(item.fileType)}">${findFileTypeInfo(item.fileType).icon}${findFileTypeInfo(item.fileType).label}</span>` : ''
     ].join('');
 
+    // 固定した記事のしるし（バッジと、行・カードを強調するための data-pinned 属性。固定していなければ空）
+    const PIN_BADGE_HTML = '<span class="news-pin">📌 固定（ピックアップ）</span>';
+    const renderPinBadgeHtml = (item) => (item.pinned ? PIN_BADGE_HTML : '');
+    const renderPinnedAttribute = (item) => (item.pinned ? ' data-pinned="true"' : '');
+
     // トップページのお知らせ1件（押すとお知らせページのその記事へ移る）
-    const renderNewsItemHtml = (item, pagePath) => `<li class="news-item" data-news-id="${escapeHtml(item.id)}" data-news-category="${escapeHtml(item.category)}">`
+    const renderNewsItemHtml = (item, pagePath) => `<li class="news-item" data-news-id="${escapeHtml(item.id)}" data-news-category="${escapeHtml(item.category)}"${renderPinnedAttribute(item)}>`
         + `<a class="news-link" href="${escapeHtml(buildNewsPageHref(pagePath, item.id))}">`
-        + `<time class="news-date" datetime="${escapeHtml(item.date)}">${escapeHtml(formatNewsDate(item.date))}</time>${renderNewsBadgeHtml(item.category)}`
+        + `${renderPinBadgeHtml(item)}<time class="news-date" datetime="${escapeHtml(item.date)}">${escapeHtml(formatNewsDate(item.date))}</time>${renderNewsBadgeHtml(item.category)}`
         + `<span class="news-title">${escapeHtml(item.title)}${renderAttachmentBadgesHtml(item)}</span>`
         + `<span class="news-excerpt">${escapeHtml(buildNewsExcerpt(item.body, NEWS_EXCERPT_LENGTH))}</span></a></li>`;
 
-    // トップページのお知らせの一覧（新しい順に limit 件まで。1件もなければその旨）
+    // トップページのお知らせの一覧（固定した記事を先頭に、新しい順で limit 件まで。1件もなければその旨）
     const renderNewsListHtml = (list, limit, pagePath) => (list.length === 0
         ? '<li class="news-empty">現在、お知らせはありません。</li>'
-        : sortNewsByDateDesc(list).slice(0, limit).map((item) => renderNewsItemHtml(item, pagePath)).join(''));
+        : sortNewsForDisplay(list).slice(0, limit).map((item) => renderNewsItemHtml(item, pagePath)).join(''));
 
     // お知らせページ：カテゴリの絞り込みボタン（押されているボタンは aria-pressed="true"）
     const renderCategoryFilterHtml = (filters, activeKey) => filters.map((filter) => `<button type="button" class="filter-button" data-filter="${escapeHtml(filter.key)}"`
@@ -325,15 +336,15 @@
     };
 
     // お知らせページ：記事1件のカード（id="news-<id>" で URL のハッシュから直接移れる）
-    const renderNewsCardHtml = (item, rootPrefix) => `<article class="news-card" id="${escapeHtml(buildNewsAnchorId(item.id))}" data-news-id="${escapeHtml(item.id)}" data-news-category="${escapeHtml(item.category)}" tabindex="-1">`
-        + `<div class="news-card-meta"><time class="news-date" datetime="${escapeHtml(item.date)}">${escapeHtml(formatNewsDate(item.date))}</time>${renderNewsBadgeHtml(item.category)}${renderAttachmentBadgesHtml(item)}</div>`
+    const renderNewsCardHtml = (item, rootPrefix) => `<article class="news-card" id="${escapeHtml(buildNewsAnchorId(item.id))}" data-news-id="${escapeHtml(item.id)}" data-news-category="${escapeHtml(item.category)}" tabindex="-1"${renderPinnedAttribute(item)}>`
+        + `<div class="news-card-meta">${renderPinBadgeHtml(item)}<time class="news-date" datetime="${escapeHtml(item.date)}">${escapeHtml(formatNewsDate(item.date))}</time>${renderNewsBadgeHtml(item.category)}${renderAttachmentBadgesHtml(item)}</div>`
         + `<h2 class="news-card-title">${escapeHtml(item.title)}</h2><div class="news-card-body">${formatNewsBodyHtml(item.body)}</div>`
         + `${renderNewsImageHtml(item, rootPrefix)}${renderNewsFileButtonHtml(item, rootPrefix)}</article>`;
 
-    // お知らせページ：記事の一覧（新しい順。1件もなければその旨）
+    // お知らせページ：記事の一覧（固定した記事を先頭に、新しい順。1件もなければその旨）
     const renderNewsCardsHtml = (list, rootPrefix) => (list.length === 0
         ? '<p class="news-empty">該当するお知らせはありません。</p>'
-        : sortNewsByDateDesc(list).map((item) => renderNewsCardHtml(item, rootPrefix)).join(''));
+        : sortNewsForDisplay(list).map((item) => renderNewsCardHtml(item, rootPrefix)).join(''));
 
     // ---------- 職員用の入力フォームに出す説明 ----------
     // DataURL のおおよそのバイト数（base64 の部分の 3/4）
@@ -365,8 +376,8 @@
         isLinkUrl, isValidImageUrl, isValidFileUrl, resolveNewsAssetUrl, replaceDataUrlMime, normalizeFileDataUrl,
         formatBytes, checkAttachmentFile, checkImageFile, calculateResizedSize,
         pickFileUrl, resolveFileType, buildDefaultFileName, buildDownloadName, validateNewsInput, createSampleNews,
-        normalizeNewsItem, normalizeNewsList, sortNewsByDateDesc, createNewsId,
-        addNewsItem, updateNewsItem, removeNewsItem, findNewsItem, serializeNews, parseStoredNews, resolveInitialNews, resolveNewsList,
+        normalizeNewsItem, normalizeNewsList, sortNewsForDisplay, createNewsId,
+        addNewsItem, updateNewsItem, removeNewsItem, findNewsItem, togglePinNews, countPinnedNews, renderPinBadgeHtml, serializeNews, parseStoredNews, resolveInitialNews, resolveNewsList,
         filterNewsByCategory, buildCategoryFilters, buildNewsAnchorId, parseNewsAnchorId, buildNewsPageHref, buildNewsExcerpt,
         renderNewsBadgeHtml, formatNewsBodyHtml, renderAttachmentBadgesHtml, renderNewsItemHtml, renderNewsListHtml,
         renderCategoryFilterHtml, renderNewsImageHtml, renderNewsFileButtonHtml, renderNewsCardHtml, renderNewsCardsHtml,

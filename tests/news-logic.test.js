@@ -14,7 +14,8 @@ const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo=';
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const toPlain = (value) => JSON.parse(JSON.stringify(value));
 const item = (id, date, category = 'info') => ({ id, date, category, title: `タイトル${id}`, body: `本文${id}` });
-const SAMPLE_IDS_BY_DATE = ['sample-1', 'sample-4', 'sample-2', 'sample-5', 'sample-3', 'sample-6'];
+// 初期サンプルの表示の順番（固定の sample-2・sample-3 が先頭、その後は新しい順）
+const SAMPLE_IDS_SORTED = ['sample-2', 'sample-3', 'sample-1', 'sample-4', 'sample-5', 'sample-6'];
 
 // ---------- 定数・初期サンプル ----------
 test('保存キーは facility_dx_news、カテゴリは 重要・ご案内・イベント・休館日、添付資料の種類は PDF・Word・Excel', () => {
@@ -38,7 +39,7 @@ test('初期サンプルには、チラシ画像・利用要項PDF・宿泊者�
     assert.deepStrictEqual(['sample-1', 'sample-5', 'sample-6'].map((id) => `${byId[id].fileType}:${byId[id].fileName}:${byId[id].fileUrl}`), [
         'pdf:施設利用要項.pdf:./files/riyou-youkou.pdf', 'excel:宿泊者名簿.xlsx:./files/meibo.xlsx', 'word:施設利用申込書.docx:./files/moushikomi.docx'
     ]);
-    assert.deepStrictEqual(toPlain({ ...byId['sample-2'], id: undefined, date: undefined, category: undefined, title: undefined, body: undefined }), NO_ATTACHMENT);
+    assert.deepStrictEqual(toPlain({ ...byId['sample-2'], id: undefined, date: undefined, category: undefined, title: undefined, body: undefined, pinned: undefined }), NO_ATTACHMENT);
     ['sample-flyer.svg', 'riyou-youkou.pdf', 'meibo.xlsx', 'moushikomi.docx'].forEach((name) => assert.ok(fs.existsSync(path.join(ROOT_DIR, 'files', name)), name));
 });
 
@@ -176,11 +177,43 @@ test('buildDownloadName は、ファイル名の拡張子が種類と合わな�
 });
 
 // ---------- 並べ替え・追加・編集・削除 ----------
-test('sortNewsByDateDesc は日付の新しい順（同じ日付なら番号の大きい順）に並べ、元の配列は変えない', () => {
+test('sortNewsForDisplay は、固定がなければ日付の新しい順（同じ日付なら番号の大きい順）に並べ、元の配列は変えない', () => {
     const list = Object.freeze([item('news-2', '2026-10-01'), item('news-10', '2026-10-01'), item('news-1', '2026-10-15')]);
-    assert.deepStrictEqual(News.sortNewsByDateDesc(list).map((news) => news.id), ['news-1', 'news-10', 'news-2']);
+    assert.deepStrictEqual(News.sortNewsForDisplay(list).map((news) => news.id), ['news-1', 'news-10', 'news-2']);
     assert.deepStrictEqual(list.map((news) => news.id), ['news-2', 'news-10', 'news-1']);
-    assert.deepStrictEqual(News.sortNewsByDateDesc([]), []);
+    assert.deepStrictEqual(News.sortNewsForDisplay([]), []);
+});
+
+test('sortNewsForDisplay は、固定（pinned: true）の記事を日付に関わらず先頭にし、固定どうし・固定なしどうしの中は新しい順にする', () => {
+    const pinned = (news) => ({ ...news, pinned: true });
+    const list = [item('a', '2026-10-19'), pinned(item('b', '2026-01-01')), item('c', '2026-10-20'), pinned(item('d', '2026-03-01')), { ...item('e', '2026-10-18'), pinned: false }];
+    assert.deepStrictEqual(News.sortNewsForDisplay(list).map((news) => news.id), ['d', 'b', 'c', 'a', 'e']);
+    assert.deepStrictEqual(News.sortNewsForDisplay([pinned(item('x', '2026-01-01'))]).map((news) => news.id), ['x']);
+});
+
+test('初期サンプルは、食事メニューの案内（sample-2）と休館日のお知らせ（sample-3）が固定で、それが先頭に並ぶ', () => {
+    const samples = News.createSampleNews(TODAY);
+    assert.deepStrictEqual(samples.filter((sample) => sample.pinned).map((sample) => `${sample.id}:${sample.category}`), ['sample-2:info', 'sample-3:closed']);
+    assert.ok(samples.every((sample) => typeof sample.pinned === 'boolean'));
+    assert.deepStrictEqual(News.sortNewsForDisplay(samples).map((news) => news.id), SAMPLE_IDS_SORTED);
+    assert.strictEqual(News.countPinnedNews(samples), 2);
+});
+
+test('pinned は true のときだけ固定になり、指定がない・文字列・数値のときは false（固定しない）', () => {
+    const pinnedOf = (value) => News.normalizeNewsList([{ ...VALID_INPUT, pinned: value }])[0].pinned;
+    assert.deepStrictEqual([true, false, undefined, 'true', 1, null].map(pinnedOf), [true, false, false, false, false, false]);
+    assert.strictEqual(News.addNewsItem([], { ...VALID_INPUT, pinned: true })[0].pinned, true);
+});
+
+test('togglePinNews は、指定した id の固定を反転して並べ直し、元の配列は変えない（ない id・空の一覧でも壊れない）', () => {
+    const list = Object.freeze(News.createSampleNews(TODAY));
+    const pinnedSample6 = News.togglePinNews(list, 'sample-6');
+    assert.deepStrictEqual(pinnedSample6.map((news) => news.id), ['sample-2', 'sample-3', 'sample-6', 'sample-1', 'sample-4', 'sample-5']);
+    const unpinnedSample2 = News.togglePinNews(pinnedSample6, 'sample-2');
+    assert.deepStrictEqual(unpinnedSample2.map((news) => `${news.id}:${news.pinned}`).slice(0, 3), ['sample-3:true', 'sample-6:true', 'sample-1:false']);
+    assert.strictEqual(News.findNewsItem(unpinnedSample2, 'sample-2').pinned, false);
+    assert.deepStrictEqual(News.togglePinNews(News.togglePinNews(list, 'sample-1'), 'sample-1').map((news) => `${news.id}:${news.pinned}`), News.sortNewsForDisplay(list).map((news) => `${news.id}:${news.pinned}`));
+    assert.deepStrictEqual([News.findNewsItem(list, 'sample-6').pinned, News.togglePinNews(list, 'none').length, News.togglePinNews([], 'x').length], [false, 6, 0]);
 });
 
 test('createNewsId は "news-番号" の一番大きい番号の次を返す（空なら news-1、サンプルの id は数えない）', () => {
@@ -192,19 +225,21 @@ test('createNewsId は "news-番号" の一番大きい番号の次を返す（�
 test('addNewsItem は新しい id で追加し、前後の空白を取り、日付の新しい順に並べ直す（元の配列は変えない）', () => {
     const list = Object.freeze(News.createSampleNews(TODAY));
     const added = News.addNewsItem(list, { ...VALID_INPUT, fileUrl: ' ./files/meibo.xlsx ', fileName: '' });
-    assert.deepStrictEqual(toPlain(added[0]), {
+    assert.deepStrictEqual(toPlain(added[2]), {
         id: 'news-1', date: '2026-11-01', category: 'event', title: '秋のスポーツ体験会', body: 'どなたでも参加できます。\n申し込みは不要です。',
-        ...NO_ATTACHMENT, fileUrl: './files/meibo.xlsx', fileName: 'meibo.xlsx', fileType: 'excel'
+        ...NO_ATTACHMENT, fileUrl: './files/meibo.xlsx', fileName: 'meibo.xlsx', fileType: 'excel', pinned: false
     });
+    assert.deepStrictEqual(added.map((news) => news.id).slice(0, 3), ['sample-2', 'sample-3', 'news-1'], '固定の記事の次（固定していない記事の先頭）に入る');
     assert.deepStrictEqual([added.length, list.length], [7, 6]);
 });
 
 test('updateNewsItem は指定した id のお知らせだけを書き換えて並べ直し（添付を外すこともできる）、ない id なら内容は変わらない', () => {
     const list = Object.freeze(News.createSampleNews(TODAY));
     const updated = News.updateNewsItem(list, 'sample-5', { ...VALID_INPUT, category: 'closed' });
-    assert.deepStrictEqual(updated.map((news) => news.id), ['sample-5', ...SAMPLE_IDS_BY_DATE.filter((id) => id !== 'sample-5')]);
-    assert.deepStrictEqual([updated[0].date, updated[0].category, updated[0].title, updated[0].fileUrl, updated[0].fileType], ['2026-11-01', 'closed', '秋のスポーツ体験会', '', '']);
-    assert.deepStrictEqual(toPlain(News.updateNewsItem(list, 'none', VALID_INPUT)), toPlain(News.sortNewsByDateDesc(list)));
+    assert.deepStrictEqual(updated.map((news) => news.id), ['sample-2', 'sample-3', 'sample-5', 'sample-1', 'sample-4', 'sample-6']);
+    assert.deepStrictEqual([updated[2].date, updated[2].category, updated[2].title, updated[2].fileUrl, updated[2].fileType], ['2026-11-01', 'closed', '秋のスポーツ体験会', '', '']);
+    assert.deepStrictEqual(News.updateNewsItem(list, 'sample-5', { ...VALID_INPUT, pinned: true }).map((news) => news.id).slice(0, 3), ['sample-5', 'sample-2', 'sample-3'], '編集で固定にすると、固定の中で日付の新しい順に入る');
+    assert.deepStrictEqual(toPlain(News.updateNewsItem(list, 'none', VALID_INPUT)), toPlain(News.sortNewsForDisplay(list)));
 });
 
 test('removeNewsItem は指定した id だけを消し、findNewsItem は見つからなければ null を返す', () => {
@@ -241,7 +276,7 @@ test('resolveNewsList は、保存があればそれ（空なら空）、なけ�
     assert.deepStrictEqual(News.resolveNewsList(stored, custom, TODAY).map((news) => news.id), ['s-1']);
     assert.deepStrictEqual(News.resolveNewsList(News.serializeNews([]), custom, TODAY), []);
     assert.deepStrictEqual(News.resolveNewsList(null, custom, TODAY).map((news) => `${news.id}:${news.fileType}`), ['c-2:pdf', 'c-1:']);
-    assert.deepStrictEqual(News.resolveNewsList(null, [{ title: '不完全' }], TODAY).map((news) => news.id), SAMPLE_IDS_BY_DATE);
+    assert.deepStrictEqual(News.resolveNewsList(null, [{ title: '不完全' }], TODAY).map((news) => news.id), SAMPLE_IDS_SORTED);
     assert.strictEqual(News.resolveNewsList('{壊れた', undefined, TODAY).length, 6);
 });
 
@@ -266,14 +301,30 @@ test('buildNewsExcerpt は改行・空白をまとめ、長ければ指定の文
 });
 
 // ---------- トップページの HTML ----------
-test('renderNewsListHtml は、日付・カテゴリ・タイトル・添付バッジ・抜粋を新しい順に limit 件まで作り、お知らせページの記事へのリンクにする', () => {
+test('renderNewsListHtml は、日付・カテゴリ・タイトル・添付バッジ・抜粋を、固定の記事を先頭にして新しい順に limit 件まで作り、お知らせページの記事へのリンクにする', () => {
     const html = News.renderNewsListHtml(News.createSampleNews(TODAY), 5, './news/index.html');
     assert.strictEqual((html.match(/<li class="news-item"/g) || []).length, 5);
-    assert.match(html, /^<li class="news-item" data-news-id="sample-1" data-news-category="important"><a class="news-link" href="\.\/news\/index\.html#news-sample-1"><time class="news-date" datetime="2026-10-20">2026\.10\.20<\/time><span class="news-badge" data-news-category="important">重要<\/span><span class="news-title">Web予約の受付を開始しました<span class="news-attach" data-attach="pdf">📄PDF<\/span><\/span>/);
+    assert.match(html, /<li class="news-item" data-news-id="sample-1" data-news-category="important"><a class="news-link" href="\.\/news\/index\.html#news-sample-1"><time class="news-date" datetime="2026-10-20">2026\.10\.20<\/time><span class="news-badge" data-news-category="important">重要<\/span><span class="news-title">Web予約の受付を開始しました<span class="news-attach" data-attach="pdf">📄PDF<\/span><\/span>/);
     assert.match(html, /<span class="news-attach" data-attach="image">🖼️画像<\/span>/);
     assert.match(html, /<span class="news-attach" data-attach="excel">📗Excel<\/span>/);
     assert.doesNotMatch(html, /sample-6/, '6件目（いちばん古い記事）は出さない');
     assert.doesNotMatch(html, /<button|編集|削除/, 'トップページ用の HTML に編集の操作を出さない');
+});
+
+test('renderNewsListHtml は、固定の記事を先頭に並べ、data-pinned="true" と「📌 固定（ピックアップ）」のバッジを付ける（固定していない記事には付けない）', () => {
+    const html = News.renderNewsListHtml(News.createSampleNews(TODAY), 5, './news/index.html');
+    assert.deepStrictEqual([...html.matchAll(/data-news-id="([^"]*)"/g)].map(([, id]) => id), ['sample-2', 'sample-3', 'sample-1', 'sample-4', 'sample-5']);
+    assert.match(html, /^<li class="news-item" data-news-id="sample-2" data-news-category="info" data-pinned="true"><a class="news-link" href="\.\/news\/index\.html#news-sample-2"><span class="news-pin">📌 固定（ピックアップ）<\/span><time class="news-date"/);
+    assert.strictEqual((html.match(/data-pinned="true"/g) || []).length, 2);
+    assert.strictEqual((html.match(/<span class="news-pin">/g) || []).length, 2);
+    assert.strictEqual(News.renderNewsListHtml(News.createSampleNews(TODAY), 1, './news/index.html').includes('sample-2'), true, '1件だけでも固定の記事を出す');
+});
+
+test('お知らせページの記事カードも、固定の記事には data-pinned="true" とバッジを付け、固定の記事を先頭に並べる', () => {
+    const samples = News.createSampleNews(TODAY);
+    assert.match(News.renderNewsCardHtml(News.findNewsItem(samples, 'sample-3'), '../'), /tabindex="-1" data-pinned="true"><div class="news-card-meta"><span class="news-pin">📌 固定（ピックアップ）<\/span><time/);
+    assert.doesNotMatch(News.renderNewsCardHtml(News.findNewsItem(samples, 'sample-1'), '../'), /data-pinned|news-pin/);
+    assert.deepStrictEqual([...News.renderNewsCardsHtml(samples, '../').matchAll(/<article class="news-card" id="news-([^"]*)"/g)].map(([, id]) => id), SAMPLE_IDS_SORTED);
 });
 
 test('renderNewsListHtml は、お知らせがなければ「お知らせはありません」を出し、文字はすべてエスケープする', () => {
