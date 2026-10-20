@@ -136,7 +136,7 @@ test('ポータルのリンク先がすべて存在し、URLに日本語を含�
 test('ツールへのリンクは、PC で直接開いた（file://）ときもフォルダ一覧にならないよう、末尾の index.html まで書いてある', () => {
     const folderHrefs = listHrefs(readPortal()).filter((href) => !href.startsWith('#'));
     assert.ok(folderHrefs.length > 0);
-    folderHrefs.forEach((href) => assert.match(href, /^\.\/(estimate|reservation|schedule)\/index\.html(\?mode=staff)?$/, `リンク先 ${href} に index.html がありません`));
+    folderHrefs.forEach((href) => assert.match(href, /^\.\/(estimate|reservation|schedule|news)\/index\.html(\?mode=staff)?$/, `リンク先 ${href} に index.html がありません`));
     assert.ok(folderHrefs.includes('./schedule/index.html?mode=staff'));
 });
 
@@ -273,4 +273,18 @@ test('お知らせのカテゴリのバッジは、重要＝赤・ご案内＝�
     [['important', '#e2412d'], ['info', 'var(--primary)'], ['event', 'var(--accent)'], ['closed', 'var(--green)']].forEach(([key, color]) => {
         assert.ok(html.includes(`.news-badge[data-news-category="${key}"] { background: ${color};`), key);
     });
+});
+
+test('お知らせの枠に、お知らせ一覧・詳細ページ（./news/index.html）へのボタンがあり、そのページがある', () => {
+    const newsBlock = sliceBlock(readPortal(), /<section class="news-section"/, '</section>');
+    const tag = findTagById(newsBlock, 'newsMoreButton');
+    assert.strictEqual(textOf(tag || '', /href="([^"]*)"/), './news/index.html');
+    assert.ok(newsBlock.includes('お知らせ一覧・詳細ページへ →'));
+    assert.ok(fs.existsSync(path.join(ROOT_DIR, 'news', 'index.html')));
+    assert.ok(readPortal().includes("const NEWS_PAGE_PATH = './news/index.html';"), '記事のリンク先はお知らせページ');
+});
+
+test('添付があることを示すバッジ（画像・PDF・Word・Excel）の色分けがある', () => {
+    const html = readPortal();
+    ['image', 'pdf', 'word', 'excel'].forEach((key) => assert.ok(html.includes(`.news-attach[data-attach="${key}"] {`), key));
 });

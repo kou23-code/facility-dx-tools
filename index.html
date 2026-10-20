@@ -176,12 +176,20 @@
         .news-head p { margin: 6px 0 0; color: var(--muted); font-size: .85rem; }
         .news-list { margin: 0; padding: 0; list-style: none; }
         .news-item + .news-item { border-top: 1px dashed var(--line); }
-        .news-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 14px 6px; border-radius: 10px; cursor: pointer; list-style: none; }
-        .news-summary::-webkit-details-marker { display: none; }
-        .news-summary::after { content: "＋"; margin-left: auto; color: var(--primary); font-weight: 700; }
-        .news-details[open] .news-summary::after { content: "－"; }
-        .news-summary:hover, .news-summary:focus-visible { background: var(--primary-soft); }
-        .news-summary:focus-visible { outline: 3px solid rgba(56, 189, 248, .6); outline-offset: 2px; }
+        .news-more { margin-top: 16px; padding: 10px 18px; font-size: .88rem; }
+        /* 記事1件（押すとお知らせ一覧・詳細ページのその記事へ） */
+        .news-link { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 14px 34px 14px 6px; border-radius: 10px; color: var(--text); text-decoration: none; position: relative; }
+        .news-link::after { content: "›"; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--primary); font-size: 1.4rem; font-weight: 700; }
+        .news-link:hover, .news-link:focus-visible { background: var(--primary-soft); }
+        .news-link:hover .news-title { color: var(--primary); }
+        .news-link:focus-visible { outline: 3px solid rgba(56, 189, 248, .6); outline-offset: 2px; }
+        .news-excerpt { flex-basis: 100%; color: var(--muted); font-size: .85rem; line-height: 1.6; }
+        /* 添付があることを示すバッジ（🖼️画像・📄PDF・📘Word・📗Excel） */
+        .news-attach { display: inline-block; margin-left: 8px; padding: 0 8px; border: 1px solid; border-radius: 6px; font-size: .72rem; font-weight: 700; line-height: 1.7; vertical-align: 2px; white-space: nowrap; }
+        .news-attach[data-attach="image"] { border-color: #f5b25b; background: var(--accent-soft); color: var(--accent-text); }
+        .news-attach[data-attach="pdf"] { border-color: #f3a39a; background: #fdecea; color: #b42318; }
+        .news-attach[data-attach="word"] { border-color: #9cc3ef; background: #e8f1fc; color: #1d4f91; }
+        .news-attach[data-attach="excel"] { border-color: #8fd3b4; background: var(--green-soft); color: #0b6b45; }
         .news-date { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
         .news-badge { display: inline-block; min-width: 5.2em; padding: 1px 10px; border-radius: 999px; color: #fff; font-size: .75rem; font-weight: 700; line-height: 1.7; text-align: center; }
         .news-badge[data-news-category="important"] { background: #e2412d; }
@@ -189,7 +197,6 @@
         .news-badge[data-news-category="event"] { background: var(--accent); color: #2a1600; }
         .news-badge[data-news-category="closed"] { background: var(--green); }
         .news-title { flex: 1 1 240px; font-weight: 700; line-height: 1.6; }
-        .news-body { margin: 0 6px 16px; padding: 14px 18px; border-radius: 12px; background: #f5fbff; font-size: .92rem; }
         .news-empty { padding: 14px 6px; color: var(--muted); }
 
         /* ---------- 施設紹介 ---------- */
@@ -424,7 +431,8 @@
                     <div class="news-head">
                         <p class="section-label">News &amp; Topics</p>
                         <h2 id="newsTitle">お知らせ</h2>
-                        <p>タイトルを押すと詳しい内容が開きます。</p>
+                        <p>記事を押すと、お知らせ一覧・詳細ページで本文・画像・添付資料をご覧いただけます。</p>
+                        <a class="btn btn-solid news-more" id="newsMoreButton" href="./news/index.html">お知らせ一覧・詳細ページへ →</a>
                     </div>
                     <ul class="news-list" id="newsList" aria-live="polite"></ul>
                 </div>
@@ -774,11 +782,12 @@
 
         // ---------- お知らせ（読むだけ。保存は職員用のスケジュール管理表が行う） ----------
         const News = window.NewsLogic;
+        const NEWS_PAGE_PATH = './news/index.html'; // お知らせ一覧・詳細ページ（記事を押すと #news-<id> 付きで開く）
         const readStoredNewsText = () => {
             try { return localStorage.getItem(News.NEWS_STORAGE_KEY); } catch (error) { return null; }
         };
         const renderNews = (newsList) => {
-            byId('newsList').innerHTML = News.renderNewsListHtml(newsList, News.PORTAL_NEWS_LIMIT);
+            byId('newsList').innerHTML = News.renderNewsListHtml(newsList, News.PORTAL_NEWS_LIMIT, NEWS_PAGE_PATH);
         };
 
         // スマホ・タブレットのメニューの開け閉め（メニュー内のリンクを押したら閉じる）
